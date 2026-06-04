@@ -11,6 +11,7 @@
 import type {
   LaylaApiEvent,
   LaylaApiEvent_onGetCharactersResponse,
+  LaylaApiEvent_onGetCharacterImageResponse,
   LaylaCharacter,
 } from '../protocol';
 import { oneShot, type RequestOptions } from '../internal/one-shot';
@@ -27,6 +28,22 @@ export class Characters {
       (event: LaylaApiEvent) => {
         const data = (event as LaylaApiEvent_onGetCharactersResponse).data;
         return Array.isArray(data) ? data : [];
+      },
+      options.signal,
+    );
+  }
+
+  /**
+   * Ask the native host for a character portrait. Resolves to a ready-to-use
+   * image src string, or null when the character has no image.
+   */
+  getImage(characterId: string, options: RequestOptions = {}): Promise<string | null> {
+    return oneShot<string | null>(
+      { cmd: 'get_character_image', data: { character_id: characterId } },
+      'on_get_character_image_response',
+      (event: LaylaApiEvent) => {
+        const data = (event as LaylaApiEvent_onGetCharacterImageResponse).data;
+        return data?.image_data_base64 ?? null;
       },
       options.signal,
     );

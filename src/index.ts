@@ -16,10 +16,12 @@
 export type {
   LaylaChatRole,
   LaylaChatMessage,
+  LaylaCharacter,
   TavernCardV2,
   TavernCharacterBook,
   LaylaApiSendMessage,
   LaylaApiGetCharacters,
+  LaylaApiGetCharacterImage,
   LaylaApiCancel,
   LaylaApiRequest,
   LaylaApiMessage,
@@ -27,6 +29,7 @@ export type {
   LaylaApiEvent_onMsgEnd,
   LaylaApiEvent_onError,
   LaylaApiEvent_onGetCharactersResponse,
+  LaylaApiEvent_onGetCharacterImageResponse,
   LaylaApiEvent,
 } from './protocol';
 
