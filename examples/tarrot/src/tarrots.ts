@@ -445,27 +445,3 @@ export const TAROT: Card[] = TAROT_DATA.map((card) => ({
   ...card,
   image: cardImages[card.id] ?? "",
 }));
-
-// const STYLE = `Mystical tarot card illustration rendered as intricate antique-gold line art on a deep indigo-and-violet background. Fine engraved linework with a hand-etched, art-nouveau celestial-alchemical feel; luminous gold filigree, soft glowing violet-blue accents, a faint scattering of stars, and a gentle inner light. A single elegant central motif, vertically composed, ornate but uncluttered, edges fading into a soft dark vignette. Keep the very top and very bottom dim and simple. No text, no letters, no numerals, no card frame or border, no watermark. Atmospheric, dreamlike, elegant, highly detailed.`;
-
-// const SUIT_ACCENT: Record<string, string> = {
-//   wands:     "Let the gold lean warm and ember-like, with faint amber firelight glinting in the highlights.",
-//   cups:      "Let the highlights lean cool and aqueous, with a soft teal-violet luminescence.",
-//   swords:    "Let the highlights lean toward pale, cold steel-blue and thin silver light.",
-//   pentacles: "Let the gold lean earthy and verdant, with a faint mossy green-gold patina.",
-// };
-
-// const MAJOR_ACCENT =
-//   "Render this Major Arcana card in the richest, most luminous antique gold — more ornate and radiant than the rest of the deck.";
-
-// function buildPrompt(card: Card): string {
-//   const themes = card.keywords.replace(/ · /g, ", ");
-//   const accent = SUIT_ACCENT[card.motif] ?? MAJOR_ACCENT; // non-suit motif → Major Arcana
-//   return `${STYLE} Subject — ${card.name}: ${card.meaning} Visual themes: ${themes}. ${accent}`;
-// }
-// console.log(JSON.stringify(TAROT.map(card => {
-//     return {
-//         id: card.id,
-//         image: buildPrompt(card)
-//     }
-// })));
