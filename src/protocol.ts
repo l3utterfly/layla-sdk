@@ -24,9 +24,7 @@ declare global {
 export type LaylaChatRole =
   | 'system'
   | 'user'
-  | 'assistant'
-  | 'tool'
-  | 'function';
+  | 'assistant';
 
 /** An OpenAI-style chat message. */
 export interface LaylaChatMessage {
@@ -36,6 +34,11 @@ export interface LaylaChatMessage {
 }
 
 /* ---- character cards ------------------------------------------------------- */
+
+export interface LaylaCharacter {
+  id: string;
+  data: TavernCardV2;
+}
 
 /**
  * A character card following the Character Card V2 spec (`chara_card_v2`), as
@@ -102,6 +105,14 @@ export interface LaylaApiGetCharacters {
   cmd: 'get_characters';
 }
 
+/** Ask the host for a character image identified by <characterId>. */
+export interface LaylaApiGetCharacterImage {
+  cmd: 'get_character_image';
+  data: {
+    character_id: string;
+  };
+}
+
 /**
  * Stop the in-flight generation.
  *
@@ -121,7 +132,10 @@ export interface LaylaApiCancel {
  * Add new one-shot commands here. `cancel` is not a request — it's a control
  * signal for an already-open job — so it lives outside this union.
  */
-export type LaylaApiRequest = LaylaApiSendMessage | LaylaApiGetCharacters;
+export type LaylaApiRequest =
+  LaylaApiSendMessage |
+  LaylaApiGetCharacters |
+  LaylaApiGetCharacterImage;
 
 /** Any Web -> RN message. */
 export type LaylaApiMessage = LaylaApiRequest | LaylaApiCancel;
@@ -148,11 +162,21 @@ export interface LaylaApiEvent_onError {
 /** The character card list for a `get_characters` request. */
 export interface LaylaApiEvent_onGetCharactersResponse {
   event: 'on_get_characters_response';
-  data: TavernCardV2[];
+  data: LaylaCharacter[];
+}
+
+/** The character image for a `get_character_image` request, encoded in base64 (includes the data URI prefix) */
+export interface LaylaApiEvent_onGetCharacterImageResponse {
+  event: 'on_get_character_image_response';
+  data: {
+    character_id: string;
+    image_data_base64: string | null;
+  } | null; // null if the character doesn't have an image or if there was an error retrieving it
 }
 
 export type LaylaApiEvent =
   | LaylaApiEvent_onMsg
   | LaylaApiEvent_onMsgEnd
   | LaylaApiEvent_onError
-  | LaylaApiEvent_onGetCharactersResponse;
+  | LaylaApiEvent_onGetCharactersResponse
+  | LaylaApiEvent_onGetCharacterImageResponse;

@@ -11,7 +11,7 @@
 import type {
   LaylaApiEvent,
   LaylaApiEvent_onGetCharactersResponse,
-  TavernCardV2,
+  LaylaCharacter,
 } from '../protocol';
 import { oneShot, type RequestOptions } from '../internal/one-shot';
 
@@ -20,8 +20,8 @@ export class Characters {
    * Ask the native host for the available character cards. Resolves once with
    * the host's `on_get_characters_response` payload, or rejects on error/abort.
    */
-  list(options: RequestOptions = {}): Promise<TavernCardV2[]> {
-    return oneShot<TavernCardV2[]>(
+  list(options: RequestOptions = {}): Promise<LaylaCharacter[]> {
+    return oneShot<LaylaCharacter[]>(
       { cmd: 'get_characters' },
       'on_get_characters_response',
       (event: LaylaApiEvent) => {
