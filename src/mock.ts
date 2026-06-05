@@ -21,7 +21,7 @@
 
 import type {
   LaylaApiEvent,
-  LaylaApiMessage,
+  LaylaApiRequest,
   LaylaCharacter,
   LaylaChatMessage,
   TavernCardV2,
@@ -224,9 +224,39 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     });
   }
 
+  async function handleGenerateImage(data: { prompt: string }): Promise<void> {
+    await delay(latencyMs);
+    if (shouldError()) {
+      emitError('Simulated image generation error');
+      return;
+    }
+
+    // Simulate progress events
+    const totalSteps = 5;
+    for (let step = 1; step <= totalSteps; step++) {
+      await delay(latencyMs);
+      emit({
+        event: 'on_generate_image_progress',
+        data: {
+          status: `Generating image... (${step}/${totalSteps})`,
+          steps: step,
+          total_steps: totalSteps,
+        },
+      });
+    }
+
+    // Emit the final image response (using a placeholder image URL for the mock)
+    emit({
+      event: 'on_generate_image_response',
+      data: {
+        image_data_base64: 'https://picsum.photos/200/300', // Placeholder image URL for the mock
+      },
+    });
+  }
+
   const fakeBridge = {
     postMessage(raw: string): void {
-      let msg: LaylaApiMessage;
+      let msg: LaylaApiRequest;
       try {
         msg = JSON.parse(raw);
       } catch {
@@ -245,6 +275,9 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
           break;
         case 'get_character_image':
           void handleGetCharacterImage(msg.data);
+          break;
+        case 'generate_image':
+          void handleGenerateImage(msg.data);
           break;
         default:
           break;
