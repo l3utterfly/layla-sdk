@@ -22,15 +22,16 @@ export type {
   LaylaApiSendMessage,
   LaylaApiGetCharacters,
   LaylaApiGetCharacterImage,
+  LaylaApiGenerateImage,
   LaylaApiCancel,
   LaylaApiRequest,
-  LaylaApiMessage,
+  LaylaApiEvent,
   LaylaApiEvent_onMsg,
   LaylaApiEvent_onMsgEnd,
   LaylaApiEvent_onError,
   LaylaApiEvent_onGetCharactersResponse,
   LaylaApiEvent_onGetCharacterImageResponse,
-  LaylaApiEvent,
+  LaylaApiEvent_onGenerateImageResponse,
 } from './protocol';
 
 // Errors.
@@ -52,6 +53,9 @@ export type {
   ChatCompletionCreateParamsNonStreaming,
   ChatCompletionCreateParamsStreaming,
 } from './resources/chat';
+
+// Image resource surface.
+export { Images } from './resources/images';
 
 // Client.
 export { LaylaSDK, Layla } from './client';

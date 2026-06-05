@@ -21,7 +21,6 @@ import { LaylaError, LaylaBridgeUnavailableError } from '../errors';
 import type {
   LaylaApiEvent,
   LaylaApiEvent_onError,
-  LaylaApiMessage,
   LaylaApiRequest,
 } from '../protocol';
 
@@ -49,7 +48,7 @@ export interface BridgeSink {
    * requests return nothing (there's no generation to stop — they just close
    * locally and the host's eventual response frees the slot).
    */
-  cancelMessage?(): LaylaApiMessage | null;
+  cancelMessage?(): LaylaApiRequest | null;
 }
 
 export interface BridgeJob {
@@ -163,7 +162,7 @@ export class LaylaBridge {
   }
 
   /** Post a message to the host. Returns false if the bridge isn't present. */
-  private post(message: LaylaApiMessage): boolean {
+  private post(message: LaylaApiRequest): boolean {
     if (typeof window === 'undefined' || !window.ReactNativeWebView) return false;
     window.ReactNativeWebView.postMessage(JSON.stringify(message));
     return true;

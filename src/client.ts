@@ -7,6 +7,7 @@
 
 import { Chat } from './resources/chat';
 import { Characters } from './resources/characters';
+import { Images } from './resources/images';
 
 export interface LaylaSDKOptions {
   /** Reserved for future use (e.g. default model). */
@@ -16,6 +17,7 @@ export interface LaylaSDKOptions {
 export class LaylaSDK {
   readonly chat = new Chat();
   readonly characters = new Characters();
+  readonly images = new Images();
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   constructor(_options: LaylaSDKOptions = {}) {}

@@ -128,6 +128,16 @@ export interface LaylaApiCancel {
 }
 
 /**
+ * Ask the host to generate an image based on the provided prompt. The host should respond with an `on_generate_image_response` event containing the generated image encoded in base64 (including the data URI prefix).
+ */
+export interface LaylaApiGenerateImage {
+  cmd: 'generate_image';
+  data: {
+    prompt: string;
+  };
+}
+
+/**
  * A request command (anything that opens a job and expects events back).
  * Add new one-shot commands here. `cancel` is not a request — it's a control
  * signal for an already-open job — so it lives outside this union.
@@ -135,10 +145,9 @@ export interface LaylaApiCancel {
 export type LaylaApiRequest =
   LaylaApiSendMessage |
   LaylaApiGetCharacters |
-  LaylaApiGetCharacterImage;
-
-/** Any Web -> RN message. */
-export type LaylaApiMessage = LaylaApiRequest | LaylaApiCancel;
+  LaylaApiGetCharacterImage |
+  LaylaApiCancel |
+  LaylaApiGenerateImage;
 
 /* ---- RN -> Web events ------------------------------------------------------ */
 
@@ -174,9 +183,30 @@ export interface LaylaApiEvent_onGetCharacterImageResponse {
   } | null; // null if the character doesn't have an image or if there was an error retrieving it
 }
 
+/**
+ * The generated image for a `generate_image` request, encoded in base64 (includes the data URI prefix). If `image_data_base64` is null, it indicates that there was an error during image generation.
+ */
+export interface LaylaApiEvent_onGenerateImageResponse {
+  event: 'on_generate_image_response';
+  data: {
+    image_data_base64: string | null;
+  } | null; // null if there was an error generating the image
+}
+
+export interface LaylaApiEvent_onGenerateImageProgress {
+  event: 'on_generate_image_progress';
+  data: {
+    status: string; // e.g., "Generating image...", "Refining details...", etc.
+    steps: number; // current step number
+    total_steps: number; // total number of steps for the generation process
+  };
+}
+
 export type LaylaApiEvent =
   | LaylaApiEvent_onMsg
   | LaylaApiEvent_onMsgEnd
   | LaylaApiEvent_onError
   | LaylaApiEvent_onGetCharactersResponse
-  | LaylaApiEvent_onGetCharacterImageResponse;
+  | LaylaApiEvent_onGetCharacterImageResponse
+  | LaylaApiEvent_onGenerateImageResponse
+  | LaylaApiEvent_onGenerateImageProgress;
