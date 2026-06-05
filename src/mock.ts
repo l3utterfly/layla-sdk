@@ -224,7 +224,7 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     });
   }
 
-  async function handleGenerateImage(data: { prompt: string }): Promise<void> {
+  async function handleGenerateImage(_: { prompt: string }): Promise<void> {
     await delay(latencyMs);
     if (shouldError()) {
       emitError('Simulated image generation error');

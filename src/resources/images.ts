@@ -7,11 +7,10 @@
 
 import type {
   LaylaApiEvent,
-  LaylaApiEvent_onGenerateImageResponse,
   LaylaApiRequest,
 } from '../protocol';
-import { oneShot, type RequestOptions } from '../internal/one-shot';
-import { BridgeSink, LaylaBridge } from '../internal/bridge';
+import { type RequestOptions } from '../internal/one-shot';
+import { type BridgeSink, LaylaBridge } from '../internal/bridge';
 import { LaylaAbortError } from '..';
 
 type Listener =
@@ -58,7 +57,7 @@ class ImagesBridgeSink implements BridgeSink {
     }
   }
 
-  fail(err: Error): void {
+  fail(_: Error): void {
     if (this.closed) return;
     this.closed = true;
   }
