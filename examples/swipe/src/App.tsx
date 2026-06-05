@@ -1072,7 +1072,7 @@ export default function CharacterSwipeDeck() {
             fontWeight: 700,
           }}
         >
-          Find your kindred
+          Find your match
         </div>
       </header>
 
