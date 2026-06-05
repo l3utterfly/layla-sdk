@@ -1,14 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  LaylaError,
+  LaylaSDK,
+  type LaylaChatMessage,
+} from "../../../src/index";
+import {
   type GenRequest,
   type UserModel,
   createUserModel,
   nextRequest,
   recordSwipe,
   readiness,
-  pick,
-  sample,
-  delay,
   VOCAB,
 } from "./userModel";
 
@@ -19,7 +21,6 @@ import {
 interface Character {
   id: number;
   name: string;
-  emoji: string;
   /** [from, to] colours for the portrait gradient */
   gradient: [string, string];
   description: string;
@@ -28,6 +29,8 @@ interface Character {
   /** things this character is not into */
   dislikes: string[];
   tags: string[];
+  imageUrl: string;
+  imagePrompt: string;
   /** taste-model bookkeeping — invisible to the user, used for learning */
   meta: {
     /** the axis values we asked the LLM for → training features on swipe */
@@ -37,6 +40,16 @@ interface Character {
 }
 
 type Direction = "left" | "right";
+type GenderFilter = "any" | "male" | "female";
+
+interface GenerationState {
+  phase: "profile" | "image" | "error";
+  responseText: string;
+  imageStatus: string;
+  imageStep: number;
+  imageTotalSteps: number;
+  error: string | null;
+}
 
 /* ------------------------------------------------------------------ */
 /*  Character generation                                               */
@@ -45,87 +58,293 @@ type Direction = "left" | "right";
  * Flow per profile:
  *   1. The taste model (userModel.ts) samples a target and builds a short
  *      prompt — `nextRequest(model)`.
- *   2. `generateProfile` sends that prompt to the LLM and parses the JSON.
- *      (The actual network call is the NEXT step — see the TODO below.)
+ *   2. `generateProfile` streams that prompt to Layla and parses the JSON.
  *   3. The returned character carries `meta.features` (the axis values we
  *      requested) so that, when the user swipes, `recordSwipe` can learn.
- *
- * Until the API is wired in, `generateProfile` returns a local stand-in
- * that honours the requested interests, so the whole loop is observable.
  */
 
-/** How many cards to keep loaded ahead of the current one. */
-const LOOKAHEAD = 3;
-/** How many cards to request per generation call. */
-const BATCH = 3;
+const layla = new LaylaSDK();
 
-// Cosmetic pools for the stand-in profile (names / portraits / flavour).
-// The LLM will replace all of this; only `likes`/`dislikes` must stay in VOCAB.
-const NAME_POOL = [
-  "Luna", "Theo", "Mira", "Kenji", "Nova", "Sage", "Remy", "Mochi",
-  "Iris", "Dao", "Wren", "Juno", "Kit", "Otto", "Suki", "Cleo",
-  "Milo", "Faye", "Bex", "Pico",
+const PORTRAIT_GRADIENTS: [string, string][] = [
+  ["#6A7BA2", "#2E3B5E"],
+  ["#FFB36B", "#F2553D"],
+  ["#C9A26B", "#7A5C3E"],
+  ["#E0584F", "#8E2A2A"],
+  ["#8E6BF2", "#3B2E6E"],
+  ["#7FB07A", "#355E3B"],
+  ["#F2A23D", "#C75A12"],
+  ["#F2A0C0", "#D96C99"],
+  ["#5FB6C9", "#236B7A"],
+  ["#5C6BC0", "#2A3470"],
+  ["#E08A5F", "#9A4A2A"],
+  ["#B98B5E", "#6E4A2E"],
 ];
 
-const LOOK_POOL: { emoji: string; gradient: [string, string] }[] = [
-  { emoji: "🌙", gradient: ["#6A7BA2", "#2E3B5E"] },
-  { emoji: "🏄", gradient: ["#FFB36B", "#F2553D"] },
-  { emoji: "📚", gradient: ["#C9A26B", "#7A5C3E"] },
-  { emoji: "🍜", gradient: ["#E0584F", "#8E2A2A"] },
-  { emoji: "🎮", gradient: ["#8E6BF2", "#3B2E6E"] },
-  { emoji: "🌿", gradient: ["#7FB07A", "#355E3B"] },
-  { emoji: "🎤", gradient: ["#F2A23D", "#C75A12"] },
-  { emoji: "🧁", gradient: ["#F2A0C0", "#D96C99"] },
-  { emoji: "🛼", gradient: ["#5FB6C9", "#236B7A"] },
-  { emoji: "🔭", gradient: ["#5C6BC0", "#2A3470"] },
-  { emoji: "🎧", gradient: ["#E08A5F", "#9A4A2A"] },
-  { emoji: "☕", gradient: ["#B98B5E", "#6E4A2E"] },
-];
+interface GeneratedProfile {
+  name: string;
+  age: number;
+  tagline: string;
+  description: string;
+  tags: string[];
+  likes: string[];
+  dislikes: string[];
+  imagePrompt: string;
+}
 
-const DESCRIPTION_POOL = [
-  "Romanticises rainy nights and keeps a telescope on the fire escape.",
-  "Always salty from the sea, always grinning, never quite on time.",
-  "Will out-quote and out-tea you before you finish saying hello.",
-  "Chasing the perfect midnight bowl across every late-night counter in town.",
-  "Builds tiny things at 2am with joyful, very specific opinions about them.",
-  "Forty houseplants deep and somehow the calmest person in the room.",
-  "Makes the awkward silence worse on purpose, lovingly, every time.",
-  "Weekend baker and pastel enthusiast, fully committed to the cozy life.",
-  "Collects maps of places they haven't been yet, plotting softly.",
-  "Three coffees in and ready to reorganise your entire bookshelf.",
-  "Knows a hidden rooftop for every season and will take you to all of them.",
-  "Talks to dogs first, humans second, and is rarely wrong to.",
-];
+function repairJsonish(text: string): string {
+  return text
+    .trim()
+    .replace(/^\uFEFF/, "")
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/,\s*([}\]])/g, "$1");
+}
 
-const TAGS_POOL = [
-  "Dreamy", "Creative", "Night owl", "Athletic", "Sunny", "Adventurous", "Bookish",
-  "Witty", "Calm", "Foodie", "Spontaneous", "Warm", "Nerdy", "Playful", "Curious",
-  "Mindful", "Earthy", "Chill", "Funny", "Bold", "Cozy", "Sweet",
-];
-
-/** Local stand-in for a model response. Honours the requested interests. */
-function dummyFromRequest(req: GenRequest, id: number): Character {
-  const look = pick(LOOK_POOL);
-  const likes = [...req.suggestedLikes];
-  for (const v of sample(VOCAB, 3)) {
-    if (likes.length >= 3) break;
-    if (!likes.includes(v)) likes.push(v);
+function parseJsonish(text: string): unknown {
+  const cleaned = repairJsonish(text);
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    const quotedKeys = cleaned.replace(/([{,]\s*)'([^']+)'\s*:/g, '$1"$2":');
+    const quotedStrings = quotedKeys.replace(/:\s*'([^'\n\r]*)'/g, ': "$1"');
+    return JSON.parse(quotedStrings);
   }
-  const dislikes = [...req.suggestedDislikes];
-  for (const v of sample(VOCAB, 2)) {
-    if (dislikes.length >= 2) break;
-    if (!likes.includes(v) && !dislikes.includes(v)) dislikes.push(v);
+}
+
+function balancedJsonCandidates(text: string): string[] {
+  const candidates: string[] = [];
+  for (let i = 0; i < text.length; i += 1) {
+    const opener = text[i];
+    if (opener !== "{" && opener !== "[") continue;
+    const closers = opener === "{" ? ["}"] : ["]"];
+    const stack = [closers[0]];
+    let inString = false;
+    let quote = "";
+    let escaped = false;
+
+    for (let j = i + 1; j < text.length; j += 1) {
+      const ch = text[j];
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (ch === "\\") {
+          escaped = true;
+        } else if (ch === quote) {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (ch === '"' || ch === "'") {
+        inString = true;
+        quote = ch;
+      } else if (ch === "{") {
+        stack.push("}");
+      } else if (ch === "[") {
+        stack.push("]");
+      } else if (ch === stack[stack.length - 1]) {
+        stack.pop();
+        if (stack.length === 0) {
+          candidates.push(text.slice(i, j + 1));
+          break;
+        }
+      }
+    }
   }
+  return candidates;
+}
+
+function findObjectLike(value: unknown): Record<string, unknown> | null {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = findObjectLike(item);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  if (!value || typeof value !== "object") return null;
+  const object = value as Record<string, unknown>;
+  const keys = Object.keys(object).map((key) => key.toLowerCase());
+  const profileKeys = [
+    "name",
+    "charactername",
+    "description",
+    "bio",
+    "imageprompt",
+    "image_prompt",
+    "portraitprompt",
+    "likes",
+    "interests",
+  ];
+  if (profileKeys.some((key) => keys.includes(key))) return object;
+
+  for (const key of ["profile", "character", "data", "result"]) {
+    const found = findObjectLike(object[key]);
+    if (found) return found;
+  }
+  return null;
+}
+
+function extractJsonObject(text: string): Record<string, unknown> {
+  const candidates = [
+    ...[...text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)].map((match) => match[1]),
+    text,
+    ...balancedJsonCandidates(text),
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      const object = findObjectLike(parseJsonish(candidate));
+      if (object) return object;
+    } catch {
+      // Try the next candidate.
+    }
+  }
+
+  throw new Error("Model response did not contain a usable JSON profile.");
+}
+
+function stringField(...values: unknown[]): string {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  }
+  return "";
+}
+
+function stringArrayField(...values: unknown[]): string[] {
+  for (const value of values) {
+    if (Array.isArray(value)) {
+      const items = value
+        .flatMap((item) => typeof item === "string" ? item.split(",") : [item])
+        .map((item) => stringField(item))
+        .filter(Boolean);
+      if (items.length) return items;
+    }
+    if (typeof value === "string" && value.trim()) {
+      return value.split(",").map((item) => item.trim()).filter(Boolean);
+    }
+  }
+  return [];
+}
+
+function vocabItems(items: string[], requested: string[], max: number): string[] {
+  const valid = new Set(VOCAB);
+  const out: string[] = [];
+  for (const item of [...items, ...requested]) {
+    if (valid.has(item) && !out.includes(item)) out.push(item);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+function parseGeneratedProfile(text: string): GeneratedProfile {
+  const data = extractJsonObject(text);
+  const name = stringField(data.name, data.characterName, data.character_name, "Mystery Match");
+  const tagline = stringField(data.tagline, data.tag_line, data.title);
+  const likes = stringArrayField(data.likes, data.interests, data.into, data.hobbies);
+  const dislikes = stringArrayField(data.dislikes, data.notInto, data.not_into, data.turnoffs);
+  const tags = stringArrayField(data.tags, data.traits, data.vibe).slice(0, 4);
+  const description = stringField(
+    data.description,
+    data.bio,
+    data.about,
+    data.summary,
+    tagline,
+    `${name} is a fictional dating-app character.`,
+  );
+  const imagePrompt = stringField(
+    data.imagePrompt,
+    data.image_prompt,
+    data.portraitPrompt,
+    data.portrait_prompt,
+    data.appearance,
+    data.look,
+    `${name}, ${description}, ${tags.join(", ")}`,
+  );
+
   return {
-    id,
-    name: pick(NAME_POOL),
-    emoji: look.emoji,
-    gradient: look.gradient,
-    description: pick(DESCRIPTION_POOL),
+    name,
+    age: typeof data.age === "number" && Number.isFinite(data.age)
+      ? data.age
+      : Number.parseInt(stringField(data.age), 10) || 0,
+    tagline,
+    description,
+    tags,
     likes,
     dislikes,
-    tags: sample(TAGS_POOL, 3),
+    imagePrompt,
+  };
+}
+
+function characterFromProfile(raw: GeneratedProfile, req: GenRequest, id: number): Character {
+  const ageSuffix = raw.age > 0 ? `, ${Math.round(raw.age)}` : "";
+  const description = raw.tagline
+    ? `${raw.tagline}${ageSuffix}. ${raw.description}`
+    : `${raw.description}${ageSuffix ? ` (${Math.round(raw.age)})` : ""}`;
+
+  return {
+    id,
+    name: raw.name,
+    gradient: PORTRAIT_GRADIENTS[id % PORTRAIT_GRADIENTS.length],
+    description,
+    likes: vocabItems(raw.likes, req.suggestedLikes, 3),
+    dislikes: vocabItems(raw.dislikes, req.suggestedDislikes, 2),
+    tags: raw.tags.slice(0, 3),
+    imageUrl: "",
+    imagePrompt: raw.imagePrompt,
     meta: { features: req.features, isWildcard: req.isWildcard },
+  };
+}
+
+function profileUserPrompt(req: GenRequest, genderFilter: GenderFilter): string {
+  if (genderFilter === "any") return req.userPrompt;
+  return `Gender: ${genderFilter}. Generate only a ${genderFilter} character.\n${req.userPrompt}`;
+}
+
+function fullImagePrompt(profile: GeneratedProfile, genderFilter: GenderFilter): string {
+  const genderPrefix = genderFilter === "any" ? "" : `${genderFilter}, `;
+  return [
+    `${genderPrefix}Safe-for-work fictional dating app portrait.`,
+    "One original fictional person, portrait framing, no text, no real-person likeness.",
+    "Warm editorial character photography, expressive face, natural pose.",
+    profile.imagePrompt,
+  ].join(" ");
+}
+
+async function generateImageWithTimeout(
+  prompt: string,
+  onProgress: (status: string, step: number, totalSteps: number) => void,
+): Promise<string | null> {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 45000);
+  try {
+    return await layla.images.generateImage(
+      prompt,
+      onProgress,
+      { signal: controller.signal },
+    );
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
+function errorMessage(error: unknown): string {
+  if (error instanceof LaylaError) return error.message;
+  if (error instanceof SyntaxError) return `Invalid JSON from Layla: ${error.message}`;
+  if (error instanceof Error) return error.message;
+  return "Layla generation failed.";
+}
+
+function initialGenerationState(): GenerationState {
+  return {
+    phase: "profile",
+    responseText: "",
+    imageStatus: "",
+    imageStep: 0,
+    imageTotalSteps: 1,
+    error: null,
   };
 }
 
@@ -134,49 +353,71 @@ function dummyFromRequest(req: GenRequest, id: number): Character {
  * Takes a built request and returns one character. The prompt is already
  * assembled by the taste model; here we just send it and parse the reply.
  */
-async function generateProfile(req: GenRequest, id: number): Promise<Character> {
+async function generateProfile(
+  req: GenRequest,
+  id: number,
+  genderFilter: GenderFilter,
+  onProgress: (state: GenerationState) => void,
+): Promise<Character> {
   // The exact messages the model will receive:
-  const messages = [
+  const messages: LaylaChatMessage[] = [
     { role: "system", content: req.systemPrompt },
-    { role: "user", content: req.userPrompt },
+    { role: "user", content: profileUserPrompt(req, genderFilter) },
   ];
 
-  // ──────────────────────────────────────────────────────────────────────
-  // TODO (next step): call the LLM here and parse its JSON. For a local,
-  // OpenAI-compatible endpoint this looks roughly like:
-  //
-  //   const res = await fetch(`${BASE_URL}/v1/chat/completions`, {
-  //     method: "POST",
-  //     headers: { "Content-Type": "application/json", Authorization: `Bearer ${KEY}` },
-  //     body: JSON.stringify({
-  //       model: MODEL,
-  //       messages,
-  //       temperature: 0.9,
-  //       response_format: { type: "json_object" }, // if supported
-  //     }),
-  //   });
-  //   const data = await res.json();
-  //   const raw = JSON.parse(data.choices[0].message.content);
-  //   return {
-  //     id,
-  //     name: raw.name,
-  //     emoji: pickEmojiFor(raw),        // or have the model return one
-  //     gradient: pick(LOOK_POOL).gradient,
-  //     description: raw.description,
-  //     likes: raw.likes.filter((l: string) => VOCAB.includes(l)),
-  //     dislikes: raw.dislikes.filter((d: string) => VOCAB.includes(d)),
-  //     tags: raw.tags,
-  //     meta: { features: req.features, isWildcard: req.isWildcard },
-  //   };
-  //   // raw.imagePrompt → feed to the image model behind a fixed style preamble.
-  //
-  // For now we STOP before the network call and return a local stand-in
-  // so the swipe → learn → re-prompt loop runs end to end.
-  // ──────────────────────────────────────────────────────────────────────
-  void messages;
+  onProgress({
+    phase: "profile",
+    responseText: "",
+    imageStatus: "",
+    imageStep: 0,
+    imageTotalSteps: 1,
+    error: null,
+  });
 
-  await delay(650 + Math.random() * 700); // simulated latency
-  return dummyFromRequest(req, id);
+  const stream = layla.chat.completions.stream({ messages });
+  stream.on("content", (_delta, snapshot) => {
+    onProgress({
+      phase: "profile",
+      responseText: snapshot,
+      imageStatus: "",
+      imageStep: 0,
+      imageTotalSteps: 1,
+      error: null,
+    });
+  });
+
+  const content = await stream.finalContent();
+  const profile = parseGeneratedProfile(content);
+  const character = characterFromProfile(profile, req, id);
+
+  onProgress({
+    phase: "image",
+    responseText: content,
+    imageStatus: "Preparing portrait",
+    imageStep: 0,
+    imageTotalSteps: 1,
+    error: null,
+  });
+
+  const imageUrl = await generateImageWithTimeout(
+    fullImagePrompt(profile, genderFilter),
+    (status, step, totalSteps) => {
+      onProgress({
+        phase: "image",
+        responseText: content,
+        imageStatus: status,
+        imageStep: step,
+        imageTotalSteps: Math.max(1, totalSteps),
+        error: null,
+      });
+    },
+  );
+
+  if (!imageUrl) {
+    throw new Error("Layla image generation finished without returning an image.");
+  }
+
+  return { ...character, imageUrl };
 }
 
 /* ------------------------------------------------------------------ */
@@ -374,42 +615,18 @@ const Card: React.FC<CardProps> = ({
         </div>
       )}
 
-      {/* decorative blobs (stand-in for a photo) */}
-      <div
+      <img
+        src={character.imageUrl}
+        alt=""
         style={{
           position: "absolute",
-          width: 260,
-          height: 260,
-          borderRadius: "50%",
-          top: -90,
-          right: -70,
-          background: "rgba(255,255,255,0.16)",
+          inset: 0,
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+          objectPosition: "center",
         }}
       />
-      <div
-        style={{
-          position: "absolute",
-          width: 170,
-          height: 170,
-          borderRadius: "50%",
-          bottom: 90,
-          left: -50,
-          background: "rgba(0,0,0,0.10)",
-        }}
-      />
-
-      {/* focal emoji */}
-      <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center" }}>
-        <span
-          style={{
-            fontSize: 128,
-            filter: "drop-shadow(0 10px 22px rgba(0,0,0,0.32))",
-            transform: "translateY(-34px)",
-          }}
-        >
-          {character.emoji}
-        </span>
-      </div>
 
       {/* legibility scrim */}
       <div
@@ -667,6 +884,8 @@ export default function CharacterSwipeDeck() {
   const [passed, setPassed] = useState(0);
   const [history, setHistory] = useState<Direction[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generation, setGeneration] = useState<GenerationState | null>(null);
+  const [genderFilter, setGenderFilter] = useState<GenderFilter>("any");
 
   const start = useRef<{ x: number; y: number } | null>(null);
   const nextId = useRef(1);
@@ -676,6 +895,7 @@ export default function CharacterSwipeDeck() {
   const model = useRef<UserModel>(createUserModel());
   const [readinessPct, setReadinessPct] = useState(0);
   const [lastReq, setLastReq] = useState<GenRequest | null>(null);
+  const [lastGenderFilter, setLastGenderFilter] = useState<GenderFilter>("any");
   const [showPrompt, setShowPrompt] = useState(false);
 
   /* inject fonts once */
@@ -690,35 +910,48 @@ export default function CharacterSwipeDeck() {
     document.head.appendChild(link);
   }, []);
 
-  /* ----- generation: keep a buffer of characters ahead of the deck ----- */
-  const topUp = useCallback(async (count: number) => {
+  /* ----- generation: create one character only when the deck is exhausted ----- */
+  const generateNext = useCallback(async () => {
     if (generating.current) return;
     generating.current = true;
     setIsGenerating(true);
     try {
-      const batch: Character[] = [];
-      for (let i = 0; i < count; i++) {
-        const req = nextRequest(model.current); // model samples + builds the prompt
-        const char = await generateProfile(req, nextId.current++);
-        batch.push(char);
-        setLastReq(req); // surface the most recent prompt for the dev peek
+      const req = nextRequest(model.current); // model samples + builds the prompt
+      setLastReq(req); // surface the most recent prompt for the dev peek
+      setLastGenderFilter(genderFilter);
+      setGeneration(initialGenerationState());
+      try {
+        const char = await generateProfile(req, nextId.current++, genderFilter, setGeneration);
+        setDeck((d) => [...d, char]);
+        setGeneration(null);
+      } catch (error) {
+        const message = errorMessage(error);
+        setGeneration((current) => ({
+          ...(current ?? initialGenerationState()),
+          phase: "error",
+          error: message,
+        }));
       }
-      setDeck((d) => [...d, ...batch]);
     } finally {
       generating.current = false;
       setIsGenerating(false);
     }
-  }, []);
+  }, [genderFilter]);
 
-  // Whenever the remaining buffer dips below LOOKAHEAD, request more.
-  // This also fires on mount (empty deck) to load the very first cards.
+  // Generate only when there is no current card left to show.
+  // This also fires on mount (empty deck) to load the very first card.
   useEffect(() => {
-    if (!generating.current && deck.length - index < LOOKAHEAD) {
-      void topUp(BATCH);
+    if (!generating.current && generation?.phase !== "error" && index >= deck.length) {
+      void generateNext();
     }
-  }, [index, deck.length, topUp]);
+  }, [generation?.phase, index, deck.length, generateNext]);
 
   const current = deck[index];
+
+  const retryGeneration = () => {
+    setGeneration(null);
+    void generateNext();
+  };
 
   const decide = (dir: Direction) => {
     if (leaving || !current) return;
@@ -841,18 +1074,57 @@ export default function CharacterSwipeDeck() {
         >
           Find your kindred
         </div>
-        <h1
-          style={{
-            fontFamily: "'Fraunces', Georgia, serif",
-            fontSize: 40,
-            margin: "2px 0 0",
-            fontWeight: 600,
-            letterSpacing: "-0.02em",
-          }}
-        >
-          Kindred
-        </h1>
       </header>
+
+      <div
+        role="radiogroup"
+        aria-label="Gender filter"
+        style={{
+          width: "min(90vw, 372px)",
+          display: "grid",
+          gridTemplateColumns: "repeat(3, 1fr)",
+          gap: 6,
+          padding: 4,
+          marginBottom: 14,
+          border: `1px solid ${T.line}`,
+          borderRadius: 999,
+          background: "rgba(255,253,248,0.56)",
+          animation: "csd-rise .52s .02s ease both",
+        }}
+      >
+        {([
+          ["any", "Any"],
+          ["male", "Only male"],
+          ["female", "Only female"],
+        ] as const).map(([value, label]) => {
+          const active = genderFilter === value;
+          return (
+            <button
+              key={value}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              disabled={isGenerating}
+              onClick={() => setGenderFilter(value)}
+              style={{
+                minHeight: 32,
+                border: 0,
+                borderRadius: 999,
+                background: active ? T.ink : "transparent",
+                color: active ? T.card : T.inkSoft,
+                fontFamily: "inherit",
+                fontSize: 11.5,
+                fontWeight: 700,
+                cursor: isGenerating ? "not-allowed" : "pointer",
+                opacity: isGenerating && !active ? 0.55 : 1,
+                transition: "background 0.18s ease, color 0.18s ease, opacity 0.18s ease",
+              }}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
 
       {/* Readiness meter (driven by the hidden taste model) */}
       <div
@@ -919,6 +1191,8 @@ export default function CharacterSwipeDeck() {
                   key={`load-${index + i}`}
                   top={isTop}
                   style={isTop ? { zIndex: 10 } : behindStyle}
+                  generation={isTop ? generation : null}
+                  onRetry={retryGeneration}
                 />
               );
             }
@@ -998,15 +1272,15 @@ export default function CharacterSwipeDeck() {
           style={{
             margin: 0,
             fontSize: 11.5,
-            color: T.coral,
+            color: generation?.phase === "error" ? T.slate : T.coral,
             fontWeight: 600,
             letterSpacing: "0.02em",
-            opacity: isGenerating ? 1 : 0,
+            opacity: isGenerating || generation?.phase === "error" ? 1 : 0,
             transition: "opacity 0.3s ease",
-            animation: "csd-pulse 1.4s ease-in-out infinite",
+            animation: generation?.phase === "error" ? undefined : "csd-pulse 1.4s ease-in-out infinite",
           }}
         >
-          ✨ Summoning more matches…
+          {generation?.phase === "error" ? generation.error : "✨ Summoning more matches…"}
         </p>
       </div>
 
@@ -1049,7 +1323,7 @@ export default function CharacterSwipeDeck() {
             {lastReq ? (
               <>
                 <div style={{ color: "#E2A13C", marginBottom: 4 }}>// user prompt</div>
-                {lastReq.userPrompt}
+                {profileUserPrompt(lastReq, lastGenderFilter)}
                 <div style={{ color: "#E2A13C", margin: "12px 0 4px" }}>// requested axis features</div>
                 {Object.keys(lastReq.features).length
                   ? Object.entries(lastReq.features)
@@ -1076,93 +1350,227 @@ export default function CharacterSwipeDeck() {
 const LoadingCard = ({
   top,
   style,
+  generation,
+  onRetry,
 }: {
   top: boolean;
   style: React.CSSProperties;
-}) => (
-  <div
-    style={{
-      position: "absolute",
-      inset: 0,
-      borderRadius: 26,
-      overflow: "hidden",
-      background: "linear-gradient(150deg, #D9CFBE, #B7AB97)",
-      boxShadow: "0 28px 60px -28px rgba(42,36,34,0.45)",
-      ...style,
-    }}
-  >
-    {/* shimmer sweep */}
+  generation: GenerationState | null;
+  onRetry: () => void;
+}) => {
+  const imageProgress =
+    generation?.phase === "image"
+      ? Math.max(0, Math.min(100, (generation.imageStep / generation.imageTotalSteps) * 100))
+      : 0;
+
+  return (
     <div
       style={{
         position: "absolute",
         inset: 0,
-        background:
-          "linear-gradient(100deg, transparent 30%, rgba(255,255,255,0.45) 50%, transparent 70%)",
-        animation: "csd-shimmer 1.4s linear infinite",
-      }}
-    />
-
-    {/* placeholder content */}
-    <div
-      style={{
-        position: "absolute",
-        left: 20,
-        right: 20,
-        bottom: 20,
-        display: "flex",
-        flexDirection: "column",
-        gap: 12,
+        borderRadius: 26,
+        overflow: "hidden",
+        background: generation?.phase === "error"
+          ? "linear-gradient(150deg, #BFC5C8, #7B8992)"
+          : "linear-gradient(150deg, #D9CFBE, #B7AB97)",
+        boxShadow: "0 28px 60px -28px rgba(42,36,34,0.45)",
+        ...style,
       }}
     >
-      <div style={{ width: "55%", height: 30, borderRadius: 8, background: "rgba(255,255,255,0.5)" }} />
-      <div style={{ width: "92%", height: 12, borderRadius: 6, background: "rgba(255,255,255,0.4)" }} />
-      <div style={{ width: "76%", height: 12, borderRadius: 6, background: "rgba(255,255,255,0.4)" }} />
-      <div style={{ display: "flex", gap: 8, marginTop: 2 }}>
-        {[58, 46, 52].map((w, i) => (
-          <div
-            key={i}
-            style={{ width: w, height: 22, borderRadius: 999, background: "rgba(255,255,255,0.35)" }}
-          />
-        ))}
-      </div>
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background:
+            "linear-gradient(100deg, transparent 30%, rgba(255,255,255,0.32) 50%, transparent 70%)",
+          animation: generation?.phase === "error" ? undefined : "csd-shimmer 1.4s linear infinite",
+        }}
+      />
 
-      {top && (
-        <div style={{ marginTop: 10 }}>
-          <div
-            style={{
-              fontSize: 12,
-              fontWeight: 600,
-              color: "rgba(255,255,255,0.96)",
-              letterSpacing: "0.02em",
-              marginBottom: 7,
-              textShadow: "0 1px 6px rgba(0,0,0,0.25)",
-            }}
-          >
-            ✨ Summoning a match…
+      {!top || !generation ? (
+        <div
+          style={{
+            position: "absolute",
+            left: 20,
+            right: 20,
+            bottom: 20,
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
+          }}
+        >
+          <div style={{ width: "55%", height: 30, borderRadius: 8, background: "rgba(255,255,255,0.5)" }} />
+          <div style={{ width: "92%", height: 12, borderRadius: 6, background: "rgba(255,255,255,0.4)" }} />
+          <div style={{ width: "76%", height: 12, borderRadius: 6, background: "rgba(255,255,255,0.4)" }} />
+          <div style={{ display: "flex", gap: 8, marginTop: 2 }}>
+            {[58, 46, 52].map((w, i) => (
+              <div
+                key={i}
+                style={{ width: w, height: 22, borderRadius: 999, background: "rgba(255,255,255,0.35)" }}
+              />
+            ))}
           </div>
+        </div>
+      ) : (
+        <div
+          style={{
+            position: "absolute",
+            inset: 18,
+            display: "flex",
+            flexDirection: "column",
+            gap: 14,
+            color: "#fff",
+          }}
+        >
           <div
             style={{
-              position: "relative",
-              height: 6,
-              borderRadius: 999,
-              background: "rgba(255,255,255,0.3)",
-              overflow: "hidden",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 10,
             }}
           >
-            <div
-              style={{
-                position: "absolute",
-                top: 0,
-                bottom: 0,
-                width: "40%",
-                borderRadius: 999,
-                background: "rgba(255,255,255,0.96)",
-                animation: "csd-bar 1.2s ease-in-out infinite",
-              }}
-            />
+            <div>
+              <div
+                style={{
+                  fontSize: 10.5,
+                  fontWeight: 700,
+                  letterSpacing: "0.14em",
+                  textTransform: "uppercase",
+                  color: "rgba(255,255,255,0.75)",
+                }}
+              >
+                {generation.phase === "error"
+                  ? "Generation error"
+                  : generation.phase === "image"
+                    ? "Rendering portrait"
+                    : "Writing profile"}
+              </div>
+              <div
+                style={{
+                  fontFamily: "'Fraunces', Georgia, serif",
+                  fontSize: 25,
+                  fontWeight: 600,
+                  marginTop: 2,
+                  textShadow: "0 2px 12px rgba(0,0,0,0.25)",
+                }}
+              >
+                {generation.phase === "error" ? "Layla needs attention" : "New match incoming"}
+              </div>
+            </div>
+          </div>
+
+          <div
+            style={{
+              flex: "1 1 auto",
+              minHeight: 0,
+              border: "1px solid rgba(255,255,255,0.34)",
+              background: "rgba(35,31,29,0.58)",
+              borderRadius: 16,
+              padding: 14,
+              fontFamily: "ui-monospace, 'SF Mono', Menlo, monospace",
+              fontSize: 11.5,
+              lineHeight: 1.5,
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
+              overflow: "auto",
+              boxShadow: "0 18px 34px -24px rgba(0,0,0,0.7) inset",
+            }}
+          >
+            {generation.phase === "error"
+              ? generation.error
+              : generation.responseText || "Waiting for Layla to start typing..."}
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+            }}
+          >
+            {generation.phase === "image" && (
+              <>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    fontSize: 11.5,
+                    fontWeight: 700,
+                    color: "rgba(255,255,255,0.9)",
+                  }}
+                >
+                  <span>{generation.imageStatus || "Generating portrait"}</span>
+                  <span style={{ fontVariantNumeric: "tabular-nums" }}>{Math.round(imageProgress)}%</span>
+                </div>
+                <div
+                  style={{
+                    height: 7,
+                    borderRadius: 999,
+                    background: "rgba(255,255,255,0.28)",
+                    overflow: "hidden",
+                  }}
+                >
+                  <div
+                    style={{
+                      height: "100%",
+                      width: `${imageProgress}%`,
+                      borderRadius: 999,
+                      background: "rgba(255,255,255,0.96)",
+                      transition: "width 0.25s ease",
+                    }}
+                  />
+                </div>
+              </>
+            )}
+
+            {generation.phase === "profile" && (
+              <div
+                style={{
+                  position: "relative",
+                  height: 7,
+                  borderRadius: 999,
+                  background: "rgba(255,255,255,0.28)",
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    bottom: 0,
+                    width: "40%",
+                    borderRadius: 999,
+                    background: "rgba(255,255,255,0.96)",
+                    animation: "csd-bar 1.2s ease-in-out infinite",
+                  }}
+                />
+              </div>
+            )}
+
+            {generation.phase === "error" && (
+              <button
+                onClick={onRetry}
+                style={{
+                  alignSelf: "flex-start",
+                  border: "1px solid rgba(255,255,255,0.48)",
+                  background: "rgba(255,255,255,0.16)",
+                  color: "#fff",
+                  fontFamily: "inherit",
+                  fontSize: 12.5,
+                  fontWeight: 700,
+                  padding: "8px 14px",
+                  borderRadius: 999,
+                  cursor: "pointer",
+                }}
+              >
+                Try again
+              </button>
+            )}
           </div>
         </div>
       )}
     </div>
-  </div>
-);
+  );
+};
