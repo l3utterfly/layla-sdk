@@ -4,4 +4,4 @@ export {
   LaylaAbortError,
   type LaylaChatMessage,
   type TavernCardV2,
-} from "../../../src/index";
+} from "@layla-network/sdk";

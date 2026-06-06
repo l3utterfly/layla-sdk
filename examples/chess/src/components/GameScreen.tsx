@@ -3,7 +3,6 @@ import { Chessboard } from "react-chessboard";
 import { Chess } from "chess.js";
 import { motion } from "framer-motion";
 import type { ChatMessage, GameConfig } from "../types";
-import { LaylaAbortError, LaylaError } from "../layla";
 import { layla } from "../laylaClient";
 import { useChessEngine } from "../engine/useChessEngine";
 import { useChessGame, type GameEventKind } from "../hooks/useChessGame";
@@ -17,6 +16,7 @@ import { Avatar } from "./Avatar";
 import { SpeechBubble } from "./SpeechBubble";
 import { ChatDrawer } from "./ChatDrawer";
 import styles from "./GameScreen.module.css";
+import { LaylaAbortError, LaylaError } from "@layla-network/sdk";
 
 interface Props {
   config: GameConfig;
