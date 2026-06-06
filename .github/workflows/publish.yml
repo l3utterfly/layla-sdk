@@ -5,12 +5,15 @@ on:
     branches: [main]
 
 permissions:
-  id-token: write   # required for OIDC trusted publishing
-  contents: read
+  id-token: write   # npm OIDC trusted publishing
+  contents: write   # create the GitHub release + tag
 
 jobs:
   publish:
-    runs-on: ubuntu-latest   # must be a GitHub-hosted runner
+    runs-on: ubuntu-latest   # must be a GitHub-hosted runner for OIDC
+    outputs:
+      published: ${{ steps.check.outputs.should_publish }}
+      version: ${{ steps.check.outputs.version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -19,7 +22,7 @@ jobs:
           node-version: 24
           registry-url: 'https://registry.npmjs.org'
 
-      # Trusted publishing needs npm >= 11.5.1
+      # Trusted publishing requires npm >= 11.5.1
       - name: Update npm
         run: npm install -g npm@latest
 
@@ -32,16 +35,52 @@ jobs:
       - name: Check if this version is already published
         id: check
         run: |
-          LOCAL_VERSION=$(node -p "require('./package.json').version")
-          PUBLISHED=$(npm view "@layla-network/sdk@$LOCAL_VERSION" version 2>/dev/null || true)
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          PUBLISHED=$(npm view "@layla-network/sdk@$VERSION" version 2>/dev/null || true)
           if [ -z "$PUBLISHED" ]; then
-            echo "Version $LOCAL_VERSION is not on npm — will publish."
+            echo "Version $VERSION is not on npm — will publish."
             echo "should_publish=true" >> "$GITHUB_OUTPUT"
           else
-            echo "Version $LOCAL_VERSION already on npm — skipping."
+            echo "Version $VERSION already on npm — skipping."
             echo "should_publish=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Publish
+      - name: Publish to npm
         if: steps.check.outputs.should_publish == 'true'
         run: npm publish --access public
+
+      - name: Pack tarball for release
+        if: steps.check.outputs.should_publish == 'true'
+        run: npm pack --pack-destination "$RUNNER_TEMP"
+
+      - name: Upload tarball artifact
+        if: steps.check.outputs.should_publish == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-tarball
+          path: ${{ runner.temp }}/*.tgz
+
+  release:
+    needs: publish
+    if: needs.publish.outputs.published == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download tarball artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: npm-tarball
+          path: ./release-assets
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.publish.outputs.version }}
+        run: |
+          gh release create "sdk-v$VERSION" \
+            --title "SDK v$VERSION" \
+            --generate-notes \
+            --latest \
+            ./release-assets/*.tgz
