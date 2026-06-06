@@ -61,3 +61,6 @@ export { Images } from './resources/images';
 export { LaylaSDK, Layla } from './client';
 export type { LaylaSDKOptions } from './client';
 export { default } from './client';
+
+// Mock host (dev-only).
+export { installLaylaMock, makeMockCharacter } from './mock';
