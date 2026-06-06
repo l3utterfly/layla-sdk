@@ -31,5 +31,13 @@
   },
   "dependencies": {
     "vite-plugin-singlefile": "^2.3.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/l3utterfly/layla-sdk.git"
+  },
+  "homepage": "https://github.com/l3utterfly/layla-sdk#readme",
+  "bugs": {
+    "url": "https://github.com/l3utterfly/layla-sdk/issues"
   }
 }
