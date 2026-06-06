@@ -58,6 +58,36 @@
   grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
   gap: 12px;
   margin-bottom: 26px;
+  min-height: 118px;
+}
+
+.loadingState {
+  grid-column: 1 / -1;
+  min-height: 118px;
+  display: grid;
+  place-items: center;
+}
+
+.spinner {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 3px solid color-mix(in srgb, var(--brass) 22%, transparent);
+  border-top-color: var(--brass);
+  box-shadow: 0 0 22px rgba(201, 162, 75, 0.18);
+  animation: spin 0.85s linear infinite;
+}
+
+.emptyState {
+  grid-column: 1 / -1;
+  padding: 18px;
+  border: 1px solid rgba(198, 83, 111, 0.45);
+  border-radius: 12px;
+  background: rgba(198, 83, 111, 0.12);
+  color: #f0b8c5;
+  font-size: 0.92rem;
+  line-height: 1.45;
+  text-align: center;
 }
 
 .card {
@@ -194,3 +224,7 @@
 }
 .begin:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(201, 162, 75, 0.36); }
 .begin:disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(0.5); }
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

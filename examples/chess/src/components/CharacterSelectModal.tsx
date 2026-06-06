@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { LaylaError, type TavernCardV2 } from "../layla";
+import { LaylaAbortError, type TavernCardV2 } from "../layla";
 import { layla } from "../laylaClient";
 import type { Character, Difficulty, GameConfig, PlayerColor } from "../types";
-import { CHARACTERS, DIFFICULTIES } from "../data";
+import { DIFFICULTIES } from "../data";
+import { formatLaylaConnectionError } from "../laylaErrors";
 import { Avatar } from "./Avatar";
 import styles from "./CharacterSelectModal.module.css";
 interface Props {
@@ -40,9 +41,7 @@ function firstUseful(...values: Array<string | undefined>) {
 }
 
 function titleFromCard(card: TavernCardV2) {
-  const tag = card.data.tags.find(
-    (t: string) => t.trim() && t.toLowerCase() !== "mock",
-  );
+  const tag = card.data.tags.find((t: string) => t.trim());
   if (tag) return tag;
   if (card.data.creator) return `By ${card.data.creator}`;
   return "Layla Character";
@@ -60,12 +59,10 @@ function mapLaylaCharacter(
     card.data.description,
     card.data.personality,
     card.data.scenario,
-    "A Layla character ready to meet you over the board.",
   );
   const greeting = firstUseful(
     card.data.first_mes,
     card.data.alternate_greetings[0],
-    `Let's play. I am ${name}.`,
   );
 
   return {
@@ -83,26 +80,11 @@ function mapLaylaCharacter(
     imageUrl,
     suggestedSkill: Math.min(20, Math.max(2, 2 + index * 3)),
     greeting,
-    banter: {
-      onPlayerMove: [
-        "Interesting.",
-        "I see your idea.",
-        "That changes the shape of things.",
-      ],
-      onOwnMove: [
-        "Here is my reply.",
-        "Let us see how this holds.",
-        "I will choose this path.",
-      ],
-      onCheck: ["Check.", "Your king is under pressure."],
-      onWin: ["A satisfying game.", "The board favored me today."],
-      onLose: ["Well played.", "You found the better line."],
-    },
   };
 }
 
 export function CharacterSelectModal({ onStart }: Props) {
-  const [characters, setCharacters] = useState<Character[]>(CHARACTERS);
+  const [characters, setCharacters] = useState<Character[]>([]);
   const [charId, setCharId] = useState<string | null>(null);
   const [color, setColor] = useState<PlayerColor>("white");
   const [difficultyId, setDifficultyId] = useState<string>("club");
@@ -115,6 +97,8 @@ export function CharacterSelectModal({ onStart }: Props) {
     async function loadCharacters() {
       setLoadingCharacters(true);
       setCharacterError(null);
+      setCharacters([]);
+      setCharId(null);
 
       try {
         const laylaCharacters = await layla.characters.list({
@@ -123,35 +107,51 @@ export function CharacterSelectModal({ onStart }: Props) {
 
         if (controller.signal.aborted) return;
         if (laylaCharacters.length === 0) {
-          setCharacters(CHARACTERS);
+          setCharacterError("Connected to Layla, but no characters were returned.");
           return;
         }
 
-        const hydratedCharacters: Character[] = [];
-        for (let i = 0; i < laylaCharacters.length; i += 1) {
-          const laylaCharacter = laylaCharacters[i];
-          const imageUrl = await layla.characters.getImage(laylaCharacter.id, {
-            signal: controller.signal,
-          });
+        const loadedCharacters = laylaCharacters.map((laylaCharacter, index) =>
+          mapLaylaCharacter(laylaCharacter, null, index),
+        );
+        setCharacters(loadedCharacters);
+        setCharId(loadedCharacters[0]?.id ?? null);
+        setLoadingCharacters(false);
 
-          if (controller.signal.aborted) return;
-          hydratedCharacters.push(
-            mapLaylaCharacter(laylaCharacter, imageUrl, i),
-          );
+        laylaCharacters.forEach((laylaCharacter) => {
+          void loadCharacterImage(laylaCharacter.id);
+        });
+      } catch (error) {
+        if (controller.signal.aborted || error instanceof LaylaAbortError) {
+          return;
         }
 
-        setCharacters(hydratedCharacters);
-      } catch (error) {
         console.error("Error loading Layla characters:", error);
-        if (controller.signal.aborted) return;
-        setCharacters(CHARACTERS);
-        setCharacterError(
-          error instanceof LaylaError
-            ? "Using built-in opponents until Layla characters are available."
-            : "Unable to load Layla characters.",
-        );
+        setCharacters([]);
+        setCharacterError(formatLaylaConnectionError(error));
       } finally {
         if (!controller.signal.aborted) setLoadingCharacters(false);
+      }
+    }
+
+    async function loadCharacterImage(characterId: string) {
+      try {
+        const imageUrl = await layla.characters.getImage(characterId, {
+          signal: controller.signal,
+        });
+
+        if (controller.signal.aborted || !imageUrl) return;
+        setCharacters((prev) =>
+          prev.map((character) =>
+            character.id === characterId ? { ...character, imageUrl } : character,
+          ),
+        );
+      } catch (error) {
+        if (controller.signal.aborted || error instanceof LaylaAbortError) {
+          return;
+        }
+
+        console.warn("Unable to load Layla character image:", error);
       }
     }
 
@@ -199,6 +199,16 @@ export function CharacterSelectModal({ onStart }: Props) {
         </header>
 
         <div className={styles.grid}>
+          {loadingCharacters && (
+            <div className={styles.loadingState} role="status" aria-label="Loading characters">
+              <span className={styles.spinner} />
+            </div>
+          )}
+          {!loadingCharacters && characters.length === 0 && (
+            <div className={styles.emptyState}>
+              {characterError ?? "No Layla characters are available."}
+            </div>
+          )}
           {characters.map((c, i) => {
             const active = c.id === charId;
             return (
@@ -304,7 +314,7 @@ export function CharacterSelectModal({ onStart }: Props) {
           <button
             type="button"
             className={styles.begin}
-            disabled={!character}
+            disabled={!character || loadingCharacters || Boolean(characterError)}
             onClick={begin}
           >
             Begin the game

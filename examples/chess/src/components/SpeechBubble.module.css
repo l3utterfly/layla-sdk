@@ -37,23 +37,16 @@
   line-height: 1.4;
 }
 
-.dots {
-  display: inline-flex;
-  gap: 5px;
-  padding: 4px 2px;
-}
-.dots i {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #7a5a2e;
+.spinner {
+  width: 22px;
+  height: 22px;
   display: block;
-  animation: blink 1.2s infinite ease-in-out;
+  border-radius: 50%;
+  border: 3px solid rgba(122, 90, 46, 0.22);
+  border-top-color: #7a5a2e;
+  animation: spin 0.85s linear infinite;
 }
-.dots i:nth-child(2) { animation-delay: 0.18s; }
-.dots i:nth-child(3) { animation-delay: 0.36s; }
 
-@keyframes blink {
-  0%, 60%, 100% { opacity: 0.25; transform: translateY(0); }
-  30% { opacity: 1; transform: translateY(-3px); }
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }

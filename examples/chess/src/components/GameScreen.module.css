@@ -143,6 +143,17 @@
   padding: 1px 8px;
 }
 
+.connectionError {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(198, 83, 111, 0.45);
+  border-radius: 10px;
+  background: rgba(198, 83, 111, 0.12);
+  color: #f0b8c5;
+  font-size: 0.86rem;
+  line-height: 1.4;
+}
+
 .controls { display: flex; gap: 10px; }
 .btnPrimary,
 .btnGhost {

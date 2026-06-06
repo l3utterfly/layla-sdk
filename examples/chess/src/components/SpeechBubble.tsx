@@ -17,14 +17,14 @@ export function SpeechBubble({ text, cue, thinking }: SpeechBubbleProps) {
           <motion.div
             key="thinking"
             className={styles.bubble}
+            role="status"
+            aria-label="Waiting for response"
             initial={{ opacity: 0, y: 8, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -6, scale: 0.98 }}
             transition={{ duration: 0.22 }}
           >
-            <span className={styles.dots}>
-              <i /><i /><i />
-            </span>
+            <span className={styles.spinner} aria-hidden="true" />
           </motion.div>
         ) : text ? (
           <motion.div

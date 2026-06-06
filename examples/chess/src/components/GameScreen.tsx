@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import type { ChatMessage, GameConfig } from "../types";
 import { layla } from "../laylaClient";
 import { useChessEngine } from "../engine/useChessEngine";
-import { useChessGame, type GameEventKind } from "../hooks/useChessGame";
+import { useChessGame } from "../hooks/useChessGame";
 import {
   buildCommentaryMessages,
   buildCommentaryPayload,
@@ -16,14 +16,14 @@ import { Avatar } from "./Avatar";
 import { SpeechBubble } from "./SpeechBubble";
 import { ChatDrawer } from "./ChatDrawer";
 import styles from "./GameScreen.module.css";
-import { LaylaAbortError, LaylaError } from "@layla-network/sdk";
+import { LaylaAbortError } from "../layla";
+import { formatLaylaConnectionError } from "../laylaErrors";
 
 interface Props {
   config: GameConfig;
   onExit: () => void;
 }
 
-const pick = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)] ?? "";
 const uid = () => Math.random().toString(36).slice(2, 10);
 
 export function GameScreen({ config, onExit }: Props) {
@@ -34,15 +34,13 @@ export function GameScreen({ config, onExit }: Props) {
   const game = useChessGame({ playerColor, difficulty, getBestMove });
 
   const [chatOpen, setChatOpen] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    { id: uid(), role: "character", text: character.greeting, at: 0 },
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>(
+    character.greeting
+      ? [{ id: uid(), role: "character", text: character.greeting, at: 0 }]
+      : [],
+  );
   const [replying, setReplying] = useState(false);
-  const [generatedBubble, setGeneratedBubble] = useState<{
-    cue: number;
-    seq: number;
-    text: string;
-  } | null>(null);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
   const messagesRef = useRef(messages);
   const streamRef = useRef<{ abort: () => void } | null>(null);
   const requestRef = useRef(0);
@@ -52,25 +50,14 @@ export function GameScreen({ config, onExit }: Props) {
     messagesRef.current = messages;
   }, [messages]);
 
-  // Map a game event to a spoken line.
-  const bubble = useMemo(() => {
-    const b = character.banter;
-    const lines: Record<GameEventKind, string> = {
-      start: character.greeting,
-      "player-move": pick(b.onPlayerMove),
-      "engine-move": pick(b.onOwnMove),
-      check: pick(b.onCheck),
-      "player-win": pick(b.onLose), // player won => character lost
-      "player-lose": pick(b.onWin),
-      draw: "A draw. Honour intact on both sides.",
-    };
-    return lines[game.event.kind];
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game.event.seq]);
-
-  const activeGeneratedBubble = generatedBubble?.seq === game.event.seq ? generatedBubble : null;
-  const shownBubble = activeGeneratedBubble?.text || bubble;
-  const bubbleCue = activeGeneratedBubble?.cue ?? game.event.seq;
+  const latestCharacterMessage = useMemo(
+    () => messages.findLast((message) => message.role === "character") ?? null,
+    [messages],
+  );
+  const shownBubble = latestCharacterMessage?.text ?? "";
+  const bubbleCue = latestCharacterMessage?.at ?? 0;
+  const waitingForCharacterReply =
+    replying && latestCharacterMessage?.role === "character" && !shownBubble.trim();
 
   const requestCommentary = useCallback(
     async (params: {
@@ -88,6 +75,7 @@ export function GameScreen({ config, onExit }: Props) {
       requestRef.current = requestId;
       replyingRef.current = true;
       setReplying(true);
+      setConnectionError(null);
 
       const replyId = uid();
       const seedMessages = params.sourceMessages ?? messagesRef.current;
@@ -105,7 +93,6 @@ export function GameScreen({ config, onExit }: Props) {
         userText: params.userText,
       });
 
-      setGeneratedBubble({ cue: requestId, seq: eventForRequest.seq, text: "" });
       setMessages((prev) => [...prev, { id: replyId, role: "character", text: "", at: Date.now() }]);
 
       try {
@@ -115,7 +102,6 @@ export function GameScreen({ config, onExit }: Props) {
         stream.on("content", (_delta, snapshot) => {
           if (requestRef.current !== requestId) return;
           const text = snapshot.trimStart();
-          setGeneratedBubble({ cue: requestId, seq: eventForRequest.seq, text });
           setMessages((prev) =>
             prev.map((message) => (message.id === replyId ? { ...message, text } : message))
           );
@@ -124,7 +110,6 @@ export function GameScreen({ config, onExit }: Props) {
         const finalText = (await stream.finalContent()).trim();
         if (requestRef.current !== requestId) return;
         if (finalText) {
-          setGeneratedBubble({ cue: requestId, seq: eventForRequest.seq, text: finalText });
           setMessages((prev) =>
             prev.map((message) => (message.id === replyId ? { ...message, text: finalText } : message))
           );
@@ -132,17 +117,16 @@ export function GameScreen({ config, onExit }: Props) {
           setMessages((prev) => prev.filter((message) => message.id !== replyId));
         }
       } catch (error) {
-        if (error instanceof LaylaAbortError) return;
+        if (error instanceof LaylaAbortError) {
+          setMessages((prev) =>
+            prev.filter((message) => message.id !== replyId || message.text.trim())
+          );
+          return;
+        }
         console.error("Layla commentary failed:", error);
         if (requestRef.current !== requestId) return;
-        const fallback =
-          error instanceof LaylaError
-            ? "My thoughts are arriving fashionably late. Play on."
-            : pick([...character.banter.onPlayerMove, ...character.banter.onOwnMove, character.greeting]);
-        setGeneratedBubble({ cue: requestId, seq: eventForRequest.seq, text: fallback });
-        setMessages((prev) =>
-          prev.map((message) => (message.id === replyId ? { ...message, text: fallback } : message))
-        );
+        setConnectionError(formatLaylaConnectionError(error));
+        setMessages((prev) => prev.filter((message) => message.id !== replyId));
       } finally {
         if (requestRef.current === requestId) {
           streamRef.current = null;
@@ -193,8 +177,12 @@ export function GameScreen({ config, onExit }: Props) {
     streamRef.current?.abort();
     replyingRef.current = false;
     setReplying(false);
-    setGeneratedBubble(null);
-    setMessages([{ id: uid(), role: "character", text: character.greeting, at: Date.now() }]);
+    setConnectionError(null);
+    setMessages(
+      character.greeting
+        ? [{ id: uid(), role: "character", text: character.greeting, at: Date.now() }]
+        : [],
+    );
     game.newGame();
   };
 
@@ -322,12 +310,18 @@ export function GameScreen({ config, onExit }: Props) {
               </div>
             </div>
 
-            <SpeechBubble text={shownBubble} cue={bubbleCue} thinking={game.engineThinking && !replying} />
+            <SpeechBubble text={shownBubble} cue={bubbleCue} thinking={waitingForCharacterReply} />
 
             <button className={styles.chatBtn} onClick={() => setChatOpen(true)}>
               <span className={styles.chatIcon}>💬</span> Open conversation
               {messages.length > 1 && <span className={styles.badge}>{messages.length}</span>}
             </button>
+
+            {connectionError && (
+              <p className={styles.connectionError} role="alert">
+                {connectionError}
+              </p>
+            )}
           </motion.div>
 
           <div className={styles.controls}>

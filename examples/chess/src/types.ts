@@ -2,8 +2,7 @@ export type PieceMotif = "pawn" | "knight" | "bishop" | "rook" | "queen" | "king
 
 export type PlayerColor = "white" | "black";
 
-/** A chess opponent persona. Currently dummy data; later this will be
- *  enriched with an LLM persona prompt for live dialogue. */
+/** A chess opponent persona loaded from a Layla character card. */
 export interface Character {
   id: string;
   name: string;
@@ -25,16 +24,8 @@ export interface Character {
   imageUrl?: string | null;
   /** Suggested Stockfish skill (0–20). The player can still override it. */
   suggestedSkill: number;
-  /** Line shown in the speech bubble when a game begins. */
+  /** Optional opening line from the character card. */
   greeting: string;
-  /** A few canned lines used to fake "talking" until the LLM is wired up. */
-  banter: {
-    onPlayerMove: string[];
-    onOwnMove: string[];
-    onCheck: string[];
-    onWin: string[];
-    onLose: string[];
-  };
 }
 
 export interface Difficulty {

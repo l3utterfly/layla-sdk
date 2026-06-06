@@ -264,7 +264,7 @@ export function buildCommentaryMessages(params: {
         personaParts.join("\n"),
         "",
         "You are the human player's chess opponent and table-talk companion.",
-        "The chess engine chooses your moves. You only comment, banter, and answer chat.",
+        "The chess engine chooses your moves. You only comment and answer chat.",
         "React only to the bracketed chess context. Never invent captures, checks, mates, threats, piece locations, or legal moves.",
         "Do not suggest a next move unless the context explicitly contains that move.",
         "Keep the reply in character, lively, and short: one or two sentences, under 45 words.",
