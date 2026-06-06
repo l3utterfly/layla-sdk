@@ -199,13 +199,18 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     }
   }
 
-  async function handleGetCharacters(): Promise<void> {
+  async function handleGetCharacters(data: { offset: number; limit: number }): Promise<void> {
     await delay(latencyMs);
     if (shouldError()) {
       emitError('Simulated characters error');
       return;
     }
-    emit({ event: 'on_get_characters_response', data: characters });
+
+    const { offset, limit } = data;
+    emit({
+      event: 'on_get_characters_response',
+      data: characters.slice(offset, offset + limit),
+    });
   }
 
   async function handleGetCharacterImage(data: { character_id: string }): Promise<void> {
@@ -271,7 +276,7 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
           handleCancel();
           break;
         case 'get_characters':
-          void handleGetCharacters();
+          void handleGetCharacters(msg.data);
           break;
         case 'get_character_image':
           void handleGetCharacterImage(msg.data);

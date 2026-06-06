@@ -103,6 +103,10 @@ export interface LaylaApiSendMessage {
 /** Ask the host for the list of available character cards (a one-shot request). */
 export interface LaylaApiGetCharacters {
   cmd: 'get_characters';
+  data: {
+    offset: number;
+    limit: number;
+  }
 }
 
 /** Ask the host for a character image identified by <characterId>. */

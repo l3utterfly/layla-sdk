@@ -1,6 +1,6 @@
 ---
 name: layla-sdk
-description: Use the @layla-network/sdk package in third-party Layla mini-apps and WebView apps. Covers the public API surface for creating a Layla client, OpenAI-shaped chat completions and streams, character listing and character images, image generation progress/results, abort handling, SDK errors, exported TypeScript types, and runtime expectations inside the Layla WebView.
+description: Use the @layla-network/sdk package in third-party Layla mini-apps and WebView apps. Covers the public API surface for creating a Layla client, OpenAI-shaped chat completions and streams, paginated character listing and character images, image generation progress/results, abort handling, SDK errors, exported TypeScript types, and runtime expectations inside the Layla WebView.
 ---
 
 # Layla SDK
@@ -15,6 +15,7 @@ import LaylaSDK, {
   LaylaError,
   LaylaAbortError,
   LaylaBridgeUnavailableError,
+  type LaylaApiGetCharacters,
   type LaylaChatMessage,
   type LaylaCharacter,
   type TavernCardV2,
@@ -170,7 +171,7 @@ type ChatCompletionChunk = {
 
 ## Characters
 
-Use `layla.characters.list()` to get the user's available Layla character cards.
+Use `layla.characters.list(offset?, range?, options?)` to get the user's available Layla character cards. `offset` defaults to `0`; `range` defaults to `10`.
 
 ```ts
 const characters = await layla.characters.list();
@@ -179,6 +180,32 @@ for (const character of characters) {
   console.log(character.id, character.data.data.name);
 }
 ```
+
+Request a specific page with positional arguments:
+
+```ts
+const characters = await layla.characters.list(10, 10);
+```
+
+Pass an abort signal as the third argument:
+
+```ts
+const characters = await layla.characters.list(0, 10, { signal });
+```
+
+The public `range` value is sent to the native bridge as `limit`:
+
+```ts
+const request: LaylaApiGetCharacters = {
+  cmd: 'get_characters',
+  data: {
+    offset: 0,
+    limit: 25,
+  },
+};
+```
+
+Use a zero-based `offset` and a positive `range`. The `on_get_characters_response` event returns `LaylaCharacter[]`, containing only the requested window.
 
 Each item is:
 
@@ -249,9 +276,7 @@ Chat, character requests, and image generation accept abort signals.
 ```ts
 const controller = new AbortController();
 
-const promise = layla.characters.list({
-  signal: controller.signal,
-});
+const promise = layla.characters.list(0, 10, { signal: controller.signal });
 
 controller.abort();
 
@@ -281,7 +306,7 @@ stream.abort();
 For one-shot requests, use:
 
 ```ts
-await layla.characters.list({ signal });
+await layla.characters.list(0, 10, { signal });
 await layla.characters.getImage(characterId, { signal });
 await layla.images.generateImage(prompt, onProgress, { signal });
 ```
@@ -398,7 +423,7 @@ Load Layla characters with a fallback when running outside a fully available hos
 
 ```ts
 try {
-  const laylaCharacters = await layla.characters.list({ signal });
+  const laylaCharacters = await layla.characters.list(0, 10, { signal });
   const hydrated = await Promise.all(
     laylaCharacters.map(async (character) => ({
       character,

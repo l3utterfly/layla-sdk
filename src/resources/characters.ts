@@ -16,14 +16,27 @@ import type {
 } from '../protocol';
 import { oneShot, type RequestOptions } from '../internal/one-shot';
 
+
 export class Characters {
   /**
    * Ask the native host for the available character cards. Resolves once with
    * the host's `on_get_characters_response` payload, or rejects on error/abort.
    */
-  list(options: RequestOptions = {}): Promise<LaylaCharacter[]> {
+  list(offset?: number, range?: number, options?: RequestOptions): Promise<LaylaCharacter[]>;
+  list(
+    offset: number = 0,
+    range = 10,
+    options: RequestOptions = {},
+  ): Promise<LaylaCharacter[]> {
+
     return oneShot<LaylaCharacter[]>(
-      { cmd: 'get_characters' },
+      {
+        cmd: 'get_characters',
+        data: {
+          offset: offset,
+          limit: range,
+        },
+      },
       'on_get_characters_response',
       (event: LaylaApiEvent) => {
         const data = (event as LaylaApiEvent_onGetCharactersResponse).data;
