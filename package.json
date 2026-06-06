@@ -1,6 +1,6 @@
 {
   "name": "@layla-network/sdk",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Layla custom mini-apps SDK",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -30,7 +30,6 @@
     "access": "public"
   },
   "dependencies": {
-    "vite-plugin-singlefile": "^2.3.3"
   },
   "repository": {
     "type": "git",
