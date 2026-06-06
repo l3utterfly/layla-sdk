@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { LaylaAbortError, type TavernCardV2 } from "../layla";
+import { LaylaAbortError, type LaylaCharacter, type TavernCardV2 } from "../layla";
 import { layla } from "../laylaClient";
 import type { Character, Difficulty, GameConfig, PlayerColor } from "../types";
 import { DIFFICULTIES } from "../data";
@@ -27,6 +27,7 @@ const MOTIFS: Character["motif"][] = [
   "queen",
   "king",
 ];
+const CHARACTER_PAGE_SIZE = 6;
 
 function hashText(text: string) {
   let hash = 0;
@@ -48,7 +49,7 @@ function titleFromCard(card: TavernCardV2) {
 }
 
 function mapLaylaCharacter(
-  character: Awaited<ReturnType<typeof layla.characters.list>>[number],
+  character: LaylaCharacter,
   imageUrl: string | null,
   index: number,
 ): Character {
@@ -90,35 +91,46 @@ export function CharacterSelectModal({ onStart }: Props) {
   const [difficultyId, setDifficultyId] = useState<string>("club");
   const [loadingCharacters, setLoadingCharacters] = useState(true);
   const [characterError, setCharacterError] = useState<string | null>(null);
+  const [pageIndex, setPageIndex] = useState(0);
+  const [hasNextPage, setHasNextPage] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
+    const offset = pageIndex * CHARACTER_PAGE_SIZE;
 
     async function loadCharacters() {
       setLoadingCharacters(true);
       setCharacterError(null);
       setCharacters([]);
       setCharId(null);
+      setHasNextPage(false);
 
       try {
-        const laylaCharacters = await layla.characters.list({
-          signal: controller.signal,
-        });
+        const laylaCharacters = await layla.characters.list(
+          offset,
+          CHARACTER_PAGE_SIZE + 1,
+          {
+            signal: controller.signal,
+          },
+        );
 
         if (controller.signal.aborted) return;
-        if (laylaCharacters.length === 0) {
+        const pageCharacters = laylaCharacters.slice(0, CHARACTER_PAGE_SIZE);
+        setHasNextPage(laylaCharacters.length > CHARACTER_PAGE_SIZE);
+
+        if (pageCharacters.length === 0) {
           setCharacterError("Connected to Layla, but no characters were returned.");
           return;
         }
 
-        const loadedCharacters = laylaCharacters.map((laylaCharacter, index) =>
-          mapLaylaCharacter(laylaCharacter, null, index),
+        const loadedCharacters = pageCharacters.map((laylaCharacter, index) =>
+          mapLaylaCharacter(laylaCharacter, null, offset + index),
         );
         setCharacters(loadedCharacters);
         setCharId(loadedCharacters[0]?.id ?? null);
         setLoadingCharacters(false);
 
-        laylaCharacters.forEach((laylaCharacter) => {
+        pageCharacters.forEach((laylaCharacter) => {
           void loadCharacterImage(laylaCharacter.id);
         });
       } catch (error) {
@@ -158,7 +170,7 @@ export function CharacterSelectModal({ onStart }: Props) {
     void loadCharacters();
 
     return () => controller.abort();
-  }, []);
+  }, [pageIndex]);
 
   const character = useMemo<Character | null>(
     () => characters.find((c) => c.id === charId) ?? null,
@@ -170,10 +182,21 @@ export function CharacterSelectModal({ onStart }: Props) {
   );
 
   const accent = character?.accent ?? "var(--brass)";
+  const hasPreviousPage = pageIndex > 0;
 
   const begin = () => {
     if (!character) return;
     onStart({ character, playerColor: color, difficulty });
+  };
+
+  const previousPage = () => {
+    if (!hasPreviousPage || loadingCharacters) return;
+    setPageIndex((current) => Math.max(0, current - 1));
+  };
+
+  const nextPage = () => {
+    if (!hasNextPage || loadingCharacters) return;
+    setPageIndex((current) => current + 1);
   };
 
   return (
@@ -243,6 +266,28 @@ export function CharacterSelectModal({ onStart }: Props) {
             );
           })}
         </div>
+
+        {(hasPreviousPage || hasNextPage || characters.length > 0) && (
+          <div className={styles.pagination} aria-label="Character pages">
+            <button
+              type="button"
+              className={styles.pageButton}
+              disabled={!hasPreviousPage || loadingCharacters}
+              onClick={previousPage}
+            >
+              Previous
+            </button>
+            <span className={styles.pageStatus}>Page {pageIndex + 1}</span>
+            <button
+              type="button"
+              className={styles.pageButton}
+              disabled={!hasNextPage || loadingCharacters}
+              onClick={nextPage}
+            >
+              Next
+            </button>
+          </div>
+        )}
 
         <div className={styles.options}>
           <div className={styles.optBlock}>
