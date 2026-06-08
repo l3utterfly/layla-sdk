@@ -72,3 +72,19 @@ Each release contains:
 - Read the [mini-apps overview](docs/mini-apps-overview.md) to understand app packaging, metadata, and the Layla WebView runtime.
 - Read the [SDK API reference](docs/sdk-api.md) for imports, chat completions, streaming, characters, image generation, abort handling, and errors.
 - Browse the [examples guide](examples/ReadMe.md) to choose a starting mini-app.
+
+## Layla App
+
+Visit the official Layla website: https://www.layla-network.ai/
+
+Download the Layla app:
+
+<p>
+  <a href="https://play.google.com/store/apps/details?id=com.layla">
+    <img src="./assets/google_badge.png" alt="Get it on Google Play" height="60">
+  </a>
+  &nbsp;&nbsp;
+  <a href="https://apps.apple.com/us/app/layla/id6456886656">
+    <img src="./assets/apple_badge.png" alt="Download on the App Store" height="60">
+  </a>
+</p>
