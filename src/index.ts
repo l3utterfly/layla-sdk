@@ -23,6 +23,7 @@ export type {
   LaylaApiGetCharacters,
   LaylaApiGetCharacterImage,
   LaylaApiGenerateImage,
+  LaylaApiUpdateCharacter,
   LaylaApiCancel,
   LaylaApiRequest,
   LaylaApiEvent,
@@ -32,6 +33,8 @@ export type {
   LaylaApiEvent_onGetCharactersResponse,
   LaylaApiEvent_onGetCharacterImageResponse,
   LaylaApiEvent_onGenerateImageResponse,
+  LaylaApiEvent_onGenerateImageProgress,
+  LaylaApiEvent_onUpdateCharacterResponse,
 } from './protocol';
 
 // Errors.

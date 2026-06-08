@@ -142,6 +142,20 @@ export interface LaylaApiGenerateImage {
 }
 
 /**
+ * Ask the host to update a character's data. The host should update the character identified by `character_id` with the provided `character_data`.
+ * If the character ID does not exist, the host will create a new character.
+ * You can include an "image" field in character_data.data.extensions to update the character's image. The "image" field should contain the new image data encoded in base64 (including the data URI prefix).
+ * The host should respond with an `on_update_character_response` event containing the updated character id after the update is applied.
+ */
+export interface LaylaApiUpdateCharacter {
+  cmd: 'update_character';
+  data: {
+    character_id: string;
+    character_data: TavernCardV2;
+  };
+}
+
+/**
  * A request command (anything that opens a job and expects events back).
  * Add new one-shot commands here. `cancel` is not a request — it's a control
  * signal for an already-open job — so it lives outside this union.
@@ -151,7 +165,8 @@ export type LaylaApiRequest =
   LaylaApiGetCharacters |
   LaylaApiGetCharacterImage |
   LaylaApiCancel |
-  LaylaApiGenerateImage;
+  LaylaApiGenerateImage |
+  LaylaApiUpdateCharacter;
 
 /* ---- RN -> Web events ------------------------------------------------------ */
 
@@ -197,12 +212,26 @@ export interface LaylaApiEvent_onGenerateImageResponse {
   } | null; // null if there was an error generating the image
 }
 
+/**
+ * Progress update for a `generate_image` request. The host can emit multiple progress events during the image generation process, providing updates on the current status and progress of the generation.
+ */
 export interface LaylaApiEvent_onGenerateImageProgress {
   event: 'on_generate_image_progress';
   data: {
     status: string; // e.g., "Generating image...", "Refining details...", etc.
     steps: number; // current step number
     total_steps: number; // total number of steps for the generation process
+  };
+}
+
+/**
+ * The response for an `update_character` request, containing the updated character id after the update is applied.
+ * Note: the ID may not be the same as the one in the request if a new character was created (i.e., if the provided `character_id` did not exist before). In that case, the response will contain the new character ID assigned by the host.
+ */
+export interface LaylaApiEvent_onUpdateCharacterResponse {
+  event: 'on_update_character_response';
+  data: {
+    character_id: string;
   };
 }
 
@@ -213,4 +242,5 @@ export type LaylaApiEvent =
   | LaylaApiEvent_onGetCharactersResponse
   | LaylaApiEvent_onGetCharacterImageResponse
   | LaylaApiEvent_onGenerateImageResponse
-  | LaylaApiEvent_onGenerateImageProgress;
+  | LaylaApiEvent_onGenerateImageProgress
+  | LaylaApiEvent_onUpdateCharacterResponse;

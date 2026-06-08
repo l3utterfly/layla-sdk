@@ -13,6 +13,7 @@ import type {
   LaylaApiEvent_onGetCharactersResponse,
   LaylaApiEvent_onGetCharacterImageResponse,
   LaylaCharacter,
+  LaylaApiEvent_onUpdateCharacterResponse,
 } from '../protocol';
 import { oneShot, type RequestOptions } from '../internal/one-shot';
 
@@ -57,6 +58,21 @@ export class Characters {
       (event: LaylaApiEvent) => {
         const data = (event as LaylaApiEvent_onGetCharacterImageResponse).data;
         return data?.image_data_base64 ?? null;
+      },
+      options.signal,
+    );
+  }
+
+  /**
+   * Ask the native host to update a character's data. Resolves once the update is successful, with the character ID. Rejects on error/abort.
+   */
+  update(char: LaylaCharacter, options: RequestOptions = {}): Promise<string> {
+    return oneShot<string>(
+      { cmd: 'update_character', data: { character_id: char.id, character_data: char.data } },
+      'on_update_character_response',
+      (event: LaylaApiEvent) => {
+        const data = (event as LaylaApiEvent_onUpdateCharacterResponse).data;
+        return data.character_id;
       },
       options.signal,
     );

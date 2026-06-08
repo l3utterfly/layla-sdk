@@ -259,6 +259,25 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     });
   }
 
+  async function handleUpdateCharacter(data: {
+    character_id: string;
+    character_data: TavernCardV2;
+  }): Promise<void> {
+    void data.character_data;
+    await delay(latencyMs);
+    if (shouldError()) {
+      emitError('Simulated character update error');
+      return;
+    }
+
+    emit({
+      event: 'on_update_character_response',
+      data: {
+        character_id: data.character_id,
+      },
+    });
+  }
+
   const fakeBridge = {
     postMessage(raw: string): void {
       let msg: LaylaApiRequest;
@@ -283,6 +302,9 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
           break;
         case 'generate_image':
           void handleGenerateImage(msg.data);
+          break;
+        case 'update_character':
+          void handleUpdateCharacter(msg.data);
           break;
         default:
           break;
