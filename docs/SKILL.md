@@ -1,13 +1,39 @@
 ---
 name: layla-sdk
-description: Use the @layla-network/sdk package in third-party Layla mini-apps and WebView apps. Covers the public API surface for creating a Layla client, OpenAI-shaped chat completions and streams, paginated character listing and character images, image generation progress/results, abort handling, SDK errors, exported TypeScript types, and runtime expectations inside the Layla WebView.
+description: Use the @layla-network/sdk package in third-party Layla mini-apps and WebView apps. Covers stable usage patterns for the Layla client, chat streaming, one-shot resources, abort handling, errors, image data, character cards, and how to read the SDK TypeScript source files as the authoritative API surface when new protocol/resource APIs are added.
 ---
 
 # Layla SDK
 
 Use `@layla-network/sdk` when building a third-party Layla mini-app that runs inside the Layla WebView and needs to call the on-device Layla host.
 
-The SDK exposes a small OpenAI-shaped API. Import only from the package root:
+This skill intentionally does not duplicate the full API reference. Treat the TypeScript source as the source of truth for current method names, parameters, return types, exported values, and native bridge protocol types.
+
+## Source Map
+
+Before using a specific endpoint, inspect the relevant source file:
+
+- `../src/index.ts`: public package barrel. Import only exports that appear here.
+- `../src/client.ts`: top-level `LaylaSDK` client and resource fields such as `chat`, `characters`, and `images`.
+- `../src/resources/chat/index.ts`: `layla.chat.completions.create(...)` and `.stream(...)`.
+- `../src/resources/chat/types.ts`: OpenAI-shaped chat request/result types.
+- `../src/resources/chat/stream.ts`: `ChatCompletionStream` events, async iteration, final result helpers, and abort behavior.
+- `../src/resources/characters.ts`: character resource methods such as listing, image lookup, and updates.
+- `../src/resources/images.ts`: image generation method, progress callback shape, and result shape.
+- `../src/protocol.ts`: native bridge commands/events and shared data types such as `LaylaChatMessage`, `LaylaCharacter`, and `TavernCardV2`.
+- `../examples/*/src`: practical app usage patterns.
+
+When the source and this skill disagree, follow the source.
+
+## Runtime
+
+Run SDK calls inside the Layla WebView. The host injects `window.ReactNativeWebView.postMessage`; if that bridge is unavailable, SDK requests reject with `LaylaBridgeUnavailableError`.
+
+Do not use this SDK as an ordinary browser HTTP client. There is no API key, base URL, or fetch endpoint to configure. The SDK sends bridge messages to the Layla host.
+
+## Imports
+
+Import from the package root:
 
 ```ts
 import LaylaSDK, {
@@ -15,42 +41,45 @@ import LaylaSDK, {
   LaylaError,
   LaylaAbortError,
   LaylaBridgeUnavailableError,
-  type LaylaApiGetCharacters,
   type LaylaChatMessage,
   type LaylaCharacter,
   type TavernCardV2,
 } from '@layla-network/sdk';
 ```
 
-`LaylaSDK`, `Layla`, and the default export are aliases for the same client class. Use the named `LaylaSDK` import instead if a project avoids default imports:
-
-```ts
-import { LaylaSDK } from '@layla-network/sdk';
-```
+`LaylaSDK`, `Layla`, and the default export are aliases for the same client class. Prefer one client instance and reuse it:
 
 ```ts
 const layla = new LaylaSDK();
 ```
 
-The constructor accepts an optional `LaylaSDKOptions` object:
+If a project avoids default imports:
 
 ```ts
-const layla = new LaylaSDK({ model: 'layla' });
+import { LaylaSDK } from '@layla-network/sdk';
 ```
 
-`model` is currently reserved for compatibility/future use. The Layla host chooses the actual model.
+## API Discovery
 
-## Runtime
+Use high-level client resources first:
 
-Run SDK calls inside the Layla WebView. The host injects `window.ReactNativeWebView.postMessage`; if that bridge is unavailable, requests reject with `LaylaBridgeUnavailableError`.
+```ts
+const layla = new LaylaSDK();
 
-Do not use SDK calls as ordinary browser HTTP calls. There is no API key, base URL, or fetch endpoint to configure. The SDK sends messages to the Layla host bridge.
+await layla.characters.list();
+await layla.characters.getImage(characterId);
+await layla.characters.update(character);
+await layla.images.generateImage(prompt, onProgress);
+await layla.chat.completions.create({ messages });
+```
+
+For current signatures, open the resource file and read the method declaration. Most non-chat resource methods are one-shot requests that return a `Promise<T>` and may accept `RequestOptions` with `signal?: AbortSignal`.
+
+Use `../src/protocol.ts` for data shapes and native bridge command/event names. Use `../src/index.ts` to confirm which protocol types are public package exports.
 
 ## Chat
 
-Use `layla.chat.completions.create(...)` for a final response, or `layla.chat.completions.stream(...)` for live tokens.
-
-Messages use the OpenAI chat shape:
+Chat uses an OpenAI-shaped API. Messages use `LaylaChatMessage`:
 
 ```ts
 const messages: LaylaChatMessage[] = [
@@ -61,153 +90,60 @@ const messages: LaylaChatMessage[] = [
 
 Allowed roles are `'system'`, `'user'`, and `'assistant'`. `content` is `string | null`; `name` is optional.
 
-### Non-streaming chat
+Use non-streaming chat when the UI only needs the final answer:
 
 ```ts
-const completion = await layla.chat.completions.create({
-  messages,
-});
-
+const completion = await layla.chat.completions.create({ messages });
 const text = completion.choices[0]?.message.content ?? '';
 ```
 
-The returned object is OpenAI-shaped:
-
-```ts
-type ChatCompletion = {
-  id: string;
-  object: 'chat.completion';
-  created: number;
-  model: string;
-  choices: Array<{
-    index: number;
-    message: { role: 'assistant'; content: string };
-    finish_reason: 'stop';
-  }>;
-};
-```
-
-You may pass `model`; it is reflected in returned objects and defaults to `'layla'`.
-
-```ts
-await layla.chat.completions.create({
-  model: 'layla',
-  messages,
-});
-```
-
-### Streaming chat
-
-Prefer `.stream(...)` when updating UI as tokens arrive. It returns a `ChatCompletionStream` synchronously so listeners can be attached immediately.
+Use streaming chat when updating UI as tokens arrive:
 
 ```ts
 const stream = layla.chat.completions.stream({ messages });
 
-stream.on('content', (delta, snapshot) => {
-  // delta is the newest text; snapshot is the full assistant response so far.
+stream.on('content', (_delta, snapshot) => {
   setAssistantText(snapshot);
-});
-
-stream.on('end', () => {
-  setBusy(false);
 });
 
 stream.on('error', (err) => {
   console.error(err);
-  setBusy(false);
 });
 
 const finalText = await stream.finalContent();
 ```
 
-The stream is also async iterable:
+`ChatCompletionStream` is also async iterable:
 
 ```ts
-const stream = layla.chat.completions.stream({ messages });
-
 for await (const chunk of stream) {
   const delta = chunk.choices[0]?.delta.content ?? '';
   append(delta);
 }
 ```
 
-Breaking out of `for await` aborts the request.
+Breaking out of `for await` aborts the request. Inspect `../src/resources/chat/stream.ts` for the complete event/helper surface.
 
-`create({ stream: true, messages })` returns a `Promise<ChatCompletionStream>`:
+## One-Shot Resources
 
-```ts
-const stream = await layla.chat.completions.create({
-  messages,
-  stream: true,
-});
-```
+For resources backed by a single request/response event, prefer the resource method over raw protocol commands.
 
-Streaming chunks are OpenAI-shaped:
+Pass abort options when the method accepts `RequestOptions`:
 
 ```ts
-type ChatCompletionChunk = {
-  id: string;
-  object: 'chat.completion.chunk';
-  created: number;
-  model: string;
-  choices: Array<{
-    index: number;
-    delta: { role?: 'assistant'; content?: string };
-    finish_reason: 'stop' | null;
-  }>;
-};
-```
+const controller = new AbortController();
 
-`ChatCompletionStream` methods:
-
-- `on('content', (delta, snapshot) => void)`: listen to text deltas.
-- `on('chunk', (chunk) => void)`: listen to full OpenAI-shaped chunks.
-- `on('end', () => void)`: listen for normal completion.
-- `on('error', (err) => void)`: listen for failures or aborts.
-- `off(event, listener)`: remove a listener.
-- `abort(reason?)`: abort the request from the mini-app.
-- `finalContent()`: resolve with the final assistant text.
-- `finalChatCompletion()`: resolve with the final `ChatCompletion`.
-
-## Characters
-
-Use `layla.characters.list(offset?, range?, options?)` to get the user's available Layla character cards. `offset` defaults to `0`; `range` defaults to `10`.
-
-```ts
-const characters = await layla.characters.list();
-
-for (const character of characters) {
-  console.log(character.id, character.data.data.name);
+try {
+  const result = await layla.characters.list(0, 10, {
+    signal: controller.signal,
+  });
+} catch (err) {
+  if (err instanceof LaylaAbortError) return;
+  throw err;
 }
 ```
 
-Request a specific page with positional arguments:
-
-```ts
-const characters = await layla.characters.list(10, 10);
-```
-
-Pass an abort signal as the third argument:
-
-```ts
-const characters = await layla.characters.list(0, 10, { signal });
-```
-
-The public `range` value is sent to the native bridge as `limit`:
-
-```ts
-const request: LaylaApiGetCharacters = {
-  cmd: 'get_characters',
-  data: {
-    offset: 0,
-    limit: 25,
-  },
-};
-```
-
-Use a zero-based `offset` and a positive `range`. The `on_get_characters_response` event returns `LaylaCharacter[]`, containing only the requested window.
-
-Each item is:
+Character cards use `LaylaCharacter`:
 
 ```ts
 type LaylaCharacter = {
@@ -216,37 +152,28 @@ type LaylaCharacter = {
 };
 ```
 
-`TavernCardV2` follows Character Card V2 (`spec: 'chara_card_v2'`, `spec_version: '2.0'`). Common fields live under `character.data.data`, including:
+`TavernCardV2` follows Character Card V2. Common fields live under `character.data.data`, including `name`, `description`, `personality`, `scenario`, `first_mes`, `mes_example`, `system_prompt`, `post_history_instructions`, `alternate_greetings`, `tags`, `creator`, `extensions`, and optional `character_book`.
 
-- `name`
-- `description`
-- `personality`
-- `scenario`
-- `first_mes`
-- `mes_example`
-- `system_prompt`
-- `post_history_instructions`
-- `alternate_greetings`
-- `tags`
-- `creator`
-- `extensions`
-- optional `character_book`
-
-Use `layla.characters.getImage(characterId)` to get a character portrait.
+When updating a character, pass the full `LaylaCharacter` expected by the current `characters.update(...)` signature:
 
 ```ts
-const imageSrc = await layla.characters.getImage(character.id);
-
-if (imageSrc) {
-  imageElement.src = imageSrc;
-}
+const updatedId = await layla.characters.update({
+  id: character.id,
+  data: {
+    ...character.data,
+    data: {
+      ...character.data.data,
+      description: 'A careful strategist with a dry sense of humor.',
+    },
+  },
+});
 ```
 
-The result is `Promise<string | null>`. When present, the string is a ready-to-use image source containing base64 data and the data URI prefix.
+If the host creates a new character, the returned id may differ from the requested id. To update a character image, put a ready-to-use base64 data URI in `character.data.data.extensions.image` if that field is still supported by `../src/protocol.ts`.
 
 ## Images
 
-Use `layla.images.generateImage(prompt, onProgress, options?)` to generate an image from text.
+Image APIs return ready-to-use image source strings when successful. Do not add another `data:` prefix.
 
 ```ts
 const imageSrc = await layla.images.generateImage(
@@ -256,59 +183,14 @@ const imageSrc = await layla.images.generateImage(
   },
 );
 
-if (imageSrc) {
-  imageElement.src = imageSrc;
-}
+if (imageSrc) imageElement.src = imageSrc;
 ```
 
-The result is `Promise<string | null>`. When present, the string is a ready-to-use image source containing base64 data and the data URI prefix. `null` means the host did not return an image.
-
-Progress callbacks receive:
-
-- `status: string`
-- `step: number`
-- `totalSteps: number`
-
-## Abort Handling
-
-Chat, character requests, and image generation accept abort signals.
+Character images follow the same convention:
 
 ```ts
-const controller = new AbortController();
-
-const promise = layla.characters.list(0, 10, { signal: controller.signal });
-
-controller.abort();
-
-try {
-  await promise;
-} catch (err) {
-  if (err instanceof LaylaAbortError) {
-    // Request was cancelled by the app.
-  }
-}
-```
-
-For streaming chat, either pass `signal` or call `stream.abort()`:
-
-```ts
-const controller = new AbortController();
-const stream = layla.chat.completions.stream({
-  messages,
-  signal: controller.signal,
-});
-
-controller.abort();
-// or
-stream.abort();
-```
-
-For one-shot requests, use:
-
-```ts
-await layla.characters.list(0, 10, { signal });
-await layla.characters.getImage(characterId, { signal });
-await layla.images.generateImage(prompt, onProgress, { signal });
+const imageSrc = await layla.characters.getImage(character.id);
+if (imageSrc) imageElement.src = imageSrc;
 ```
 
 ## Errors
@@ -319,9 +201,7 @@ All SDK-specific errors extend `LaylaError`.
 try {
   const completion = await layla.chat.completions.create({ messages });
 } catch (err) {
-  if (err instanceof LaylaAbortError) {
-    return;
-  }
+  if (err instanceof LaylaAbortError) return;
 
   if (err instanceof LaylaBridgeUnavailableError) {
     showMessage('This mini-app must run inside Layla.');
@@ -337,106 +217,14 @@ try {
 }
 ```
 
-Exported error classes:
+## Protocol Types
 
-- `LaylaError`
-- `LaylaAbortError`
-- `LaylaBridgeUnavailableError`
+Use native protocol types only when typing host integration or bridge-level code. For normal mini-app code, prefer high-level client methods.
 
-## Exported Values
+When adding or using a new endpoint:
 
-Runtime exports:
-
-- default export: `LaylaSDK`
-- `LaylaSDK`
-- `Layla`
-- `ChatCompletionStream`
-- `Images`
-- `LaylaError`
-- `LaylaAbortError`
-- `LaylaBridgeUnavailableError`
-
-## Exported Types
-
-Useful public types:
-
-- `LaylaSDKOptions`
-- `RequestOptions`
-- `LaylaChatRole`
-- `LaylaChatMessage`
-- `LaylaCharacter`
-- `TavernCardV2`
-- `TavernCharacterBook`
-- `ChatCompletion`
-- `ChatCompletionChunk`
-- `ChatCompletionCreateParamsBase`
-- `ChatCompletionCreateParamsNonStreaming`
-- `ChatCompletionCreateParamsStreaming`
-
-Native bridge protocol types are also exported for apps that need to type lower-level host integration:
-
-- `LaylaApiSendMessage`
-- `LaylaApiGetCharacters`
-- `LaylaApiGetCharacterImage`
-- `LaylaApiGenerateImage`
-- `LaylaApiCancel`
-- `LaylaApiRequest`
-- `LaylaApiEvent`
-- `LaylaApiEvent_onMsg`
-- `LaylaApiEvent_onMsgEnd`
-- `LaylaApiEvent_onError`
-- `LaylaApiEvent_onGetCharactersResponse`
-- `LaylaApiEvent_onGetCharacterImageResponse`
-- `LaylaApiEvent_onGenerateImageResponse`
-
-Prefer the high-level client methods unless a task explicitly requires bridge protocol typing.
-
-## Practical Patterns
-
-Create one client and reuse it:
-
-```ts
-const layla = new LaylaSDK();
-```
-
-Keep chat history yourself:
-
-```ts
-const nextMessages: LaylaChatMessage[] = [
-  ...messages,
-  { role: 'user', content: input },
-];
-```
-
-Render streaming responses by replacing the pending assistant message with the stream snapshot:
-
-```ts
-stream.on('content', (_delta, snapshot) => {
-  setMessages([
-    ...nextMessages,
-    { role: 'assistant', content: snapshot },
-  ]);
-});
-```
-
-Load Layla characters with a fallback when running outside a fully available host:
-
-```ts
-try {
-  const laylaCharacters = await layla.characters.list(0, 10, { signal });
-  const hydrated = await Promise.all(
-    laylaCharacters.map(async (character) => ({
-      character,
-      imageSrc: await layla.characters.getImage(character.id, { signal }),
-    })),
-  );
-} catch (err) {
-  if (err instanceof LaylaError) {
-    useFallbackCharacters();
-  } else {
-    throw err;
-  }
-}
-```
-
-Use returned image strings directly in `<img src={imageSrc}>`; do not add another `data:` prefix.
+1. Read `../src/index.ts` to confirm what users can import.
+2. Read the resource file for the public method signature.
+3. Read `../src/protocol.ts` for request/response payload shapes.
+4. Use examples under `../examples` for UI integration patterns.
+5. Add only stable usage guidance to this skill; avoid copying full type definitions that already live in TypeScript.
