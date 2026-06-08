@@ -91,6 +91,25 @@ interface GeneratedProfile {
   imagePrompt: string;
 }
 
+type JsonRecord = Record<string, unknown>;
+
+const PROFILE_FIELD_ALIASES = {
+  name: ["name", "characterName", "character_name", "character name", "fullName", "full_name"],
+  age: ["age", "years", "yearsOld", "years_old"],
+  tagline: ["tagline", "tag_line", "title", "headline", "oneLiner", "one_liner"],
+  description: ["description", "bio", "about", "summary", "profile"],
+  tags: ["tags", "traits", "vibe", "vibes"],
+  likes: ["likes", "interests", "into", "hobbies", "favoriteThings", "favorite_things"],
+  dislikes: ["dislikes", "notInto", "not_into", "turnoffs", "turnOffs", "dealbreakers"],
+  imagePrompt: ["imagePrompt", "image_prompt", "portraitPrompt", "portrait_prompt", "appearance", "look"],
+};
+
+const PROFILE_ALIAS_LOOKUP = new Map<string, keyof typeof PROFILE_FIELD_ALIASES>(
+  Object.entries(PROFILE_FIELD_ALIASES).flatMap(([field, aliases]) => (
+    aliases.map((alias) => [normalizeFieldName(alias), field as keyof typeof PROFILE_FIELD_ALIASES])
+  )),
+);
+
 function repairJsonish(text: string): string {
   return text
     .trim()
@@ -109,6 +128,10 @@ function parseJsonish(text: string): unknown {
     const quotedStrings = quotedKeys.replace(/:\s*'([^'\n\r]*)'/g, ': "$1"');
     return JSON.parse(quotedStrings);
   }
+}
+
+function normalizeFieldName(key: string): string {
+  return key.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
 function balancedJsonCandidates(text: string): string[] {
@@ -154,7 +177,7 @@ function balancedJsonCandidates(text: string): string[] {
   return candidates;
 }
 
-function findObjectLike(value: unknown): Record<string, unknown> | null {
+function findObjectLike(value: unknown): JsonRecord | null {
   if (Array.isArray(value)) {
     for (const item of value) {
       const found = findObjectLike(item);
@@ -164,20 +187,9 @@ function findObjectLike(value: unknown): Record<string, unknown> | null {
   }
 
   if (!value || typeof value !== "object") return null;
-  const object = value as Record<string, unknown>;
-  const keys = Object.keys(object).map((key) => key.toLowerCase());
-  const profileKeys = [
-    "name",
-    "charactername",
-    "description",
-    "bio",
-    "imageprompt",
-    "image_prompt",
-    "portraitprompt",
-    "likes",
-    "interests",
-  ];
-  if (profileKeys.some((key) => keys.includes(key))) return object;
+  const object = value as JsonRecord;
+  const keys = Object.keys(object).map(normalizeFieldName);
+  if (keys.some((key) => PROFILE_ALIAS_LOOKUP.has(key))) return object;
 
   for (const key of ["profile", "character", "data", "result"]) {
     const found = findObjectLike(object[key]);
@@ -186,7 +198,40 @@ function findObjectLike(value: unknown): Record<string, unknown> | null {
   return null;
 }
 
-function extractJsonObject(text: string): Record<string, unknown> {
+function looseValue(value: string): unknown {
+  const trimmed = repairJsonish(value).replace(/,$/, "").trim();
+  if (!trimmed) return "";
+
+  if (/^[-+]?\d+(\.\d+)?$/.test(trimmed)) return Number(trimmed);
+  if (
+    trimmed.startsWith("[") ||
+    trimmed.startsWith("{") ||
+    trimmed.startsWith('"') ||
+    trimmed.startsWith("'")
+  ) {
+    try {
+      return parseJsonish(trimmed);
+    } catch {
+      // Fall through to returning a plain string.
+    }
+  }
+
+  return trimmed.replace(/^["']|["']$/g, "").trim();
+}
+
+function extractLooseProfileFields(text: string): JsonRecord {
+  const fields: JsonRecord = {};
+  const pairPattern = /["']?([A-Za-z][\w -]*)["']?\s*[:=]\s*("[^"\\]*(?:\\.[^"\\]*)*"|'[^'\\]*(?:\\.[^'\\]*)*'|\[[^\]]*\]|[^\n,}]+)/g;
+
+  for (const match of text.matchAll(pairPattern)) {
+    const field = PROFILE_ALIAS_LOOKUP.get(normalizeFieldName(match[1]));
+    if (field && fields[field] === undefined) fields[field] = looseValue(match[2]);
+  }
+
+  return fields;
+}
+
+function extractJsonObject(text: string): JsonRecord {
   const candidates = [
     ...[...text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)].map((match) => match[1]),
     text,
@@ -202,7 +247,7 @@ function extractJsonObject(text: string): Record<string, unknown> {
     }
   }
 
-  throw new Error("Model response did not contain a usable JSON profile.");
+  return extractLooseProfileFields(text);
 }
 
 function stringField(...values: unknown[]): string {
@@ -215,6 +260,10 @@ function stringField(...values: unknown[]): string {
 
 function stringArrayField(...values: unknown[]): string[] {
   for (const value of values) {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      const items = Object.values(value).map((item) => stringField(item)).filter(Boolean);
+      if (items.length) return items;
+    }
     if (Array.isArray(value)) {
       const items = value
         .flatMap((item) => typeof item === "string" ? item.split(",") : [item])
@@ -229,6 +278,31 @@ function stringArrayField(...values: unknown[]): string[] {
   return [];
 }
 
+function fieldValues(data: JsonRecord, aliases: string[]): unknown[] {
+  const names = new Set(aliases.map(normalizeFieldName));
+  const values: unknown[] = [];
+  const nestedKeys = new Set(["profile", "character", "data", "result", "details"]);
+
+  function visit(value: unknown, depth: number) {
+    if (!value || typeof value !== "object" || depth > 3) return;
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item, depth + 1);
+      return;
+    }
+
+    const object = value as JsonRecord;
+    for (const [key, item] of Object.entries(object)) {
+      if (names.has(normalizeFieldName(key))) values.push(item);
+    }
+    for (const [key, item] of Object.entries(object)) {
+      if (nestedKeys.has(normalizeFieldName(key))) visit(item, depth + 1);
+    }
+  }
+
+  visit(data, 0);
+  return values;
+}
+
 function vocabItems(items: string[], requested: string[], max: number): string[] {
   const valid = new Set(VOCAB);
   const out: string[] = [];
@@ -241,34 +315,26 @@ function vocabItems(items: string[], requested: string[], max: number): string[]
 
 function parseGeneratedProfile(text: string): GeneratedProfile {
   const data = extractJsonObject(text);
-  const name = stringField(data.name, data.characterName, data.character_name, "Mystery Match");
-  const tagline = stringField(data.tagline, data.tag_line, data.title);
-  const likes = stringArrayField(data.likes, data.interests, data.into, data.hobbies);
-  const dislikes = stringArrayField(data.dislikes, data.notInto, data.not_into, data.turnoffs);
-  const tags = stringArrayField(data.tags, data.traits, data.vibe).slice(0, 4);
+  const name = stringField(...fieldValues(data, PROFILE_FIELD_ALIASES.name), "Mystery Match");
+  const tagline = stringField(...fieldValues(data, PROFILE_FIELD_ALIASES.tagline));
+  const likes = stringArrayField(...fieldValues(data, PROFILE_FIELD_ALIASES.likes));
+  const dislikes = stringArrayField(...fieldValues(data, PROFILE_FIELD_ALIASES.dislikes));
+  const tags = stringArrayField(...fieldValues(data, PROFILE_FIELD_ALIASES.tags)).slice(0, 4);
   const description = stringField(
-    data.description,
-    data.bio,
-    data.about,
-    data.summary,
+    ...fieldValues(data, PROFILE_FIELD_ALIASES.description),
     tagline,
     `${name} is a fictional dating-app character.`,
   );
   const imagePrompt = stringField(
-    data.imagePrompt,
-    data.image_prompt,
-    data.portraitPrompt,
-    data.portrait_prompt,
-    data.appearance,
-    data.look,
+    ...fieldValues(data, PROFILE_FIELD_ALIASES.imagePrompt),
     `${name}, ${description}, ${tags.join(", ")}`,
   );
+  const ageValue = stringField(...fieldValues(data, PROFILE_FIELD_ALIASES.age));
+  const parsedAge = Number.parseInt(ageValue, 10);
 
   return {
     name,
-    age: typeof data.age === "number" && Number.isFinite(data.age)
-      ? data.age
-      : Number.parseInt(stringField(data.age), 10) || 0,
+    age: Number.isFinite(parsedAge) ? parsedAge : 0,
     tagline,
     description,
     tags,
