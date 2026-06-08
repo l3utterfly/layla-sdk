@@ -1,0 +1,73 @@
+name: Package Layla SDK agent skill
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'agents/layla-sdk/**'
+      - 'docs/sdk-api.md'
+      - 'docs/mini-apps-overview.md'
+      - '.github/workflows/package-agent-skill.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Read SDK version
+        id: ver
+        run: |
+          VERSION="$(node -p 'require("./package.json").version')"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Validate skill package inputs
+        run: |
+          test -f agents/layla-sdk/SKILL.md
+          test -f docs/sdk-api.md
+          test -f docs/mini-apps-overview.md
+
+      - name: Package skill zip
+        id: package
+        run: |
+          ZIP_NAME="layla-sdk-agent-skill-v${{ steps.ver.outputs.version }}.zip"
+          mkdir -p "$RUNNER_TEMP/layla-sdk-agent-skill"
+          cp -R agents/layla-sdk "$RUNNER_TEMP/layla-sdk-agent-skill/layla-sdk"
+          mkdir -p "$RUNNER_TEMP/layla-sdk-agent-skill/layla-sdk/references"
+          cp docs/sdk-api.md "$RUNNER_TEMP/layla-sdk-agent-skill/layla-sdk/references/sdk-api.md"
+          cp docs/mini-apps-overview.md "$RUNNER_TEMP/layla-sdk-agent-skill/layla-sdk/references/mini-apps-overview.md"
+          cd "$RUNNER_TEMP/layla-sdk-agent-skill"
+          zip -r "$GITHUB_WORKSPACE/$ZIP_NAME" layla-sdk
+          echo "zip_name=$ZIP_NAME" >> "$GITHUB_OUTPUT"
+          echo "zip_path=$GITHUB_WORKSPACE/$ZIP_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: layla-sdk-agent-skill-v${{ steps.ver.outputs.version }}
+          path: ${{ steps.package.outputs.zip_path }}
+
+      - name: Create or update skill release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.ver.outputs.version }}
+          ZIP_PATH: ${{ steps.package.outputs.zip_path }}
+        run: |
+          TAG="agent-skill-v$VERSION"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ZIP_PATH" --clobber
+          else
+            gh release create "$TAG" \
+              --title "Layla SDK agent skill v$VERSION" \
+              --generate-notes \
+              --latest=false \
+              "$ZIP_PATH"
+          fi
