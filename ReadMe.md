@@ -36,6 +36,29 @@ const layla = new LaylaSDK();
 
 The SDK is designed for Layla's WebView runtime. It does not require an API key, base URL, or direct network LLM endpoint; requests are sent through the Layla host bridge.
 
+## Using the SDK with Agents
+
+This SDK contains an agent skill that can be imported into other agents to enable Layla mini-app creation. The skill provides tools that wrap the SDK methods, allowing agents to generate mini-apps in response to user requests.
+
+An agent skill bundle is generated on every release: https://github.com/l3utterfly/layla-sdk/releases?q=agent+skill&expanded=true
+
+Download the zip file for the latest skill release and import it into your agent to get started. The skill includes example prompts and tool calls to help your agent learn how to use the SDK.
+
+Example prompt with Claude Code:
+```
+Create a Layla mini-app using the layla-sdk skill. In the mini-app, you can play truth or dare with any character of your choosing, there should be a button next to each chat message to generate an image using the contents of the message as the prompt (including the character description)
+```
+
+This skill can be imported into any coding agent, such as Codex, Claude Code, or OpenCode etc.
+
+### Recommended Project Structure for more complex mini-apps
+
+If you want to create more complex mini-apps with multiple source files, states, and pages. We recommend using a framework like Vite to build a ReactJS or VueJS app. You can then bundle the app into a single `index.html` file that can be imported into Layla as a mini-app.
+
+Here is a starter project: https://github.com/l3utterfly/layla-miniapp-template
+
+Open the project in any coding agent with the `layla-sdk` skill imported, and ask it to build out the mini-app with the SDK.
+
 ## Releases
 
 Each release contains:
