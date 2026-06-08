@@ -1,8 +1,16 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   LaylaError,
   LaylaSDK,
   type LaylaChatMessage,
+  type LaylaCharacter,
+  type TavernCardV2,
 } from "../../../src/index";
 import {
   type GenRequest,
@@ -41,6 +49,10 @@ interface Character {
 
 type Direction = "left" | "right";
 type GenderFilter = "any" | "male" | "female";
+type SaveState = {
+  phase: "saving" | "success" | "error";
+  message: string;
+} | null;
 
 interface GenerationState {
   phase: "profile" | "image" | "error";
@@ -94,20 +106,61 @@ interface GeneratedProfile {
 type JsonRecord = Record<string, unknown>;
 
 const PROFILE_FIELD_ALIASES = {
-  name: ["name", "characterName", "character_name", "character name", "fullName", "full_name"],
+  name: [
+    "name",
+    "characterName",
+    "character_name",
+    "character name",
+    "fullName",
+    "full_name",
+  ],
   age: ["age", "years", "yearsOld", "years_old"],
-  tagline: ["tagline", "tag_line", "title", "headline", "oneLiner", "one_liner"],
+  tagline: [
+    "tagline",
+    "tag_line",
+    "title",
+    "headline",
+    "oneLiner",
+    "one_liner",
+  ],
   description: ["description", "bio", "about", "summary", "profile"],
   tags: ["tags", "traits", "vibe", "vibes"],
-  likes: ["likes", "interests", "into", "hobbies", "favoriteThings", "favorite_things"],
-  dislikes: ["dislikes", "notInto", "not_into", "turnoffs", "turnOffs", "dealbreakers"],
-  imagePrompt: ["imagePrompt", "image_prompt", "portraitPrompt", "portrait_prompt", "appearance", "look"],
+  likes: [
+    "likes",
+    "interests",
+    "into",
+    "hobbies",
+    "favoriteThings",
+    "favorite_things",
+  ],
+  dislikes: [
+    "dislikes",
+    "notInto",
+    "not_into",
+    "turnoffs",
+    "turnOffs",
+    "dealbreakers",
+  ],
+  imagePrompt: [
+    "imagePrompt",
+    "image_prompt",
+    "portraitPrompt",
+    "portrait_prompt",
+    "appearance",
+    "look",
+  ],
 };
 
-const PROFILE_ALIAS_LOOKUP = new Map<string, keyof typeof PROFILE_FIELD_ALIASES>(
-  Object.entries(PROFILE_FIELD_ALIASES).flatMap(([field, aliases]) => (
-    aliases.map((alias) => [normalizeFieldName(alias), field as keyof typeof PROFILE_FIELD_ALIASES])
-  )),
+const PROFILE_ALIAS_LOOKUP = new Map<
+  string,
+  keyof typeof PROFILE_FIELD_ALIASES
+>(
+  Object.entries(PROFILE_FIELD_ALIASES).flatMap(([field, aliases]) =>
+    aliases.map((alias) => [
+      normalizeFieldName(alias),
+      field as keyof typeof PROFILE_FIELD_ALIASES,
+    ]),
+  ),
 );
 
 function repairJsonish(text: string): string {
@@ -221,11 +274,13 @@ function looseValue(value: string): unknown {
 
 function extractLooseProfileFields(text: string): JsonRecord {
   const fields: JsonRecord = {};
-  const pairPattern = /["']?([A-Za-z][\w -]*)["']?\s*[:=]\s*("[^"\\]*(?:\\.[^"\\]*)*"|'[^'\\]*(?:\\.[^'\\]*)*'|\[[^\]]*\]|[^\n,}]+)/g;
+  const pairPattern =
+    /["']?([A-Za-z][\w -]*)["']?\s*[:=]\s*("[^"\\]*(?:\\.[^"\\]*)*"|'[^'\\]*(?:\\.[^'\\]*)*'|\[[^\]]*\]|[^\n,}]+)/g;
 
   for (const match of text.matchAll(pairPattern)) {
     const field = PROFILE_ALIAS_LOOKUP.get(normalizeFieldName(match[1]));
-    if (field && fields[field] === undefined) fields[field] = looseValue(match[2]);
+    if (field && fields[field] === undefined)
+      fields[field] = looseValue(match[2]);
   }
 
   return fields;
@@ -233,7 +288,9 @@ function extractLooseProfileFields(text: string): JsonRecord {
 
 function extractJsonObject(text: string): JsonRecord {
   const candidates = [
-    ...[...text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)].map((match) => match[1]),
+    ...[...text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)].map(
+      (match) => match[1],
+    ),
     text,
     ...balancedJsonCandidates(text),
   ];
@@ -253,7 +310,8 @@ function extractJsonObject(text: string): JsonRecord {
 function stringField(...values: unknown[]): string {
   for (const value of values) {
     if (typeof value === "string" && value.trim()) return value.trim();
-    if (typeof value === "number" && Number.isFinite(value)) return String(value);
+    if (typeof value === "number" && Number.isFinite(value))
+      return String(value);
   }
   return "";
 }
@@ -261,18 +319,25 @@ function stringField(...values: unknown[]): string {
 function stringArrayField(...values: unknown[]): string[] {
   for (const value of values) {
     if (value && typeof value === "object" && !Array.isArray(value)) {
-      const items = Object.values(value).map((item) => stringField(item)).filter(Boolean);
+      const items = Object.values(value)
+        .map((item) => stringField(item))
+        .filter(Boolean);
       if (items.length) return items;
     }
     if (Array.isArray(value)) {
       const items = value
-        .flatMap((item) => typeof item === "string" ? item.split(",") : [item])
+        .flatMap((item) =>
+          typeof item === "string" ? item.split(",") : [item],
+        )
         .map((item) => stringField(item))
         .filter(Boolean);
       if (items.length) return items;
     }
     if (typeof value === "string" && value.trim()) {
-      return value.split(",").map((item) => item.trim()).filter(Boolean);
+      return value
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
     }
   }
   return [];
@@ -281,7 +346,13 @@ function stringArrayField(...values: unknown[]): string[] {
 function fieldValues(data: JsonRecord, aliases: string[]): unknown[] {
   const names = new Set(aliases.map(normalizeFieldName));
   const values: unknown[] = [];
-  const nestedKeys = new Set(["profile", "character", "data", "result", "details"]);
+  const nestedKeys = new Set([
+    "profile",
+    "character",
+    "data",
+    "result",
+    "details",
+  ]);
 
   function visit(value: unknown, depth: number) {
     if (!value || typeof value !== "object" || depth > 3) return;
@@ -303,7 +374,11 @@ function fieldValues(data: JsonRecord, aliases: string[]): unknown[] {
   return values;
 }
 
-function vocabItems(items: string[], requested: string[], max: number): string[] {
+function vocabItems(
+  items: string[],
+  requested: string[],
+  max: number,
+): string[] {
   const valid = new Set(VOCAB);
   const out: string[] = [];
   for (const item of [...items, ...requested]) {
@@ -315,11 +390,22 @@ function vocabItems(items: string[], requested: string[], max: number): string[]
 
 function parseGeneratedProfile(text: string): GeneratedProfile {
   const data = extractJsonObject(text);
-  const name = stringField(...fieldValues(data, PROFILE_FIELD_ALIASES.name), "Mystery Match");
-  const tagline = stringField(...fieldValues(data, PROFILE_FIELD_ALIASES.tagline));
-  const likes = stringArrayField(...fieldValues(data, PROFILE_FIELD_ALIASES.likes));
-  const dislikes = stringArrayField(...fieldValues(data, PROFILE_FIELD_ALIASES.dislikes));
-  const tags = stringArrayField(...fieldValues(data, PROFILE_FIELD_ALIASES.tags)).slice(0, 4);
+  const name = stringField(
+    ...fieldValues(data, PROFILE_FIELD_ALIASES.name),
+    "Mystery Match",
+  );
+  const tagline = stringField(
+    ...fieldValues(data, PROFILE_FIELD_ALIASES.tagline),
+  );
+  const likes = stringArrayField(
+    ...fieldValues(data, PROFILE_FIELD_ALIASES.likes),
+  );
+  const dislikes = stringArrayField(
+    ...fieldValues(data, PROFILE_FIELD_ALIASES.dislikes),
+  );
+  const tags = stringArrayField(
+    ...fieldValues(data, PROFILE_FIELD_ALIASES.tags),
+  ).slice(0, 4);
   const description = stringField(
     ...fieldValues(data, PROFILE_FIELD_ALIASES.description),
     tagline,
@@ -344,7 +430,11 @@ function parseGeneratedProfile(text: string): GeneratedProfile {
   };
 }
 
-function characterFromProfile(raw: GeneratedProfile, req: GenRequest, id: number): Character {
+function characterFromProfile(
+  raw: GeneratedProfile,
+  req: GenRequest,
+  id: number,
+): Character {
   const ageSuffix = raw.age > 0 ? `, ${Math.round(raw.age)}` : "";
   const description = raw.tagline
     ? `${raw.tagline}${ageSuffix}. ${raw.description}`
@@ -364,19 +454,20 @@ function characterFromProfile(raw: GeneratedProfile, req: GenRequest, id: number
   };
 }
 
-function profileUserPrompt(req: GenRequest, genderFilter: GenderFilter): string {
+function profileUserPrompt(
+  req: GenRequest,
+  genderFilter: GenderFilter,
+): string {
   if (genderFilter === "any") return req.userPrompt;
   return `Gender: ${genderFilter}. Generate only a ${genderFilter} character.\n${req.userPrompt}`;
 }
 
-function fullImagePrompt(profile: GeneratedProfile, genderFilter: GenderFilter): string {
+function fullImagePrompt(
+  profile: GeneratedProfile,
+  genderFilter: GenderFilter,
+): string {
   const genderPrefix = genderFilter === "any" ? "" : `${genderFilter}, `;
-  return [
-    `${genderPrefix}Safe-for-work fictional dating app portrait.`,
-    "One original fictional person, portrait framing, no text, no real-person likeness.",
-    "Warm editorial character photography, expressive face, natural pose.",
-    profile.imagePrompt,
-  ].join(" ");
+  return [`${genderPrefix}`, profile.imagePrompt].join(" ");
 }
 
 async function generateImageWithTimeout(
@@ -386,11 +477,9 @@ async function generateImageWithTimeout(
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), 45000);
   try {
-    return await layla.images.generateImage(
-      prompt,
-      onProgress,
-      { signal: controller.signal },
-    );
+    return await layla.images.generateImage(prompt, onProgress, {
+      signal: controller.signal,
+    });
   } finally {
     window.clearTimeout(timeoutId);
   }
@@ -398,7 +487,8 @@ async function generateImageWithTimeout(
 
 function errorMessage(error: unknown): string {
   if (error instanceof LaylaError) return error.message;
-  if (error instanceof SyntaxError) return `Invalid JSON from Layla: ${error.message}`;
+  if (error instanceof SyntaxError)
+    return `Invalid JSON from Layla: ${error.message}`;
   if (error instanceof Error) return error.message;
   return "Layla generation failed.";
 }
@@ -413,6 +503,56 @@ function initialGenerationState(): GenerationState {
     error: null,
   };
 }
+
+function savedCharacterCard(character: Character): LaylaCharacter {
+  const card: TavernCardV2 = {
+    spec: "chara_card_v2",
+    spec_version: "2.0",
+    data: {
+      name: character.name,
+      description: character.description,
+      personality: [
+        ...character.tags,
+        ...character.likes.map((item) => `likes ${item}`),
+        ...character.dislikes.map((item) => `dislikes ${item}`),
+      ].join(", "),
+      scenario: "A fictional dating-app match generated in Layla Swipe.",
+      first_mes: `Hey, I'm ${character.name}.`,
+      mes_example: "",
+      creator_notes: `Generated from prompt: ${character.imagePrompt}`,
+      system_prompt: "",
+      post_history_instructions: "",
+      alternate_greetings: [],
+      tags: character.tags,
+      creator: "Layla Swipe",
+      character_version: "1.0",
+      extensions: {
+        image: character.imageUrl,
+        laylaSwipe: {
+          likes: character.likes,
+          dislikes: character.dislikes,
+          imagePrompt: character.imagePrompt,
+          features: character.meta.features,
+          isWildcard: character.meta.isWildcard,
+        },
+      },
+    },
+  };
+
+  return {
+    id: `swipe-generated-${character.id}`,
+    data: card,
+  };
+}
+
+async function saveGeneratedCharacter(character: Character): Promise<string> {
+  return layla.characters.update(savedCharacterCard(character));
+}
+
+const delay = (ms: number) =>
+  new Promise<void>((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
 
 /**
  * THE LLM SEAM.
@@ -480,7 +620,9 @@ async function generateProfile(
   );
 
   if (!imageUrl) {
-    throw new Error("Layla image generation finished without returning an image.");
+    throw new Error(
+      "Layla image generation finished without returning an image.",
+    );
   }
 
   return { ...character, imageUrl };
@@ -507,20 +649,57 @@ const SWIPE_THRESHOLD = 110;
 /*  Icons                                                              */
 /* ------------------------------------------------------------------ */
 
-const HeartIcon = ({ size = 26, color = "currentColor" }: { size?: number; color?: string }) => (
+const HeartIcon = ({
+  size = 26,
+  color = "currentColor",
+}: {
+  size?: number;
+  color?: string;
+}) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill={color} aria-hidden>
     <path d="M12 21s-7.5-4.6-10-9.2C.5 8.3 2 4.8 5.3 4.5 7.3 4.3 8.9 5.4 12 8c3.1-2.6 4.7-3.7 6.7-3.5C22 4.8 23.5 8.3 22 11.8 19.5 16.4 12 21 12 21z" />
   </svg>
 );
 
-const XIcon = ({ size = 26, color = "currentColor" }: { size?: number; color?: string }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={3} strokeLinecap="round" aria-hidden>
+const XIcon = ({
+  size = 26,
+  color = "currentColor",
+}: {
+  size?: number;
+  color?: string;
+}) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke={color}
+    strokeWidth={3}
+    strokeLinecap="round"
+    aria-hidden
+  >
     <path d="M6 6l12 12M18 6L6 18" />
   </svg>
 );
 
-const RewindIcon = ({ size = 20, color = "currentColor" }: { size?: number; color?: string }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+const RewindIcon = ({
+  size = 20,
+  color = "currentColor",
+}: {
+  size?: number;
+  color?: string;
+}) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke={color}
+    strokeWidth={2.4}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden
+  >
     <path d="M3 4v6h6" />
     <path d="M3.5 10a9 9 0 1 1-1.6 5" />
   </svg>
@@ -530,7 +709,13 @@ const RewindIcon = ({ size = 20, color = "currentColor" }: { size?: number; colo
 /*  Small presentational pieces                                        */
 /* ------------------------------------------------------------------ */
 
-const Tag = ({ label, onDark = false }: { label: string; onDark?: boolean }) => (
+const Tag = ({
+  label,
+  onDark = false,
+}: {
+  label: string;
+  onDark?: boolean;
+}) => (
   <span
     style={{
       fontSize: 10.5,
@@ -550,8 +735,24 @@ const Tag = ({ label, onDark = false }: { label: string; onDark?: boolean }) => 
   </span>
 );
 
-const ChevronUpIcon = ({ size = 16, color = "currentColor" }: { size?: number; color?: string }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+const ChevronUpIcon = ({
+  size = 16,
+  color = "currentColor",
+}: {
+  size?: number;
+  color?: string;
+}) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke={color}
+    strokeWidth={2.6}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden
+  >
     <path d="M6 15l6-6 6 6" />
   </svg>
 );
@@ -825,7 +1026,13 @@ const Card: React.FC<CardProps> = ({
             alignSelf: "center",
           }}
         />
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
           <h3
             style={{
               fontFamily: "'Fraunces', Georgia, serif",
@@ -940,6 +1147,88 @@ const ActionButton = ({
   </button>
 );
 
+const SaveModal = ({ state }: { state: SaveState }) => {
+  if (!state) return null;
+
+  const isSaving = state.phase === "saving";
+  const accent = state.phase === "error" ? T.slate : T.coral;
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-live="polite"
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 100,
+        display: "grid",
+        placeItems: "center",
+        padding: 24,
+        background: "rgba(42, 36, 34, 0.42)",
+        backdropFilter: "blur(8px)",
+      }}
+    >
+      <div
+        style={{
+          width: "min(82vw, 260px)",
+          minHeight: 132,
+          borderRadius: 8,
+          background: T.card,
+          color: T.ink,
+          boxShadow: "0 28px 70px -32px rgba(42,36,34,0.72)",
+          display: "grid",
+          placeItems: "center",
+          gap: 12,
+          padding: 24,
+          textAlign: "center",
+        }}
+      >
+        {isSaving ? (
+          <div
+            aria-hidden
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: "50%",
+              border: `3px solid ${T.line}`,
+              borderTopColor: accent,
+              animation: "csd-spin .8s linear infinite",
+            }}
+          />
+        ) : (
+          <div
+            aria-hidden
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: "50%",
+              background: accent,
+              color: T.card,
+              display: "grid",
+              placeItems: "center",
+              fontSize: 21,
+              fontWeight: 800,
+            }}
+          >
+            {state.phase === "success" ? "OK" : "!"}
+          </div>
+        )}
+        <div
+          style={{
+            fontSize: state.phase === "success" ? 22 : 15,
+            fontWeight: 700,
+            color: state.phase === "success" ? T.coral : T.ink,
+            lineHeight: 1.2,
+          }}
+        >
+          {state.message}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 /* ------------------------------------------------------------------ */
 /*  Page                                                               */
 /* ------------------------------------------------------------------ */
@@ -956,6 +1245,7 @@ export default function CharacterSwipeDeck() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generation, setGeneration] = useState<GenerationState | null>(null);
   const [genderFilter, setGenderFilter] = useState<GenderFilter>("any");
+  const [saveState, setSaveState] = useState<SaveState>(null);
 
   const start = useRef<{ x: number; y: number } | null>(null);
   const nextId = useRef(1);
@@ -991,7 +1281,12 @@ export default function CharacterSwipeDeck() {
       setLastGenderFilter(genderFilter);
       setGeneration(initialGenerationState());
       try {
-        const char = await generateProfile(req, nextId.current++, genderFilter, setGeneration);
+        const char = await generateProfile(
+          req,
+          nextId.current++,
+          genderFilter,
+          setGeneration,
+        );
         setDeck((d) => [...d, char]);
         setGeneration(null);
       } catch (error) {
@@ -1011,7 +1306,11 @@ export default function CharacterSwipeDeck() {
   // Generate only when there is no current card left to show.
   // This also fires on mount (empty deck) to load the very first card.
   useEffect(() => {
-    if (!generating.current && generation?.phase !== "error" && index >= deck.length) {
+    if (
+      !generating.current &&
+      generation?.phase !== "error" &&
+      index >= deck.length
+    ) {
       void generateNext();
     }
   }, [generation?.phase, index, deck.length, generateNext]);
@@ -1023,7 +1322,16 @@ export default function CharacterSwipeDeck() {
     void generateNext();
   };
 
-  const decide = (dir: Direction) => {
+  const finishSwipe = (dir: Direction, char: Character) => {
+    if (dir === "right") setLiked((l) => [...l, char]);
+    else setPassed((p) => p + 1);
+    setHistory((h) => [...h, dir]);
+    setIndex((i) => i + 1);
+    setDrag({ x: 0, y: 0 });
+    setLeaving(null);
+  };
+
+  const decide = async (dir: Direction) => {
     if (leaving || !current) return;
     setLeaving(dir);
     const char = current;
@@ -1033,18 +1341,28 @@ export default function CharacterSwipeDeck() {
     // the model washes out a stray swipe over time.)
     recordSwipe(model.current, char.meta.features, char, dir === "right");
     setReadinessPct(Math.round(readiness(model.current) * 100));
-    window.setTimeout(() => {
-      if (dir === "right") setLiked((l) => [...l, char]);
-      else setPassed((p) => p + 1);
-      setHistory((h) => [...h, dir]);
-      setIndex((i) => i + 1);
-      setDrag({ x: 0, y: 0 });
-      setLeaving(null);
-    }, 320);
+
+    if (dir === "right") {
+      setSaveState({ phase: "saving", message: `Saving ${char.name}` });
+      try {
+        await saveGeneratedCharacter(char);
+        setSaveState({ phase: "success", message: "success" });
+        await delay(850);
+      } catch (error) {
+        setSaveState({ phase: "error", message: errorMessage(error) });
+        await delay(1600);
+      } finally {
+        setSaveState(null);
+        finishSwipe(dir, char);
+      }
+      return;
+    }
+
+    window.setTimeout(() => finishSwipe(dir, char), 320);
   };
 
   const rewind = () => {
-    if (history.length === 0 || leaving) return;
+    if (history.length === 0 || leaving || saveState) return;
     const last = history[history.length - 1];
     setHistory((h) => h.slice(0, -1));
     setIndex((i) => Math.max(0, i - 1));
@@ -1055,7 +1373,7 @@ export default function CharacterSwipeDeck() {
 
   /* pointer handlers (top card only) */
   const onPointerDown = (e: React.PointerEvent) => {
-    if (leaving) return;
+    if (leaving || saveState) return;
     start.current = { x: e.clientX, y: e.clientY };
     setDragging(true);
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -1080,7 +1398,7 @@ export default function CharacterSwipeDeck() {
   // isn't loaded yet (undefined) renders as a skeleton LoadingCard.
   const slots = useMemo(
     () => [0, 1, 2].map((i) => deck[index + i]),
-    [deck, index]
+    [deck, index],
   );
 
   /* top-card transform */
@@ -1123,7 +1441,10 @@ export default function CharacterSwipeDeck() {
         @keyframes csd-shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
         @keyframes csd-bar { 0% { left: -40%; } 100% { left: 100%; } }
         @keyframes csd-pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+        @keyframes csd-spin { to { transform: rotate(360deg); } }
       `}</style>
+
+      <SaveModal state={saveState} />
 
       {/* Header */}
       <header
@@ -1162,11 +1483,13 @@ export default function CharacterSwipeDeck() {
           animation: "csd-rise .52s .02s ease both",
         }}
       >
-        {([
-          ["any", "Any"],
-          ["male", "Only male"],
-          ["female", "Only female"],
-        ] as const).map(([value, label]) => {
+        {(
+          [
+            ["any", "Any"],
+            ["male", "Only male"],
+            ["female", "Only female"],
+          ] as const
+        ).map(([value, label]) => {
           const active = genderFilter === value;
           return (
             <button
@@ -1187,7 +1510,8 @@ export default function CharacterSwipeDeck() {
                 fontWeight: 700,
                 cursor: isGenerating ? "not-allowed" : "pointer",
                 opacity: isGenerating && !active ? 0.55 : 1,
-                transition: "background 0.18s ease, color 0.18s ease, opacity 0.18s ease",
+                transition:
+                  "background 0.18s ease, color 0.18s ease, opacity 0.18s ease",
               }}
             >
               {label}
@@ -1214,9 +1538,18 @@ export default function CharacterSwipeDeck() {
           }}
         >
           <span style={{ letterSpacing: "0.02em" }}>Reading your taste</span>
-          <span style={{ fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>{readinessPct}%</span>
+          <span style={{ fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>
+            {readinessPct}%
+          </span>
         </div>
-        <div style={{ height: 6, borderRadius: 999, background: T.line, overflow: "hidden" }}>
+        <div
+          style={{
+            height: 6,
+            borderRadius: 999,
+            background: T.line,
+            overflow: "hidden",
+          }}
+        >
           <div
             style={{
               height: "100%",
@@ -1347,10 +1680,15 @@ export default function CharacterSwipeDeck() {
             letterSpacing: "0.02em",
             opacity: isGenerating || generation?.phase === "error" ? 1 : 0,
             transition: "opacity 0.3s ease",
-            animation: generation?.phase === "error" ? undefined : "csd-pulse 1.4s ease-in-out infinite",
+            animation:
+              generation?.phase === "error"
+                ? undefined
+                : "csd-pulse 1.4s ease-in-out infinite",
           }}
         >
-          {generation?.phase === "error" ? generation.error : "✨ Summoning more matches…"}
+          {generation?.phase === "error"
+            ? generation.error
+            : "✨ Summoning more matches…"}
         </p>
       </div>
 
@@ -1392,15 +1730,21 @@ export default function CharacterSwipeDeck() {
           >
             {lastReq ? (
               <>
-                <div style={{ color: "#E2A13C", marginBottom: 4 }}>// user prompt</div>
+                <div style={{ color: "#E2A13C", marginBottom: 4 }}>
+                  // user prompt
+                </div>
                 {profileUserPrompt(lastReq, lastGenderFilter)}
-                <div style={{ color: "#E2A13C", margin: "12px 0 4px" }}>// requested axis features</div>
+                <div style={{ color: "#E2A13C", margin: "12px 0 4px" }}>
+                  // requested axis features
+                </div>
                 {Object.keys(lastReq.features).length
                   ? Object.entries(lastReq.features)
                       .map(([k, v]) => `${k}: ${v.toFixed(2)}`)
                       .join("\n")
                   : "(none this round — pure exploration)"}
-                <div style={{ color: "#E2A13C", margin: "12px 0 4px" }}>// system prompt</div>
+                <div style={{ color: "#E2A13C", margin: "12px 0 4px" }}>
+                  // system prompt
+                </div>
                 <span style={{ opacity: 0.7 }}>{lastReq.systemPrompt}</span>
               </>
             ) : (
@@ -1430,7 +1774,13 @@ const LoadingCard = ({
 }) => {
   const imageProgress =
     generation?.phase === "image"
-      ? Math.max(0, Math.min(100, (generation.imageStep / generation.imageTotalSteps) * 100))
+      ? Math.max(
+          0,
+          Math.min(
+            100,
+            (generation.imageStep / generation.imageTotalSteps) * 100,
+          ),
+        )
       : 0;
 
   return (
@@ -1440,9 +1790,10 @@ const LoadingCard = ({
         inset: 0,
         borderRadius: 26,
         overflow: "hidden",
-        background: generation?.phase === "error"
-          ? "linear-gradient(150deg, #BFC5C8, #7B8992)"
-          : "linear-gradient(150deg, #D9CFBE, #B7AB97)",
+        background:
+          generation?.phase === "error"
+            ? "linear-gradient(150deg, #BFC5C8, #7B8992)"
+            : "linear-gradient(150deg, #D9CFBE, #B7AB97)",
         boxShadow: "0 28px 60px -28px rgba(42,36,34,0.45)",
         ...style,
       }}
@@ -1453,7 +1804,10 @@ const LoadingCard = ({
           inset: 0,
           background:
             "linear-gradient(100deg, transparent 30%, rgba(255,255,255,0.32) 50%, transparent 70%)",
-          animation: generation?.phase === "error" ? undefined : "csd-shimmer 1.4s linear infinite",
+          animation:
+            generation?.phase === "error"
+              ? undefined
+              : "csd-shimmer 1.4s linear infinite",
         }}
       />
 
@@ -1469,14 +1823,40 @@ const LoadingCard = ({
             gap: 12,
           }}
         >
-          <div style={{ width: "55%", height: 30, borderRadius: 8, background: "rgba(255,255,255,0.5)" }} />
-          <div style={{ width: "92%", height: 12, borderRadius: 6, background: "rgba(255,255,255,0.4)" }} />
-          <div style={{ width: "76%", height: 12, borderRadius: 6, background: "rgba(255,255,255,0.4)" }} />
+          <div
+            style={{
+              width: "55%",
+              height: 30,
+              borderRadius: 8,
+              background: "rgba(255,255,255,0.5)",
+            }}
+          />
+          <div
+            style={{
+              width: "92%",
+              height: 12,
+              borderRadius: 6,
+              background: "rgba(255,255,255,0.4)",
+            }}
+          />
+          <div
+            style={{
+              width: "76%",
+              height: 12,
+              borderRadius: 6,
+              background: "rgba(255,255,255,0.4)",
+            }}
+          />
           <div style={{ display: "flex", gap: 8, marginTop: 2 }}>
             {[58, 46, 52].map((w, i) => (
               <div
                 key={i}
-                style={{ width: w, height: 22, borderRadius: 999, background: "rgba(255,255,255,0.35)" }}
+                style={{
+                  width: w,
+                  height: 22,
+                  borderRadius: 999,
+                  background: "rgba(255,255,255,0.35)",
+                }}
               />
             ))}
           </div>
@@ -1525,7 +1905,9 @@ const LoadingCard = ({
                   textShadow: "0 2px 12px rgba(0,0,0,0.25)",
                 }}
               >
-                {generation.phase === "error" ? "Layla needs attention" : "New match incoming"}
+                {generation.phase === "error"
+                  ? "Layla needs attention"
+                  : "New match incoming"}
               </div>
             </div>
           </div>
@@ -1549,7 +1931,8 @@ const LoadingCard = ({
           >
             {generation.phase === "error"
               ? generation.error
-              : generation.responseText || "Waiting for Layla to start typing..."}
+              : generation.responseText ||
+                "Waiting for Layla to start typing..."}
           </div>
 
           <div
@@ -1572,7 +1955,9 @@ const LoadingCard = ({
                   }}
                 >
                   <span>{generation.imageStatus || "Generating portrait"}</span>
-                  <span style={{ fontVariantNumeric: "tabular-nums" }}>{Math.round(imageProgress)}%</span>
+                  <span style={{ fontVariantNumeric: "tabular-nums" }}>
+                    {Math.round(imageProgress)}%
+                  </span>
                 </div>
                 <div
                   style={{

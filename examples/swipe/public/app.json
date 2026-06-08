@@ -1,0 +1,7 @@
+{
+  "title": "Match",
+  "tagline": "Swipe to meet your characters!",
+  "description": "Welcome to Match, where your characters become someone to discover. Browse a deck of generated profiles, read their vibe, and swipe to find the ones you click with.\r\n\r\nFeatures:\r\n- Swipe through your characters: Like or pass on a fresh deck of profiles drawn from your characters, each with their own name, photo, and personality.\r\n- Read their taste: See a short bio and personality tags that capture who they are before you decide.\r\n- Summon new matches: Keep swiping and the app keeps generating more characters to meet.\r\n- Peek behind the scenes: Reveal the generated prompt behind any profile to see how each character came to life.",
+  "iconUri": "icon.jpg",
+  "backgroundImgUri": "bg.jpg"
+}
