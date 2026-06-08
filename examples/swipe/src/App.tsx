@@ -728,8 +728,12 @@ const Card: React.FC<CardProps> = ({
             lineHeight: 1,
             margin: 0,
             fontWeight: 600,
-            letterSpacing: "-0.015em",
-            textShadow: "0 2px 16px rgba(0,0,0,0.4)",
+            letterSpacing: 0,
+            color: "#fff",
+            WebkitTextFillColor: "#fff",
+            WebkitTextStroke: "1.25px rgba(0,0,0,0.95)",
+            textShadow:
+              "0 2px 0 rgba(0,0,0,0.95), 1px 0 0 rgba(0,0,0,0.95), -1px 0 0 rgba(0,0,0,0.95), 0 -1px 0 rgba(0,0,0,0.95), 0 4px 16px rgba(0,0,0,0.45)",
           }}
         >
           {character.name}
