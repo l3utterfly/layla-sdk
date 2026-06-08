@@ -118,6 +118,8 @@ Breaking out of `for await` aborts the request.
 
 Use `layla.characters.list(offset?, range?, options?)` to list available characters. Use `layla.characters.getImage(characterId, options?)` to retrieve a ready-to-use image source string.
 
+When designing mini-apps with character selection, prefer square character icons or portraits. Square assets work best across grid cards, compact lists, and Layla import surfaces.
+
 Character cards use `LaylaCharacter`:
 
 ```ts
@@ -220,6 +222,8 @@ At minimum, a packaged mini-app folder should include:
 - `app.json`
 - `index.html` or `index.url`
 - any referenced icons, images, or assets
+
+When distributing a mini-app as a zip, `app.json`, `index.html` or `index.url`, and referenced assets must be at the root of the zip file. Do not wrap them in an extra parent folder.
 
 Use `index.html` for a self-contained local app. Use `index.url` for an externally hosted app.
 

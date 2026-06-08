@@ -33,6 +33,8 @@ The required entry file is one of:
 
 Any icon files, background images, or other assets referenced by the mini-app or metadata can live in the same app folder.
 
+When packaging a mini-app as a zip, `app.json`, `index.html` or `index.url`, and referenced assets must be at the root of the zip file. Do not wrap them in an extra parent folder.
+
 ## Metadata
 
 Each mini-app includes an `app.json` file. This file describes how the mini-app appears inside Layla.
@@ -54,6 +56,8 @@ Common metadata fields:
 - `description`: longer descriptive text.
 - `iconUri`: path to the icon in the app folder.
 - `backgroundImgUri`: path to a background or preview image in the app folder.
+
+Prefer square icons for app icons and character portraits, especially when the mini-app includes character selection. Square assets fit card grids, list rows, and import surfaces more predictably.
 
 ## HTML Apps
 
@@ -138,6 +142,7 @@ Typical import checklist:
 - Include `app.json`.
 - Include either `index.html` or `index.url`.
 - Include any referenced icons or assets.
+- Put `app.json`, `index.html` or `index.url`, and referenced assets at the root of the zip file when distributing a zipped mini-app.
 - Make sure asset paths match the files in the mini-app folder.
 - Make sure `index.url` contains only the URL when using a hosted app.
 - Make sure `index.html` is self-contained when using a packaged app.
