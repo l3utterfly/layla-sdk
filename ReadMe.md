@@ -16,7 +16,7 @@
 - [Docs](docs/) - mini-app packaging guidance and the SDK API reference.
 - [SDK source](src/) - the TypeScript source for `@layla-network/sdk`.
 - [Examples](examples/) - sample Layla mini-apps showing chat, chess, tarot, and character generation workflows.
-- [Agent skill](agents/layla-sdk/) - a packaged skill that helps other coding agents understand how to create Layla mini-apps with this SDK.
+- [Agent skill](https://github.com/l3utterfly/layla-sdk/releases?q=agent+skill&expanded=true) - a packaged skill that helps other coding agents understand how to create Layla mini-apps with this SDK.
 
 ## Getting Started
 
