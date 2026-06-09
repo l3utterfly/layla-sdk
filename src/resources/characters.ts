@@ -14,6 +14,8 @@ import type {
   LaylaApiEvent_onGetCharacterImageResponse,
   LaylaCharacter,
   LaylaApiEvent_onUpdateCharacterResponse,
+  LaylaChatHistoryEntry,
+  LaylaApiEvent_onGetChatHistoryResponse,
 } from '../protocol';
 import { oneShot, type RequestOptions } from '../internal/one-shot';
 
@@ -73,6 +75,27 @@ export class Characters {
       (event: LaylaApiEvent) => {
         const data = (event as LaylaApiEvent_onUpdateCharacterResponse).data;
         return data.character_id;
+      },
+      options.signal,
+    );
+  }
+
+  /**
+   * Ask the native host for a character's chat history. Resolves once with the host's `on_get_chat_history_response` payload, or rejects on error/abort.
+   * Results are in reverse chronological order (newest first). Use `offset` and `range` to page through the history if needed.
+   * @param characterId The ID of the character whose chat history is being requested.
+   * @param offset The starting point for the chat history results.
+   * @param range The number of chat history entries to retrieve.
+   * @param options Additional request options.
+   * @returns A promise that resolves to an array of chat history entries.
+   */
+  getChatHistory(characterId: string, offset: number = 0, range: number = 10, options: RequestOptions = {}): Promise<LaylaChatHistoryEntry[]> {
+    return oneShot<LaylaChatHistoryEntry[]>(
+      { cmd: 'get_chat_history', data: { character_id: characterId, offset, limit: range } },
+      'on_get_chat_history_response',
+      (event: LaylaApiEvent) => {
+        const data = (event as LaylaApiEvent_onGetChatHistoryResponse).data;
+        return data?.messages ?? [];
       },
       options.signal,
     );

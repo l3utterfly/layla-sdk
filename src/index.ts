@@ -16,6 +16,7 @@
 export type {
   LaylaChatRole,
   LaylaChatMessage,
+  LaylaChatHistoryEntry,
   LaylaCharacter,
   TavernCardV2,
   TavernCharacterBook,
@@ -24,6 +25,7 @@ export type {
   LaylaApiGetCharacterImage,
   LaylaApiGenerateImage,
   LaylaApiUpdateCharacter,
+  LaylaApiGetChatHistory,
   LaylaApiCancel,
   LaylaApiRequest,
   LaylaApiEvent,
@@ -35,6 +37,7 @@ export type {
   LaylaApiEvent_onGenerateImageResponse,
   LaylaApiEvent_onGenerateImageProgress,
   LaylaApiEvent_onUpdateCharacterResponse,
+  LaylaApiEvent_onGetChatHistoryResponse,
 } from './protocol';
 
 // Errors.

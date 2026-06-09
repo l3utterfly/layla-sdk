@@ -33,6 +33,11 @@ export interface LaylaChatMessage {
   name?: string;
 }
 
+export interface LaylaChatHistoryEntry extends LaylaChatMessage {
+  character_id: string;
+  timestamp: number;
+}
+
 /* ---- character cards ------------------------------------------------------- */
 
 export interface LaylaCharacter {
@@ -156,6 +161,20 @@ export interface LaylaApiUpdateCharacter {
 }
 
 /**
+ * Ask the host for the chat history associated with a specific character ID.
+ * The host should respond with an `on_get_chat_history_response` event containing an array of chat messages, each including the role, content, character ID, and timestamp.
+ * The messages should be returned in reverse chronological order (newest to oldest).
+ */
+export interface LaylaApiGetChatHistory {
+  cmd: 'get_chat_history';
+  data: {
+    character_id: string;
+    offset: number;
+    limit: number;
+  };
+}
+
+/**
  * A request command (anything that opens a job and expects events back).
  * Add new one-shot commands here. `cancel` is not a request — it's a control
  * signal for an already-open job — so it lives outside this union.
@@ -166,7 +185,8 @@ export type LaylaApiRequest =
   LaylaApiGetCharacterImage |
   LaylaApiCancel |
   LaylaApiGenerateImage |
-  LaylaApiUpdateCharacter;
+  LaylaApiUpdateCharacter |
+  LaylaApiGetChatHistory;
 
 /* ---- RN -> Web events ------------------------------------------------------ */
 
@@ -235,6 +255,18 @@ export interface LaylaApiEvent_onUpdateCharacterResponse {
   };
 }
 
+/**
+ * The chat history for a `get_chat_history` request, containing an array of chat messages associated with the specified character ID.
+ * Each message includes the role, content, character ID, and timestamp. The host should return the messages in reverse chronological order (newest to oldest).
+ */
+export interface LaylaApiEvent_onGetChatHistoryResponse {
+  event: 'on_get_chat_history_response';
+  data: {
+    character_id: string;
+    messages: LaylaChatHistoryEntry[];
+  };
+}
+
 export type LaylaApiEvent =
   | LaylaApiEvent_onMsg
   | LaylaApiEvent_onMsgEnd
@@ -243,4 +275,5 @@ export type LaylaApiEvent =
   | LaylaApiEvent_onGetCharacterImageResponse
   | LaylaApiEvent_onGenerateImageResponse
   | LaylaApiEvent_onGenerateImageProgress
-  | LaylaApiEvent_onUpdateCharacterResponse;
+  | LaylaApiEvent_onUpdateCharacterResponse
+  | LaylaApiEvent_onGetChatHistoryResponse;
