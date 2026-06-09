@@ -420,6 +420,9 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
         case 'update_character':
           void handleUpdateCharacter(msg.data);
           break;
+        case 'get_sentiment':
+          void handleGetSentiment(msg.data);
+          break;
         default:
           break;
       }
