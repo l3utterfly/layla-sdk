@@ -18,6 +18,7 @@ import LaylaSDK, {
   makeMockCharacter,
   type LaylaChatMessage,
   type LaylaChatHistoryEntry,
+  type LaylaApiEvent_onGetChatSessionsResponse,
   type LaylaCharacter,
   type SentimentValues,
   type TavernCardV2,
@@ -216,19 +217,53 @@ if (imageSrc) {
 }
 ```
 
-## `layla.characters.getChatHistory(characterId, offset?, range?, options?)`
+## `layla.chat.getChatSessions(characterId, offset?, range?, options?)`
 
-Fetches the newest chat messages for a character. Results come back as a paged array of `LaylaChatHistoryEntry` items in reverse chronological order.
+Fetches a character's chat sessions. Results come back as an object containing the `character_id` and a `sessions` array in reverse chronological order.
 
 ```ts
-const history = await layla.characters.getChatHistory(character.id);
+const { sessions } = await layla.chat.getChatSessions(character.id);
+
+for (const session of sessions) {
+  console.log(
+    session.session_id,
+    session.last_message_timestamp,
+    session.last_message_content,
+  );
+}
+```
+
+Use `offset` and `range` when you need to page through a longer session list. Pass an abort signal as the fourth argument.
+
+```ts
+const sessionsPage = await layla.chat.getChatSessions(character.id, 10, 10, {
+  signal: controller.signal,
+});
+```
+
+## `layla.chat.getChatHistory(sessionId, offset?, range?, options?)`
+
+Fetches the newest chat messages for a specific chat session. Results come back as a paged array of `LaylaChatHistoryEntry` items in reverse chronological order.
+
+```ts
+const { sessions } = await layla.chat.getChatSessions(character.id, 0, 1);
+const sessionId = sessions[0]?.session_id;
+const history = sessionId
+  ? await layla.chat.getChatHistory(sessionId)
+  : [];
 
 for (const entry of history) {
   console.log(entry.role, entry.content);
 }
 ```
 
-Use `offset` and `range` when you need to page through a longer transcript.
+Use `offset` and `range` when you need to page through a longer transcript. Pass an abort signal as the fourth argument.
+
+```ts
+const historyPage = await layla.chat.getChatHistory(sessionId, 20, 10, {
+  signal: controller.signal,
+});
+```
 
 ## `layla.classifier.getSentiment(text, options?)`
 
@@ -466,6 +501,7 @@ Useful exported types include:
 - `LaylaChatRole`
 - `LaylaChatMessage`
 - `LaylaChatHistoryEntry`
+- `LaylaApiEvent_onGetChatSessionsResponse`
 - `LaylaCharacter`
 - `TavernCardV2`
 - `SentimentValues`

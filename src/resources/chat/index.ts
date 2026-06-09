@@ -7,7 +7,7 @@
  */
 
 import { LaylaAbortError } from '../../errors';
-import type { LaylaChatMessage } from '../../protocol';
+import type { LaylaApiEvent, LaylaApiEvent_onGetChatHistoryResponse, LaylaApiEvent_onGetChatSessionsResponse, LaylaChatHistoryEntry, LaylaChatMessage } from '../../protocol';
 import { LaylaBridge } from '../../internal/bridge';
 import { ChatCompletionStream } from './stream';
 import type {
@@ -16,6 +16,7 @@ import type {
   ChatCompletionCreateParamsNonStreaming,
   ChatCompletionCreateParamsStreaming,
 } from './types';
+import { oneShot, RequestOptions } from '../../internal/one-shot';
 
 class Completions {
   create(
@@ -76,6 +77,48 @@ class Completions {
 
 export class Chat {
   readonly completions = new Completions();
+
+  /**
+   * Ask the native host for a character's chat history. Resolves once with the host's `on_get_chat_history_response` payload, or rejects on error/abort.
+   * Results are in reverse chronological order (newest first). Use `offset` and `range` to page through the history if needed.
+   * @param sessionId The ID of the session whose chat history is being requested.
+   * @param offset The starting point for the chat history results.
+   * @param range The number of chat history entries to retrieve.
+   * @param options Additional request options.
+   * @returns A promise that resolves to an array of chat history entries.
+   */
+  getChatHistory(sessionId: string, offset: number = 0, range: number = 10, options: RequestOptions = {}): Promise<LaylaChatHistoryEntry[]> {
+    return oneShot<LaylaChatHistoryEntry[]>(
+      { cmd: 'get_chat_history', data: { session_id: sessionId, offset, limit: range } },
+      'on_get_chat_history_response',
+      (event: LaylaApiEvent) => {
+        const data = (event as LaylaApiEvent_onGetChatHistoryResponse).data;
+        return data?.messages ?? [];
+      },
+      options.signal,
+    );
+  }
+
+  /**
+   * Ask the native host for a character's chat sessions. Resolves once with the host's `on_get_chat_sessions_response` payload, or rejects on error/abort.
+   * Results are in reverse chronological order (newest first). Use `offset` and `range` to page through the sessions if needed.
+   * @param characterId The ID of the character whose chat sessions are being requested.
+   * @param offset The starting point for the chat sessions results.
+   * @param range The number of chat sessions to retrieve.
+   * @param options Additional request options.
+   * @returns A promise that resolves to an object containing the chat sessions.
+   */
+  getChatSessions(characterId: string, offset: number = 0, range: number = 10, options: RequestOptions = {}): Promise<LaylaApiEvent_onGetChatSessionsResponse['data']> {
+    return oneShot<LaylaApiEvent_onGetChatSessionsResponse['data']>(
+      { cmd: 'get_chat_sessions', data: { character_id: characterId, offset, limit: range } },
+      'on_get_chat_sessions_response',
+      (event: LaylaApiEvent) => {
+        const data = (event as LaylaApiEvent_onGetChatSessionsResponse).data;
+        return data;
+      },
+      options.signal,
+    );
+  }
 }
 
 export { ChatCompletionStream } from './stream';

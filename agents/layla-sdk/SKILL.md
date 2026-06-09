@@ -1,6 +1,6 @@
 ---
 name: layla-sdk
-description: Use the @layla-network/sdk package in third-party Layla mini-apps and WebView apps. Covers the public API surface for creating a Layla client, OpenAI-shaped chat completions and streams, paginated character listing, character chat history, character images, sentiment analysis, image generation progress/results, abort handling, SDK errors, exported TypeScript types, and runtime expectations inside the Layla WebView.
+description: Use the @layla-network/sdk package in third-party Layla mini-apps and WebView apps. Covers the public API surface for creating a Layla client, OpenAI-shaped chat completions and streams, paginated character listing, chat sessions and session chat history, character images, sentiment analysis, image generation progress/results, abort handling, SDK errors, exported TypeScript types, and runtime expectations inside the Layla WebView.
 ---
 
 # Layla SDK
@@ -63,12 +63,13 @@ Use high-level client resources first:
 const layla = new LaylaSDK();
 
 await layla.characters.list();
-await layla.characters.getChatHistory(characterId);
 await layla.characters.getImage(characterId);
 await layla.characters.update(character);
 await layla.classifier.getSentiment('This is a happy message.');
 await layla.images.generateImage(prompt, onProgress);
 await layla.chat.completions.create({ messages });
+await layla.chat.getChatSessions(characterId);
+await layla.chat.getChatHistory(sessionId);
 ```
 
 Read `references/sdk-api.md` before using a method signature that is not shown here.
@@ -118,6 +119,23 @@ for await (const chunk of stream) {
 
 Breaking out of `for await` aborts the request.
 
+Use `layla.chat.getChatSessions(characterId, offset?, range?, options?)` to list a character's chat sessions before choosing which transcript to load. The result includes the character id and a newest-first `sessions` array with each session's `session_id`, `last_message_timestamp`, and `last_message_content`.
+
+```ts
+const { sessions } = await layla.chat.getChatSessions(character.id);
+const latestSessionId = sessions[0]?.session_id;
+```
+
+Use `layla.chat.getChatHistory(sessionId, offset?, range?, options?)` to fetch the newest chat messages for a specific session when you need to resume or inspect prior conversation state. The result is a paged array of `LaylaChatHistoryEntry` items in reverse chronological order.
+
+```ts
+const history: LaylaChatHistoryEntry[] = latestSessionId
+  ? await layla.chat.getChatHistory(latestSessionId)
+  : [];
+```
+
+The returned history entries are useful when building per-session summaries, transcript views, or follow-up prompts that depend on prior context.
+
 ## Characters
 
 Use `layla.characters.list(offset?, range?, options?)` to list available characters. Use `layla.characters.getImage(characterId, options?)` to retrieve a ready-to-use image source string.
@@ -151,14 +169,6 @@ const updatedId = await layla.characters.update({
 ```
 
 If the host creates a new character, the returned id may differ from the requested id.
-
-Use `layla.characters.getChatHistory(characterId, offset?, range?, options?)` to fetch the newest chat messages for a character when you need to resume or inspect prior conversation state. The result is a paged array of `LaylaChatHistoryEntry` items in reverse chronological order.
-
-```ts
-const history: LaylaChatHistoryEntry[] = await layla.characters.getChatHistory(character.id);
-```
-
-The returned entries are useful when building per-character summaries, transcript views, or follow-up prompts that depend on prior context.
 
 ## Sentiment
 

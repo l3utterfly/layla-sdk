@@ -35,6 +35,7 @@ export interface LaylaChatMessage {
 
 export interface LaylaChatHistoryEntry extends LaylaChatMessage {
   character_id: string;
+  session_id: string;
   timestamp: number;
 }
 
@@ -227,14 +228,14 @@ export interface LaylaApiUpdateCharacter {
 }
 
 /**
- * Ask the host for the chat history associated with a specific character ID.
+ * Ask the host for the chat history associated with a specific session ID.
  * The host should respond with an `on_get_chat_history_response` event containing an array of chat messages, each including the role, content, character ID, and timestamp.
  * The messages should be returned in reverse chronological order (newest to oldest).
  */
 export interface LaylaApiGetChatHistory {
   cmd: 'get_chat_history';
   data: {
-    character_id: string;
+    session_id: string;
     offset: number;
     limit: number;
   };
@@ -253,6 +254,19 @@ export interface LaylaApiGetSentiment {
 }
 
 /**
+ * Ask the host for the chat sessions associated with a specific character ID.
+ * The host should respond with an `on_get_chat_sessions_response` event containing an array of chat sessions, including the session ID, last message timestamp, and the last message content
+ */
+export interface LaylaApiGetChatSessions {
+  cmd: 'get_chat_sessions';
+  data: {
+    character_id: string;
+    offset: number;
+    limit: number;
+  }
+}
+
+/**
  * A request command (anything that opens a job and expects events back).
  * Add new one-shot commands here. `cancel` is not a request — it's a control
  * signal for an already-open job — so it lives outside this union.
@@ -265,7 +279,8 @@ export type LaylaApiRequest =
   LaylaApiGenerateImage |
   LaylaApiUpdateCharacter |
   LaylaApiGetChatHistory |
-  LaylaApiGetSentiment;
+  LaylaApiGetSentiment |
+  LaylaApiGetChatSessions;
 
 /* ---- RN -> Web events ------------------------------------------------------ */
 
@@ -335,13 +350,13 @@ export interface LaylaApiEvent_onUpdateCharacterResponse {
 }
 
 /**
- * The chat history for a `get_chat_history` request, containing an array of chat messages associated with the specified character ID.
- * Each message includes the role, content, character ID, and timestamp. The host should return the messages in reverse chronological order (newest to oldest).
+ * The chat history for a `get_chat_history` request, containing an array of chat messages associated with the specified session ID.
+ * Each message includes the role, content, session ID, and timestamp. The host should return the messages in reverse chronological order (newest to oldest).
  */
 export interface LaylaApiEvent_onGetChatHistoryResponse {
   event: 'on_get_chat_history_response';
   data: {
-    character_id: string;
+    session_id: string;
     messages: LaylaChatHistoryEntry[];
   };
 }
@@ -357,6 +372,22 @@ export interface LaylaApiEvent_onGetSentimentResponse {
   };
 }
 
+/**
+ * The chat sessions for a `get_chat_sessions` request, containing an array of chat sessions associated with the specified character ID.
+ * Each session includes the session ID, last message timestamp, and the last message content.
+ */
+export interface LaylaApiEvent_onGetChatSessionsResponse {
+  event: 'on_get_chat_sessions_response';
+  data: {
+    character_id: string;
+    sessions: Array<{
+      session_id: string;
+      last_message_timestamp: number;
+      last_message_content: string;
+    }>;
+  };
+}
+
 export type LaylaApiEvent =
   | LaylaApiEvent_onMsg
   | LaylaApiEvent_onMsgEnd
@@ -367,4 +398,5 @@ export type LaylaApiEvent =
   | LaylaApiEvent_onGenerateImageProgress
   | LaylaApiEvent_onUpdateCharacterResponse
   | LaylaApiEvent_onGetChatHistoryResponse
-  | LaylaApiEvent_onGetSentimentResponse;
+  | LaylaApiEvent_onGetSentimentResponse
+  | LaylaApiEvent_onGetChatSessionsResponse;

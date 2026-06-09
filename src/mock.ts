@@ -39,7 +39,7 @@ type MockChatHistorySource =
   | LaylaChatHistoryEntry[]
   | Record<string, LaylaChatHistoryEntry[]>
   | ((request: {
-      characterId: string;
+      sessionId: string;
       offset: number;
       limit: number;
     }) => LaylaChatHistoryEntry[] | Promise<LaylaChatHistoryEntry[]>);
@@ -253,7 +253,7 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
   }
 
   async function getChatHistoryEntries(data: {
-    character_id: string;
+    session_id: string;
     offset: number;
     limit: number;
   }): Promise<LaylaChatHistoryEntry[]> {
@@ -261,21 +261,21 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
 
     if (typeof source === 'function') {
       return source({
-        characterId: data.character_id,
+        sessionId: data.session_id,
         offset: data.offset,
         limit: data.limit,
       });
     }
 
     if (Array.isArray(source)) {
-      return source.filter((entry) => entry.character_id === data.character_id);
+      return source.filter((entry) => entry.session_id === data.session_id);
     }
 
-    return source[data.character_id] ?? [];
+    return source[data.session_id] ?? [];
   }
 
   async function handleGetChatHistory(data: {
-    character_id: string;
+    session_id: string;
     offset: number;
     limit: number;
   }): Promise<void> {
@@ -289,7 +289,7 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     emit({
       event: 'on_get_chat_history_response',
       data: {
-        character_id: data.character_id,
+        session_id: data.session_id,
         messages: history.slice(data.offset, data.offset + data.limit),
       },
     });

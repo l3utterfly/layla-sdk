@@ -30,6 +30,7 @@ export type {
   LaylaApiUpdateCharacter,
   LaylaApiGetChatHistory,
   LaylaApiGetSentiment,
+  LaylaApiGetChatSessions,
   LaylaApiCancel,
   LaylaApiRequest,
 
@@ -44,6 +45,7 @@ export type {
   LaylaApiEvent_onGenerateImageProgress,
   LaylaApiEvent_onUpdateCharacterResponse,
   LaylaApiEvent_onGetChatHistoryResponse,
+  LaylaApiEvent_onGetChatSessionsResponse,
   LaylaApiEvent_onGetSentimentResponse,
 } from './protocol';
 
