@@ -21,6 +21,7 @@
 
 import type {
   LaylaApiEvent,
+  LaylaApiEvent_onGetChatSessionsResponse,
   LaylaApiRequest,
   LaylaCharacter,
   LaylaChatHistoryEntry,
@@ -37,12 +38,10 @@ type MockReply =
 
 type MockChatHistorySource =
   | LaylaChatHistoryEntry[]
-  | Record<string, LaylaChatHistoryEntry[]>
-  | ((request: {
-      sessionId: string;
-      offset: number;
-      limit: number;
-    }) => LaylaChatHistoryEntry[] | Promise<LaylaChatHistoryEntry[]>);
+  | Record<string, LaylaChatHistoryEntry[]>;
+
+type MockChatSession =
+  LaylaApiEvent_onGetChatSessionsResponse['data']['sessions'][number];
 
 export interface LaylaMockOptions {
   /**
@@ -55,8 +54,9 @@ export interface LaylaMockOptions {
   /** Cards returned by `get_characters`. Defaults to two sample cards. */
   characters?: LaylaCharacter[];
   /**
-   * Messages returned by `get_chat_history`. Pass an array, a character-id keyed
-   * record, or a function returning the full newest-first history for a request.
+   * Static messages used by `get_chat_sessions` and `get_chat_history`. Pass an
+   * array of all messages, or a record of message arrays keyed by session id,
+   * character id, or any app-specific label.
    */
   chatHistory?: MockChatHistorySource;
   /** Delay before the first event of a response (simulated latency). Default 150ms. */
@@ -120,13 +120,9 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
   const errorRate = options.errorRate ?? 0;
   const characters =
     options.characters ?? [makeMockCharacter('Aria'), makeMockCharacter('Kai')];
-  const defaultChatHistory: Record<string, LaylaChatHistoryEntry[]> =
-    Object.fromEntries(
-      characters.map((character) => [
-        character.id,
-        makeMockChatHistory(character.id),
-      ]),
-    );
+  const defaultChatHistory = characters.flatMap((character) =>
+    makeMockChatHistory(character.id),
+  );
 
   // The single in-flight generation, mirroring the SDK's one-active-job model.
   let current: { cancelled: boolean } | null = null;
@@ -252,6 +248,11 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     });
   }
 
+  const flattenChatHistorySource = (
+    source: MockChatHistorySource,
+  ): LaylaChatHistoryEntry[] =>
+    Array.isArray(source) ? source : Object.values(source).flat();
+
   async function getChatHistoryEntries(data: {
     session_id: string;
     offset: number;
@@ -259,19 +260,39 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
   }): Promise<LaylaChatHistoryEntry[]> {
     const source = options.chatHistory ?? defaultChatHistory;
 
-    if (typeof source === 'function') {
-      return source({
-        sessionId: data.session_id,
-        offset: data.offset,
-        limit: data.limit,
-      });
+    if (!Array.isArray(source) && source[data.session_id]) {
+      return source[data.session_id];
     }
 
-    if (Array.isArray(source)) {
-      return source.filter((entry) => entry.session_id === data.session_id);
+    return flattenChatHistorySource(source).filter(
+      (entry) => entry.session_id === data.session_id,
+    );
+  }
+
+  function getChatSessions(characterId: string): MockChatSession[] {
+    const source = options.chatHistory ?? defaultChatHistory;
+    const bySession = new Map<string, LaylaChatHistoryEntry[]>();
+
+    for (const entry of flattenChatHistorySource(source)) {
+      const session = bySession.get(entry.session_id);
+      if (session) session.push(entry);
+      else bySession.set(entry.session_id, [entry]);
     }
 
-    return source[data.session_id] ?? [];
+    return [...bySession.entries()]
+      .filter(([, entries]) =>
+        entries.some((entry) => entry.character_id === characterId),
+      )
+      .map(([sessionId, entries]) => {
+        const [latest] = [...entries].sort((a, b) => b.timestamp - a.timestamp);
+
+        return {
+          session_id: sessionId,
+          last_message_timestamp: latest?.timestamp ?? 0,
+          last_message_content: latest?.content ?? '',
+        };
+      })
+      .sort((a, b) => b.last_message_timestamp - a.last_message_timestamp);
   }
 
   async function handleGetChatHistory(data: {
@@ -389,6 +410,28 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     });
   }
 
+  async function handleGetChatSessions(data: {
+    character_id: string;
+    offset: number;
+    limit: number;
+  }): Promise<void> {
+    await delay(latencyMs);
+    if (shouldError()) {
+      emitError('Simulated chat sessions error');
+      return;
+    }
+
+    const sessions = getChatSessions(data.character_id);
+
+    emit({
+      event: 'on_get_chat_sessions_response',
+      data: {
+        character_id: data.character_id,
+        sessions: sessions.slice(data.offset, data.offset + data.limit),
+      },
+    });
+  }
+
   const fakeBridge = {
     postMessage(raw: string): void {
       let msg: LaylaApiRequest;
@@ -422,6 +465,9 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
           break;
         case 'get_sentiment':
           void handleGetSentiment(msg.data);
+          break;
+        case 'get_chat_sessions':
+          void handleGetChatSessions(msg.data);
           break;
         default:
           break;

@@ -466,6 +466,30 @@ installLaylaMock({
 });
 ```
 
+Customize mock session history with static transcript data:
+
+```ts
+installLaylaMock({
+  chatHistory: [
+    {
+      role: 'assistant',
+      name: 'Aria',
+      character_id: 'mock-aria',
+      session_id: 'mock-aria-session-1',
+      content: 'I saved the last idea we talked about.',
+      timestamp: Date.now(),
+    },
+  ],
+});
+
+const { sessions } = await layla.chat.getChatSessions('mock-aria');
+const history = sessions[0]
+  ? await layla.chat.getChatHistory(sessions[0].session_id)
+  : [];
+```
+
+When `chatHistory` is omitted, the mock supplies multiple sessions per default character so local apps can exercise the same session-first flow.
+
 The returned handle can uninstall the mock.
 
 ```ts
