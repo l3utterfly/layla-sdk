@@ -17,7 +17,9 @@ import LaylaSDK, {
   installLaylaMock,
   makeMockCharacter,
   type LaylaChatMessage,
+  type LaylaChatHistoryEntry,
   type LaylaCharacter,
+  type SentimentValues,
   type TavernCardV2,
 } from '@layla-network/sdk';
 ```
@@ -214,6 +216,32 @@ if (imageSrc) {
 }
 ```
 
+## `layla.characters.getChatHistory(characterId, offset?, range?, options?)`
+
+Fetches the newest chat messages for a character. Results come back as a paged array of `LaylaChatHistoryEntry` items in reverse chronological order.
+
+```ts
+const history = await layla.characters.getChatHistory(character.id);
+
+for (const entry of history) {
+  console.log(entry.role, entry.content);
+}
+```
+
+Use `offset` and `range` when you need to page through a longer transcript.
+
+## `layla.classifier.getSentiment(text, options?)`
+
+Scores a piece of text with Layla's sentiment classifier and returns `SentimentValues`, keyed by emotion category.
+
+```ts
+const sentiment = await layla.classifier.getSentiment(
+  'I am thrilled to start this new project.',
+);
+
+console.log(sentiment);
+```
+
 ## `layla.characters.update(character, options?)`
 
 Updates a Layla character and resolves with the updated character id. If the host creates a new character, the returned id may differ from the id you passed in.
@@ -308,7 +336,7 @@ try {
 
 ## Abort Signals
 
-Chat, character requests, and image generation can be cancelled from the mini-app.
+Chat, character requests, classifier requests, and image generation can be cancelled from the mini-app.
 
 ```ts
 const controller = new AbortController();
@@ -437,8 +465,10 @@ Useful exported types include:
 - `RequestOptions`
 - `LaylaChatRole`
 - `LaylaChatMessage`
+- `LaylaChatHistoryEntry`
 - `LaylaCharacter`
 - `TavernCardV2`
+- `SentimentValues`
 - `TavernCharacterBook`
 - `ChatCompletion`
 - `ChatCompletionChunk`
@@ -457,6 +487,7 @@ The TypeScript source is the source of truth for current signatures:
 - `src/resources/chat/index.ts`
 - `src/resources/chat/stream.ts`
 - `src/resources/characters.ts`
+- `src/resources/classifier.ts`
 - `src/resources/images.ts`
 - `src/protocol.ts`
 - `src/errors.ts`

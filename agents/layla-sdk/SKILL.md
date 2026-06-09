@@ -1,6 +1,6 @@
 ---
 name: layla-sdk
-description: Use the @layla-network/sdk package in third-party Layla mini-apps and WebView apps. Covers the public API surface for creating a Layla client, OpenAI-shaped chat completions and streams, paginated character listing and character images, image generation progress/results, abort handling, SDK errors, exported TypeScript types, and runtime expectations inside the Layla WebView.
+description: Use the @layla-network/sdk package in third-party Layla mini-apps and WebView apps. Covers the public API surface for creating a Layla client, OpenAI-shaped chat completions and streams, paginated character listing, character chat history, character images, sentiment analysis, image generation progress/results, abort handling, SDK errors, exported TypeScript types, and runtime expectations inside the Layla WebView.
 ---
 
 # Layla SDK
@@ -36,7 +36,9 @@ import LaylaSDK, {
   LaylaBridgeUnavailableError,
   LaylaError,
   type LaylaChatMessage,
+  type LaylaChatHistoryEntry,
   type LaylaCharacter,
+  type SentimentValues,
   type TavernCardV2,
 } from '@layla-network/sdk';
 ```
@@ -61,8 +63,10 @@ Use high-level client resources first:
 const layla = new LaylaSDK();
 
 await layla.characters.list();
+await layla.characters.getChatHistory(characterId);
 await layla.characters.getImage(characterId);
 await layla.characters.update(character);
+await layla.classifier.getSentiment('This is a happy message.');
 await layla.images.generateImage(prompt, onProgress);
 await layla.chat.completions.create({ messages });
 ```
@@ -147,6 +151,26 @@ const updatedId = await layla.characters.update({
 ```
 
 If the host creates a new character, the returned id may differ from the requested id.
+
+Use `layla.characters.getChatHistory(characterId, offset?, range?, options?)` to fetch the newest chat messages for a character when you need to resume or inspect prior conversation state. The result is a paged array of `LaylaChatHistoryEntry` items in reverse chronological order.
+
+```ts
+const history: LaylaChatHistoryEntry[] = await layla.characters.getChatHistory(character.id);
+```
+
+The returned entries are useful when building per-character summaries, transcript views, or follow-up prompts that depend on prior context.
+
+## Sentiment
+
+Use `layla.classifier.getSentiment(text, options?)` to score text with Layla's sentiment classifier. The result is a `SentimentValues` object keyed by emotion category.
+
+```ts
+const sentiment: SentimentValues = await layla.classifier.getSentiment(
+  'I am thrilled to start this new project.',
+);
+```
+
+This is useful for moderation, tone detection, UI reactions, or any feature that needs a lightweight emotional read on a message.
 
 ## Images
 

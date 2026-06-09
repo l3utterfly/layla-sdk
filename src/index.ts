@@ -20,14 +20,20 @@ export type {
   LaylaCharacter,
   TavernCardV2,
   TavernCharacterBook,
+  SentimentValues,
+
+  // command types
   LaylaApiSendMessage,
   LaylaApiGetCharacters,
   LaylaApiGetCharacterImage,
   LaylaApiGenerateImage,
   LaylaApiUpdateCharacter,
   LaylaApiGetChatHistory,
+  LaylaApiGetSentiment,
   LaylaApiCancel,
   LaylaApiRequest,
+
+  // event types
   LaylaApiEvent,
   LaylaApiEvent_onMsg,
   LaylaApiEvent_onMsgEnd,
@@ -38,6 +44,7 @@ export type {
   LaylaApiEvent_onGenerateImageProgress,
   LaylaApiEvent_onUpdateCharacterResponse,
   LaylaApiEvent_onGetChatHistoryResponse,
+  LaylaApiEvent_onGetSentimentResponse,
 } from './protocol';
 
 // Errors.
