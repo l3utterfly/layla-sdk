@@ -45,6 +45,71 @@ export interface LaylaCharacter {
   data: TavernCardV2;
 }
 
+/* ---- Sentiment Analysis ---------------------------------------------------- */
+export const SENTIMENT_EMOJIS = {
+  admiration: '🤩',
+  amusement: '😂',
+  anger: '😡',
+  annoyance: '😒',
+  approval: '👍',
+  caring: '🥰',
+  confusion: '😕',
+  curiosity: '🤔',
+  desire: '😏',
+  disappointment: '😞',
+  disapproval: '👎',
+  disgust: '🤢',
+  embarrassment: '😳',
+  excitement: '😆',
+  fear: '😱',
+  gratitude: '🙏',
+  grief: '😢',
+  joy: '😄',
+  love: '❤️',
+  nervousness: '😬',
+  optimism: '😊',
+  pride: '🦚',
+  realization: '😮',
+  relief: '😅',
+  remorse: '😔',
+  sadness: '😢',
+  surprise: '😲',
+  neutral: '😐',
+};
+
+export const SENTIMENT_THRESHOLDS = {
+  admiration: 0.3,
+  amusement: 0.25,
+  anger: 0.15,
+  annoyance: 0.2,
+  approval: 0.15,
+  caring: 0.2,
+  confusion: 0.15,
+  curiosity: 0.2,
+  desire: 0.2,
+  disappointment: 0.1,
+  disapproval: 0.15,
+  disgust: 0.2,
+  embarrassment: 0.3,
+  excitement: 0.25,
+  fear: 0.4,
+  gratitude: 0.25,
+  grief: 0.85,
+  joy: 0.2,
+  love: 0.3,
+  nervousness: 0.6,
+  optimism: 0.2,
+  pride: 0.7,
+  realization: 0.1,
+  relief: 0.5,
+  remorse: 0.2,
+  sadness: 0.2,
+  surprise: 0.15,
+  neutral: 0.3,
+};
+
+export type SentimentValues = typeof SENTIMENT_THRESHOLDS;
+
 /**
  * A character card following the Character Card V2 spec (`chara_card_v2`), as
  * returned by the host's `get_characters` handler. If your app already exports
@@ -122,6 +187,7 @@ export interface LaylaApiGetCharacterImage {
   };
 }
 
+
 /**
  * Stop the in-flight generation.
  *
@@ -175,6 +241,18 @@ export interface LaylaApiGetChatHistory {
 }
 
 /**
+ * Ask the host to analyze the sentiment of the provided text.
+ * The host should respond with an `on_get_sentiment_response` event containing the sentiment values for each emotion category defined in `SentimentValues`.
+ * Each sentiment value should be a number between 0 and 1, representing the intensity of that emotion in the input text.
+ */
+export interface LaylaApiGetSentiment {
+  cmd: 'get_sentiment';
+  data: {
+    text: string;
+  }
+}
+
+/**
  * A request command (anything that opens a job and expects events back).
  * Add new one-shot commands here. `cancel` is not a request — it's a control
  * signal for an already-open job — so it lives outside this union.
@@ -186,7 +264,8 @@ export type LaylaApiRequest =
   LaylaApiCancel |
   LaylaApiGenerateImage |
   LaylaApiUpdateCharacter |
-  LaylaApiGetChatHistory;
+  LaylaApiGetChatHistory |
+  LaylaApiGetSentiment;
 
 /* ---- RN -> Web events ------------------------------------------------------ */
 
@@ -267,6 +346,17 @@ export interface LaylaApiEvent_onGetChatHistoryResponse {
   };
 }
 
+/**
+ * The sentiment analysis results for a `get_sentiment` request, containing the sentiment values for each emotion category defined in `SentimentValues`.
+ * Each sentiment value is a number between 0 and 1, representing the intensity of that emotion in the input text.
+ */
+export interface LaylaApiEvent_onGetSentimentResponse {
+  event: 'on_get_sentiment_response';
+  data: {
+    sentiment_values: SentimentValues;
+  };
+}
+
 export type LaylaApiEvent =
   | LaylaApiEvent_onMsg
   | LaylaApiEvent_onMsgEnd
@@ -276,4 +366,5 @@ export type LaylaApiEvent =
   | LaylaApiEvent_onGenerateImageResponse
   | LaylaApiEvent_onGenerateImageProgress
   | LaylaApiEvent_onUpdateCharacterResponse
-  | LaylaApiEvent_onGetChatHistoryResponse;
+  | LaylaApiEvent_onGetChatHistoryResponse
+  | LaylaApiEvent_onGetSentimentResponse;

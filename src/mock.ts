@@ -344,6 +344,51 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     });
   }
 
+  async function handleGetSentiment(data: { text: string }): Promise<void> {
+    await delay(latencyMs);
+    if (shouldError()) {
+      emitError('Simulated sentiment analysis error');
+      return;
+    }
+    
+    // This mock doesn't do real sentiment analysis, we return random values for demonstration purposes.
+    emit({
+      event: 'on_get_sentiment_response',
+      data: {
+        sentiment_values: {
+          admiration: Math.random(),
+          amusement: Math.random(),
+          anger: Math.random(),
+          annoyance: Math.random(),
+          approval: Math.random(),
+          caring: Math.random(),
+          confusion: Math.random(),
+          curiosity: Math.random(),
+          desire: Math.random(),
+          disappointment: Math.random(),
+          disapproval: Math.random(),
+          disgust: Math.random(),
+          embarrassment: Math.random(),
+          excitement: Math.random(),
+          fear: Math.random(),
+          gratitude: Math.random(),
+          grief: Math.random(),
+          joy: Math.random(),
+          love: Math.random(),
+          nervousness: Math.random(),
+          optimism: Math.random(),
+          pride: Math.random(),
+          realization: Math.random(),
+          relief: Math.random(),
+          remorse: Math.random(),
+          sadness: Math.random(),
+          surprise: Math.random(),
+          neutral: Math.random(),
+        },
+      },
+    });
+  }
+
   const fakeBridge = {
     postMessage(raw: string): void {
       let msg: LaylaApiRequest;
