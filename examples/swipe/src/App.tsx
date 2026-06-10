@@ -474,15 +474,7 @@ async function generateImageWithTimeout(
   prompt: string,
   onProgress: (status: string, step: number, totalSteps: number) => void,
 ): Promise<string | null> {
-  const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), 45000);
-  try {
-    return await layla.images.generateImage(prompt, onProgress, {
-      signal: controller.signal,
-    });
-  } finally {
-    window.clearTimeout(timeoutId);
-  }
+  return await layla.images.generateImage(prompt, onProgress, {});
 }
 
 function errorMessage(error: unknown): string {
