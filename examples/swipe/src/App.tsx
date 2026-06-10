@@ -1250,6 +1250,7 @@ export default function CharacterSwipeDeck() {
   const start = useRef<{ x: number; y: number } | null>(null);
   const nextId = useRef(1);
   const generating = useRef(false);
+  const swiping = useRef(false);
 
   // the taste model lives in a ref (mutated in place; not rendered directly)
   const model = useRef<UserModel>(createUserModel());
@@ -1323,16 +1324,19 @@ export default function CharacterSwipeDeck() {
   };
 
   const finishSwipe = (dir: Direction, char: Character) => {
+    if (!swiping.current) return;
     if (dir === "right") setLiked((l) => [...l, char]);
     else setPassed((p) => p + 1);
     setHistory((h) => [...h, dir]);
     setIndex((i) => i + 1);
     setDrag({ x: 0, y: 0 });
     setLeaving(null);
+    swiping.current = false;
   };
 
   const decide = async (dir: Direction) => {
-    if (leaving || !current) return;
+    if (swiping.current || leaving || !current) return;
+    swiping.current = true;
     setLeaving(dir);
     const char = current;
     // Teach the model immediately: features = the axes we requested for this
@@ -1373,7 +1377,7 @@ export default function CharacterSwipeDeck() {
 
   /* pointer handlers (top card only) */
   const onPointerDown = (e: React.PointerEvent) => {
-    if (leaving || saveState) return;
+    if (swiping.current || leaving || saveState) return;
     start.current = { x: e.clientX, y: e.clientY };
     setDragging(true);
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
