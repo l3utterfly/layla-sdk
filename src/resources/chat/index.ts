@@ -1,13 +1,20 @@
 /**
  * resources/chat/index.ts
  * -----------------------
- * The chat resource: `layla.chat.completions.create(...)` / `.stream(...)`,
- * mirroring the OpenAI SDK shape. Re-exports the public chat types and the
- * stream class for the package barrel.
+ * The chat resource: completions, session/history reads, and message saves.
+ * Completions mirror the OpenAI SDK shape. Re-exports the public chat types
+ * and the stream class for the package barrel.
  */
 
 import { LaylaAbortError } from '../../errors';
-import type { LaylaApiEvent, LaylaApiEvent_onGetChatHistoryResponse, LaylaApiEvent_onGetChatSessionsResponse, LaylaChatHistoryEntry, LaylaChatMessage } from '../../protocol';
+import type {
+  LaylaApiEvent,
+  LaylaApiEvent_onGetChatHistoryResponse,
+  LaylaApiEvent_onGetChatSessionsResponse,
+  LaylaApiEvent_onSaveChatMessageResponse,
+  LaylaChatHistoryEntry,
+  LaylaChatMessage,
+} from '../../protocol';
 import { LaylaBridge } from '../../internal/bridge';
 import { ChatCompletionStream } from './stream';
 import type {
@@ -116,6 +123,26 @@ export class Chat {
         const data = (event as LaylaApiEvent_onGetChatSessionsResponse).data;
         return data;
       },
+      options.signal,
+    );
+  }
+
+  /**
+   * Create or update a chat history entry. Pass an id less than or equal to
+   * zero to create a message, or an existing positive id to update it.
+   * @param message The complete chat history entry to save.
+   * @param options Additional request options.
+   * @returns A promise that resolves to the saved entry, including its assigned id.
+   */
+  saveChatMessage(
+    message: LaylaChatHistoryEntry,
+    options: RequestOptions = {},
+  ): Promise<LaylaChatHistoryEntry> {
+    return oneShot<LaylaChatHistoryEntry>(
+      { cmd: 'save_chat_message', data: message },
+      'on_save_chat_message_response',
+      (event: LaylaApiEvent) =>
+        (event as LaylaApiEvent_onSaveChatMessageResponse).data,
       options.signal,
     );
   }

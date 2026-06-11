@@ -1,6 +1,6 @@
 ---
 name: layla-sdk
-description: Use the @layla-network/sdk package in third-party Layla mini-apps and WebView apps. Covers the public API surface for creating a Layla client, OpenAI-shaped chat completions and streams, paginated character listing, chat sessions and session chat history, character images, sentiment analysis, image generation progress/results, abort handling, SDK errors, exported TypeScript types, and runtime expectations inside the Layla WebView.
+description: Use the @layla-network/sdk package in third-party Layla mini-apps and WebView apps. Covers the public API surface for creating a Layla client, OpenAI-shaped chat completions and streams, paginated character listing, chat sessions, session history and message saves, character images, sentiment analysis, image generation progress/results, abort handling, SDK errors, exported TypeScript types, and runtime expectations inside the Layla WebView.
 ---
 
 # Layla SDK
@@ -70,6 +70,7 @@ await layla.images.generateImage(prompt, onProgress);
 await layla.chat.completions.create({ messages });
 await layla.chat.getChatSessions(characterId);
 await layla.chat.getChatHistory(sessionId);
+await layla.chat.saveChatMessage(message);
 ```
 
 Read `references/sdk-api.md` before using a method signature that is not shown here.
@@ -135,6 +136,23 @@ const history: LaylaChatHistoryEntry[] = latestSessionId
 ```
 
 The returned history entries are useful when building per-session summaries, transcript views, or follow-up prompts that depend on prior context.
+
+Use `layla.chat.saveChatMessage(message, options?)` to create or update a
+message in chat history. Pass a non-positive `id` to create a message, or an
+existing positive `id` to update it. The resolved entry contains the ID and
+other values returned by the host.
+
+```ts
+const saved = await layla.chat.saveChatMessage({
+  id: 0,
+  role: 'user',
+  name: 'alex',
+  content: 'Remember this message.',
+  character_id: character.id,
+  session_id: latestSessionId ?? crypto.randomUUID(),
+  timestamp: Date.now(),
+});
+```
 
 ## Characters
 

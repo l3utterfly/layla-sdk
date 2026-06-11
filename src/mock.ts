@@ -54,9 +54,9 @@ export interface LaylaMockOptions {
   /** Cards returned by `get_characters`. Defaults to two sample cards. */
   characters?: LaylaCharacter[];
   /**
-   * Static messages used by `get_chat_sessions` and `get_chat_history`. Pass an
-   * array of all messages, or a record of message arrays keyed by session id,
-   * character id, or any app-specific label.
+   * Initial messages used by chat session/history reads and message saves.
+   * Pass an array of all messages, or a record of message arrays keyed by
+   * session id, character id, or any app-specific label.
    */
   chatHistory?: MockChatHistorySource;
   /** Delay before the first event of a response (simulated latency). Default 150ms. */
@@ -120,9 +120,9 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
   const errorRate = options.errorRate ?? 0;
   const characters =
     options.characters ?? [makeMockCharacter('Aria'), makeMockCharacter('Kai')];
-  const defaultChatHistory = characters.flatMap((character) =>
-    makeMockChatHistory(character.id),
-  );
+  const defaultChatHistory = characters
+    .flatMap((character) => makeMockChatHistory(character.id))
+    .map((entry, index) => ({ ...entry, id: index + 1 }));
 
   // The single in-flight generation, mirroring the SDK's one-active-job model.
   let current: { cancelled: boolean } | null = null;
@@ -253,27 +253,24 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
   ): LaylaChatHistoryEntry[] =>
     Array.isArray(source) ? source : Object.values(source).flat();
 
+  const chatHistory = flattenChatHistorySource(
+    options.chatHistory ?? defaultChatHistory,
+  ).map((entry) => ({ ...entry }));
+
   async function getChatHistoryEntries(data: {
     session_id: string;
     offset: number;
     limit: number;
   }): Promise<LaylaChatHistoryEntry[]> {
-    const source = options.chatHistory ?? defaultChatHistory;
-
-    if (!Array.isArray(source) && source[data.session_id]) {
-      return source[data.session_id];
-    }
-
-    return flattenChatHistorySource(source).filter(
+    return chatHistory.filter(
       (entry) => entry.session_id === data.session_id,
     );
   }
 
   function getChatSessions(characterId: string): MockChatSession[] {
-    const source = options.chatHistory ?? defaultChatHistory;
     const bySession = new Map<string, LaylaChatHistoryEntry[]>();
 
-    for (const entry of flattenChatHistorySource(source)) {
+    for (const entry of chatHistory) {
       const session = bySession.get(entry.session_id);
       if (session) session.push(entry);
       else bySession.set(entry.session_id, [entry]);
@@ -313,6 +310,40 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
         session_id: data.session_id,
         messages: history.slice(data.offset, data.offset + data.limit),
       },
+    });
+  }
+
+  async function handleSaveChatMessage(
+    message: LaylaChatHistoryEntry,
+  ): Promise<void> {
+    await delay(latencyMs);
+    if (shouldError()) {
+      emitError('Simulated save chat message error');
+      return;
+    }
+
+    const existingIndex =
+      message.id > 0
+        ? chatHistory.findIndex((entry) => entry.id === message.id)
+        : -1;
+    const saved =
+      message.id > 0
+        ? { ...message }
+        : {
+            ...message,
+            id:
+              chatHistory.reduce(
+                (maxId, entry) => Math.max(maxId, entry.id),
+                0,
+              ) + 1,
+          };
+
+    if (existingIndex >= 0) chatHistory[existingIndex] = saved;
+    else chatHistory.push(saved);
+
+    emit({
+      event: 'on_save_chat_message_response',
+      data: saved,
     });
   }
 
@@ -468,6 +499,9 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
           break;
         case 'get_chat_sessions':
           void handleGetChatSessions(msg.data);
+          break;
+        case 'save_chat_message':
+          void handleSaveChatMessage(msg.data);
           break;
         default:
           break;

@@ -34,6 +34,7 @@ export interface LaylaChatMessage {
 }
 
 export interface LaylaChatHistoryEntry extends LaylaChatMessage {
+  id: number;
   character_id: string;
   session_id: string;
   timestamp: number;
@@ -267,6 +268,17 @@ export interface LaylaApiGetChatSessions {
 }
 
 /**
+ * Ask the host to save a chat message to the history of a specific session.
+ * A new session will be created if the provided `session_id` does not exist.
+ * If provided id <= 0, a new chat message will be created. Otherwise, the existing chat message with the provided id will be updated.
+ * The host should respond with an `on_save_chat_message_response` event containing the saved chat message.
+ */
+export interface LaylaApiSaveChatMessage {
+  cmd: 'save_chat_message';
+  data: LaylaChatHistoryEntry;
+}
+
+/**
  * A request command (anything that opens a job and expects events back).
  * Add new one-shot commands here. `cancel` is not a request — it's a control
  * signal for an already-open job — so it lives outside this union.
@@ -280,7 +292,8 @@ export type LaylaApiRequest =
   LaylaApiUpdateCharacter |
   LaylaApiGetChatHistory |
   LaylaApiGetSentiment |
-  LaylaApiGetChatSessions;
+  LaylaApiGetChatSessions |
+  LaylaApiSaveChatMessage;
 
 /* ---- RN -> Web events ------------------------------------------------------ */
 
@@ -388,6 +401,16 @@ export interface LaylaApiEvent_onGetChatSessionsResponse {
   };
 }
 
+/**
+ * The response for a `save_chat_message` request, containing the updated chat message after the save is applied.
+ * Note: if the provided `id` in the request was <= 0, this indicates that a new chat message was created. In that case, the response will contain the new chat message with its assigned ID and other details.
+ * If the provided `id` in the request was > 0, this indicates that an existing chat message was updated. In that case, the response will contain the updated chat message with the same ID and updated details.
+ */
+export interface LaylaApiEvent_onSaveChatMessageResponse {
+  event: 'on_save_chat_message_response';
+  data: LaylaChatHistoryEntry;
+}
+
 export type LaylaApiEvent =
   | LaylaApiEvent_onMsg
   | LaylaApiEvent_onMsgEnd
@@ -399,4 +422,5 @@ export type LaylaApiEvent =
   | LaylaApiEvent_onUpdateCharacterResponse
   | LaylaApiEvent_onGetChatHistoryResponse
   | LaylaApiEvent_onGetSentimentResponse
-  | LaylaApiEvent_onGetChatSessionsResponse;
+  | LaylaApiEvent_onGetChatSessionsResponse
+  | LaylaApiEvent_onSaveChatMessageResponse;

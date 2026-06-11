@@ -4,6 +4,7 @@ export const MOCK_CHAT_HISTORY_CHARACTER_ID = 'custom-7f3a2b';
 
 const MOCK_CHAT_HISTORY_TEMPLATE: LaylaChatHistoryEntry[] = [
   {
+    id: 1,
     role: 'assistant',
     name: 'mira',
     character_id: MOCK_CHAT_HISTORY_CHARACTER_ID,
@@ -12,6 +13,7 @@ const MOCK_CHAT_HISTORY_TEMPLATE: LaylaChatHistoryEntry[] = [
     session_id: 'movie-night',
   },
   {
+    id: 2,
     role: 'user',
     name: 'alex',
     character_id: 'user',
@@ -20,6 +22,7 @@ const MOCK_CHAT_HISTORY_TEMPLATE: LaylaChatHistoryEntry[] = [
     session_id: 'movie-night',
   },
   {
+    id: 3,
     role: 'assistant',
     name: 'mira',
     character_id: MOCK_CHAT_HISTORY_CHARACTER_ID,
@@ -28,6 +31,7 @@ const MOCK_CHAT_HISTORY_TEMPLATE: LaylaChatHistoryEntry[] = [
     session_id: 'movie-night',
   },
   {
+    id: 4,
     role: 'user',
     name: 'alex',
     character_id: 'user',
@@ -36,6 +40,7 @@ const MOCK_CHAT_HISTORY_TEMPLATE: LaylaChatHistoryEntry[] = [
     session_id: 'movie-night',
   },
   {
+    id: 5,
     role: 'assistant',
     name: 'mira',
     character_id: MOCK_CHAT_HISTORY_CHARACTER_ID,
@@ -44,6 +49,7 @@ const MOCK_CHAT_HISTORY_TEMPLATE: LaylaChatHistoryEntry[] = [
     session_id: 'movie-night',
   },
   {
+    id: 6,
     role: 'user',
     name: 'alex',
     character_id: 'user',
@@ -52,6 +58,7 @@ const MOCK_CHAT_HISTORY_TEMPLATE: LaylaChatHistoryEntry[] = [
     session_id: 'movie-night',
   },
   {
+    id: 7,
     role: 'user',
     name: 'alex',
     character_id: 'user',
@@ -60,6 +67,7 @@ const MOCK_CHAT_HISTORY_TEMPLATE: LaylaChatHistoryEntry[] = [
     session_id: 'check-in',
   },
   {
+    id: 8,
     role: 'assistant',
     name: 'mira',
     character_id: MOCK_CHAT_HISTORY_CHARACTER_ID,
@@ -68,6 +76,7 @@ const MOCK_CHAT_HISTORY_TEMPLATE: LaylaChatHistoryEntry[] = [
     session_id: 'check-in',
   },
   {
+    id: 9,
     role: 'user',
     name: 'alex',
     character_id: 'user',
@@ -76,6 +85,7 @@ const MOCK_CHAT_HISTORY_TEMPLATE: LaylaChatHistoryEntry[] = [
     session_id: 'check-in',
   },
   {
+    id: 10,
     role: 'assistant',
     name: 'mira',
     character_id: MOCK_CHAT_HISTORY_CHARACTER_ID,
@@ -84,6 +94,7 @@ const MOCK_CHAT_HISTORY_TEMPLATE: LaylaChatHistoryEntry[] = [
     session_id: 'check-in',
   },
   {
+    id: 11,
     role: 'user',
     name: 'alex',
     character_id: 'user',
@@ -92,6 +103,7 @@ const MOCK_CHAT_HISTORY_TEMPLATE: LaylaChatHistoryEntry[] = [
     session_id: 'check-in',
   },
   {
+    id: 12,
     role: 'assistant',
     name: 'mira',
     character_id: MOCK_CHAT_HISTORY_CHARACTER_ID,
@@ -100,6 +112,7 @@ const MOCK_CHAT_HISTORY_TEMPLATE: LaylaChatHistoryEntry[] = [
     session_id: 'check-in',
   },
   {
+    id: 13,
     role: 'user',
     name: 'alex',
     character_id: 'user',
@@ -108,6 +121,7 @@ const MOCK_CHAT_HISTORY_TEMPLATE: LaylaChatHistoryEntry[] = [
     session_id: 'check-in',
   },
   {
+    id: 14,
     role: 'assistant',
     name: 'mira',
     character_id: MOCK_CHAT_HISTORY_CHARACTER_ID,
@@ -116,6 +130,7 @@ const MOCK_CHAT_HISTORY_TEMPLATE: LaylaChatHistoryEntry[] = [
     session_id: 'work-day',
   },
   {
+    id: 15,
     role: 'user',
     name: 'alex',
     character_id: 'user',
@@ -124,6 +139,7 @@ const MOCK_CHAT_HISTORY_TEMPLATE: LaylaChatHistoryEntry[] = [
     session_id: 'work-day',
   },
   {
+    id: 16,
     role: 'assistant',
     name: 'mira',
     character_id: MOCK_CHAT_HISTORY_CHARACTER_ID,
@@ -132,6 +148,7 @@ const MOCK_CHAT_HISTORY_TEMPLATE: LaylaChatHistoryEntry[] = [
     session_id: 'work-day',
   },
   {
+    id: 17,
     role: 'user',
     name: 'alex',
     character_id: 'user',
@@ -140,6 +157,7 @@ const MOCK_CHAT_HISTORY_TEMPLATE: LaylaChatHistoryEntry[] = [
     session_id: 'work-day',
   },
   {
+    id: 18,
     role: 'assistant',
     name: 'mira',
     character_id: MOCK_CHAT_HISTORY_CHARACTER_ID,
@@ -148,6 +166,7 @@ const MOCK_CHAT_HISTORY_TEMPLATE: LaylaChatHistoryEntry[] = [
     session_id: 'new-place',
   },
   {
+    id: 19,
     role: 'user',
     name: 'alex',
     character_id: 'user',
@@ -156,6 +175,7 @@ const MOCK_CHAT_HISTORY_TEMPLATE: LaylaChatHistoryEntry[] = [
     session_id: 'new-place',
   },
   {
+    id: 20,
     role: 'assistant',
     name: 'mira',
     character_id: MOCK_CHAT_HISTORY_CHARACTER_ID,
@@ -164,6 +184,7 @@ const MOCK_CHAT_HISTORY_TEMPLATE: LaylaChatHistoryEntry[] = [
     session_id: 'new-place',
   },
   {
+    id: 21,
     role: 'user',
     name: 'alex',
     character_id: 'user',

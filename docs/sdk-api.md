@@ -18,7 +18,9 @@ import LaylaSDK, {
   makeMockCharacter,
   type LaylaChatMessage,
   type LaylaChatHistoryEntry,
+  type LaylaApiSaveChatMessage,
   type LaylaApiEvent_onGetChatSessionsResponse,
+  type LaylaApiEvent_onSaveChatMessageResponse,
   type LaylaCharacter,
   type SentimentValues,
   type TavernCardV2,
@@ -261,6 +263,34 @@ Use `offset` and `range` when you need to page through a longer transcript. Pass
 
 ```ts
 const historyPage = await layla.chat.getChatHistory(sessionId, 20, 10, {
+  signal: controller.signal,
+});
+```
+
+## `layla.chat.saveChatMessage(message, options?)`
+
+Creates or updates a message in chat history and returns the saved
+`LaylaChatHistoryEntry`. Pass `id: 0` (or another non-positive value) to create
+a message. Pass an existing positive `id` to update it.
+
+```ts
+const saved = await layla.chat.saveChatMessage({
+  id: 0,
+  role: 'user',
+  name: 'alex',
+  content: 'Remember this message.',
+  character_id: character.id,
+  session_id: sessionId,
+  timestamp: Date.now(),
+});
+
+console.log(saved.id);
+```
+
+Pass an abort signal as the second argument:
+
+```ts
+const saved = await layla.chat.saveChatMessage(message, {
   signal: controller.signal,
 });
 ```
@@ -526,6 +556,8 @@ Useful exported types include:
 - `LaylaChatMessage`
 - `LaylaChatHistoryEntry`
 - `LaylaApiEvent_onGetChatSessionsResponse`
+- `LaylaApiSaveChatMessage`
+- `LaylaApiEvent_onSaveChatMessageResponse`
 - `LaylaCharacter`
 - `TavernCardV2`
 - `SentimentValues`
