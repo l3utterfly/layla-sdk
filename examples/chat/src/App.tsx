@@ -2,18 +2,37 @@ import { useEffect, useRef, useState } from "react";
 import {
   LaylaSDK,
   LaylaAbortError,
+  type ChatCompletionStream,
   type LaylaChatMessage,
 } from "../../../src/index";
 import "./App.css";
 
 const layla = new LaylaSDK();
+const sessionId = crypto.randomUUID();
+
+const saveChatMessage = async (
+  message: LaylaChatMessage,
+  characterId: "layla" | "user",
+) => {
+  try {
+    await layla.chat.saveChatMessage({
+      ...message,
+      id: 0,
+      character_id: characterId,
+      session_id: sessionId,
+      timestamp: Date.now(),
+    });
+  } catch (err) {
+    console.error("Failed to save chat message", err);
+  }
+};
 
 export default function App() {
   const [messages, setMessages] = useState<LaylaChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const streamRef = useRef<any>(null);
+  const streamRef = useRef<ChatCompletionStream | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -45,7 +64,11 @@ export default function App() {
     setInput("");
     setBusy(true);
 
+    let assistantContent = "";
+
     try {
+      await saveChatMessage(userMessage, "user");
+
       const stream = layla.chat.completions.stream({
         messages: nextMessages,
       });
@@ -53,6 +76,8 @@ export default function App() {
       streamRef.current = stream;
 
       stream.on("content", (_delta: string, snapshot: string) => {
+        assistantContent = snapshot;
+
         setMessages([
           ...nextMessages,
           {
@@ -60,10 +85,6 @@ export default function App() {
             content: snapshot,
           },
         ]);
-      });
-
-      stream.on("end", () => {
-        setBusy(false);
       });
 
       stream.on("error", (err: Error) => {
@@ -76,23 +97,41 @@ export default function App() {
             content: `Error: ${err.message}`,
           },
         ]);
-
-        setBusy(false);
       });
 
-      await stream.finalContent();
+      assistantContent = await stream.finalContent();
+
+      if (assistantContent) {
+        await saveChatMessage(
+          {
+            role: "assistant",
+            content: assistantContent,
+          },
+          "layla",
+        );
+      }
     } catch (err) {
-      if (!(err instanceof LaylaAbortError)) {
+      if (err instanceof LaylaAbortError) {
+        if (assistantContent) {
+          await saveChatMessage(
+            {
+              role: "assistant",
+              content: assistantContent,
+            },
+            "layla",
+          );
+        }
+      } else {
         console.error(err);
       }
-
+    } finally {
+      streamRef.current = null;
       setBusy(false);
     }
   };
 
   const stopGeneration = () => {
     streamRef.current?.abort();
-    setBusy(false);
   };
 
   return (
