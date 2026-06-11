@@ -396,7 +396,7 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     });
   }
 
-  async function handleGetSentiment(data: { text: string }): Promise<void> {
+  async function handleGetSentiment(_: { text: string }): Promise<void> {
     await delay(latencyMs);
     if (shouldError()) {
       emitError('Simulated sentiment analysis error');

@@ -23,7 +23,7 @@ import type {
   ChatCompletionCreateParamsNonStreaming,
   ChatCompletionCreateParamsStreaming,
 } from './types';
-import { oneShot, RequestOptions } from '../../internal/one-shot';
+import { oneShot, type RequestOptions } from '../../internal/one-shot';
 
 class Completions {
   create(

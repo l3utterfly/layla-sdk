@@ -14,8 +14,6 @@ import type {
   LaylaApiEvent_onGetCharacterImageResponse,
   LaylaCharacter,
   LaylaApiEvent_onUpdateCharacterResponse,
-  LaylaChatHistoryEntry,
-  LaylaApiEvent_onGetChatHistoryResponse,
 } from '../protocol';
 import { oneShot, type RequestOptions } from '../internal/one-shot';
 
