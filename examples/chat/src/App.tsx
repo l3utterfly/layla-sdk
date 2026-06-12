@@ -8,7 +8,7 @@ import {
 import "./App.css";
 
 const layla = new LaylaSDK();
-const sessionId = crypto.randomUUID();
+const sessionId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
 const saveChatMessage = async (
   message: LaylaChatMessage,
