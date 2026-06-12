@@ -32,6 +32,7 @@ export type {
   LaylaApiGetSentiment,
   LaylaApiGetChatSessions,
   LaylaApiSaveChatMessage,
+  LaylaApiSaveFile,
   LaylaApiCancel,
   LaylaApiRequest,
 
@@ -49,6 +50,7 @@ export type {
   LaylaApiEvent_onGetChatSessionsResponse,
   LaylaApiEvent_onSaveChatMessageResponse,
   LaylaApiEvent_onGetSentimentResponse,
+  LaylaApiEvent_onSaveFileResponse,
 } from './protocol';
 
 // Errors.
@@ -73,6 +75,10 @@ export type {
 
 // Image resource surface.
 export { Images } from './resources/images';
+
+// Utility resource surface.
+export { Utils } from './resources/utils';
+export type { SaveFileResult } from './resources/utils';
 
 // Client.
 export { LaylaSDK, Layla } from './client';

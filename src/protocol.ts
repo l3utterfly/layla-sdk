@@ -279,21 +279,35 @@ export interface LaylaApiSaveChatMessage {
 }
 
 /**
+ * Ask the host to save a file with the given filename and content. The host should handle the file saving process (e.g., by storing it locally)
+ * The host should respond with an `on_save_file_response` event indicating whether the file was saved successfully
+ */
+export interface LaylaApiSaveFile {
+  cmd: 'save_file';
+  data: {
+    filename: string;
+    content_base64: string; // file content encoded in base64 (excluding the data URI prefix)
+    share: boolean; // whether the host should show a share sheet after saving the file to allow the user to share it with other apps (if not, host will save it to the app's private directory)
+  };
+}
+
+/**
  * A request command (anything that opens a job and expects events back).
  * Add new one-shot commands here. `cancel` is not a request — it's a control
  * signal for an already-open job — so it lives outside this union.
  */
 export type LaylaApiRequest =
-  LaylaApiSendMessage |
-  LaylaApiGetCharacters |
-  LaylaApiGetCharacterImage |
-  LaylaApiCancel |
-  LaylaApiGenerateImage |
-  LaylaApiUpdateCharacter |
-  LaylaApiGetChatHistory |
-  LaylaApiGetSentiment |
-  LaylaApiGetChatSessions |
-  LaylaApiSaveChatMessage;
+  | LaylaApiSendMessage
+  | LaylaApiGetCharacters
+  | LaylaApiGetCharacterImage
+  | LaylaApiCancel
+  | LaylaApiGenerateImage
+  | LaylaApiUpdateCharacter
+  | LaylaApiGetChatHistory
+  | LaylaApiGetSentiment
+  | LaylaApiGetChatSessions
+  | LaylaApiSaveChatMessage
+  | LaylaApiSaveFile;
 
 /* ---- RN -> Web events ------------------------------------------------------ */
 
@@ -411,6 +425,18 @@ export interface LaylaApiEvent_onSaveChatMessageResponse {
   data: LaylaChatHistoryEntry;
 }
 
+/**
+ * The response for a `save_file` request, indicating whether the file was saved successfully and providing an optional message with additional information about the save operation (e.g., error details if the save was not successful).
+ */
+export interface LaylaApiEvent_onSaveFileResponse {
+  event: 'on_save_file_response';
+  data: {
+    filename: string;
+    success: boolean;
+    message?: string; // optional message providing additional information about the save operation (e.g., error details if success is false)
+  };
+}
+
 export type LaylaApiEvent =
   | LaylaApiEvent_onMsg
   | LaylaApiEvent_onMsgEnd
@@ -423,4 +449,5 @@ export type LaylaApiEvent =
   | LaylaApiEvent_onGetChatHistoryResponse
   | LaylaApiEvent_onGetSentimentResponse
   | LaylaApiEvent_onGetChatSessionsResponse
-  | LaylaApiEvent_onSaveChatMessageResponse;
+  | LaylaApiEvent_onSaveChatMessageResponse
+  | LaylaApiEvent_onSaveFileResponse;

@@ -463,6 +463,58 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     });
   }
 
+  async function handleSaveFile(data: {
+    filename: string;
+    content_base64: string;
+    share: boolean;
+  }): Promise<void> {
+    await delay(latencyMs);
+    if (shouldError()) {
+      emitError('Simulated file save error');
+      return;
+    }
+
+    try {
+      const binary = window.atob(data.content_base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let index = 0; index < binary.length; index++) {
+        bytes[index] = binary.charCodeAt(index);
+      }
+
+      const blob = new Blob([bytes], { type: 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = data.filename;
+      anchor.style.display = 'none';
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+
+      emit({
+        event: 'on_save_file_response',
+        data: {
+          filename: data.filename,
+          success: true,
+          message: data.share
+            ? 'Downloaded by the browser mock; share sheets are not available in browsers.'
+            : 'Downloaded by the browser mock.',
+        },
+      });
+    } catch (error) {
+      emit({
+        event: 'on_save_file_response',
+        data: {
+          filename: data.filename,
+          success: false,
+          message:
+            error instanceof Error ? error.message : 'Unable to download file.',
+        },
+      });
+    }
+  }
+
   const fakeBridge = {
     postMessage(raw: string): void {
       let msg: LaylaApiRequest;
@@ -502,6 +554,9 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
           break;
         case 'save_chat_message':
           void handleSaveChatMessage(msg.data);
+          break;
+        case 'save_file':
+          void handleSaveFile(msg.data);
           break;
         default:
           break;

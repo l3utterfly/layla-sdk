@@ -1,6 +1,6 @@
 ---
 name: layla-sdk
-description: Use the @layla-network/sdk package in third-party Layla mini-apps and WebView apps. Covers the public API surface for creating a Layla client, OpenAI-shaped chat completions and streams, paginated character listing, chat sessions, session history and message saves, character images, sentiment analysis, image generation progress/results, abort handling, SDK errors, exported TypeScript types, and runtime expectations inside the Layla WebView.
+description: Use the @layla-network/sdk package in third-party Layla mini-apps and WebView apps. Covers the public API surface for creating a Layla client, OpenAI-shaped chat completions and streams, paginated character listing, chat sessions, session history and message saves, character images, sentiment analysis, image generation progress/results, file saving, abort handling, SDK errors, exported TypeScript types, and runtime expectations inside the Layla WebView.
 ---
 
 # Layla SDK
@@ -71,6 +71,7 @@ await layla.chat.completions.create({ messages });
 await layla.chat.getChatSessions(characterId);
 await layla.chat.getChatHistory(sessionId);
 await layla.chat.saveChatMessage(message);
+await layla.utils.saveFile(filename, contentBase64, share);
 ```
 
 Read `references/sdk-api.md` before using a method signature that is not shown here.
@@ -221,6 +222,25 @@ Character images follow the same convention:
 const imageSrc = await layla.characters.getImage(character.id);
 if (imageSrc) imageElement.src = imageSrc;
 ```
+
+## Utilities
+
+Use `layla.utils.saveFile(filename, contentBase64, share?, options?)` to save
+base64-encoded content through the host. Omit the data URI prefix.
+
+```ts
+const result = await layla.utils.saveFile(
+  'notes.txt',
+  btoa('Saved from a Layla mini-app.'),
+  true,
+);
+
+if (!result.success) {
+  throw new Error(result.message ?? 'Unable to save file');
+}
+```
+
+With the browser mock installed, this downloads the content as a `Blob`.
 
 ## Abort Handling
 

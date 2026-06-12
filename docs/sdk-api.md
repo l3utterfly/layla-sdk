@@ -19,9 +19,12 @@ import LaylaSDK, {
   type LaylaChatMessage,
   type LaylaChatHistoryEntry,
   type LaylaApiSaveChatMessage,
+  type LaylaApiSaveFile,
   type LaylaApiEvent_onGetChatSessionsResponse,
   type LaylaApiEvent_onSaveChatMessageResponse,
+  type LaylaApiEvent_onSaveFileResponse,
   type LaylaCharacter,
+  type SaveFileResult,
   type SentimentValues,
   type TavernCardV2,
 } from '@layla-network/sdk';
@@ -399,6 +402,36 @@ try {
 }
 ```
 
+## `layla.utils.saveFile(filename, contentBase64, share?, options?)`
+
+Saves raw base64-encoded content as a file. Do not include a data URI prefix.
+Set `share` to `true` to ask the native host to open its share sheet after
+saving. It defaults to `false`.
+
+```ts
+const contentBase64 = btoa('Hello from Layla.');
+const result = await layla.utils.saveFile(
+  'hello.txt',
+  contentBase64,
+  true,
+);
+
+if (!result.success) {
+  throw new Error(result.message ?? 'Unable to save file');
+}
+```
+
+The browser mock downloads the content as a `Blob`. Browsers cannot reproduce
+the native share sheet, so `share: true` still performs a regular download.
+
+Pass an abort signal as the fourth argument:
+
+```ts
+await layla.utils.saveFile('hello.txt', contentBase64, false, {
+  signal: controller.signal,
+});
+```
+
 ## Abort Signals
 
 Chat, character requests, classifier requests, and image generation can be cancelled from the mini-app.
@@ -558,6 +591,9 @@ Useful exported types include:
 - `LaylaApiEvent_onGetChatSessionsResponse`
 - `LaylaApiSaveChatMessage`
 - `LaylaApiEvent_onSaveChatMessageResponse`
+- `LaylaApiSaveFile`
+- `LaylaApiEvent_onSaveFileResponse`
+- `SaveFileResult`
 - `LaylaCharacter`
 - `TavernCardV2`
 - `SentimentValues`
@@ -581,6 +617,7 @@ The TypeScript source is the source of truth for current signatures:
 - `src/resources/characters.ts`
 - `src/resources/classifier.ts`
 - `src/resources/images.ts`
+- `src/resources/utils.ts`
 - `src/protocol.ts`
 - `src/errors.ts`
 - `src/mock.ts`
