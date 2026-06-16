@@ -18,12 +18,18 @@ import LaylaSDK, {
   makeMockCharacter,
   type LaylaChatMessage,
   type LaylaChatHistoryEntry,
+  type LaylaMemory,
   type LaylaApiSaveChatMessage,
   type LaylaApiSaveFile,
+  type LaylaApiGetMemories,
+  type LaylaApiCreateOrUpdateMemories,
   type LaylaApiEvent_onGetChatSessionsResponse,
   type LaylaApiEvent_onSaveChatMessageResponse,
+  type LaylaApiEvent_onGetMemoriesResponse,
+  type LaylaApiEvent_onCreateOrUpdateMemoriesResponse,
   type LaylaApiEvent_onSaveFileResponse,
   type LaylaCharacter,
+  type MemoryListOptions,
   type SaveFileResult,
   type SentimentValues,
   type TavernCardV2,
@@ -298,6 +304,54 @@ const saved = await layla.chat.saveChatMessage(message, {
 });
 ```
 
+## `layla.memories.list(characterId, offset?, range?, options?)`
+
+Fetches the newest memories for a specific character. Results come back as a paged array of `LaylaMemory` items in reverse chronological order.
+
+```ts
+const memories = await layla.memories.list(character.id);
+
+for (const memory of memories) {
+  console.log(memory.rawText, memory.summary);
+}
+```
+
+Use `offset` and `range` when you need to page through a longer memory list. Pass `minTimestamp`, `maxTimestamp`, or an abort signal in the fourth argument.
+
+```ts
+const recentMemories = await layla.memories.list(character.id, 0, 20, {
+  minTimestamp: Date.now() - 7 * 24 * 60 * 60 * 1000,
+  signal: controller.signal,
+});
+```
+
+## `layla.memories.createOrUpdate(memories, options?)`
+
+Creates or updates memories and returns the saved `LaylaMemory` entries. Pass `id: 0` (or another non-positive value) to create a memory. Pass an existing positive `id` to update it.
+
+```ts
+const savedMemories = await layla.memories.createOrUpdate([
+  {
+    id: 0,
+    character_id: character.id,
+    rawText: 'Alex prefers concise answers.',
+    timestamp: Date.now(),
+    summary: 'Prefers concise answers.',
+    knowledgeGraphJSON: null,
+  },
+]);
+
+console.log(savedMemories[0]?.id);
+```
+
+Pass an abort signal as the second argument:
+
+```ts
+const savedMemories = await layla.memories.createOrUpdate(memories, {
+  signal: controller.signal,
+});
+```
+
 ## `layla.classifier.getSentiment(text, options?)`
 
 Scores a piece of text with Layla's sentiment classifier and returns `SentimentValues`, keyed by emotion category.
@@ -553,6 +607,27 @@ const history = sessions[0]
 
 When `chatHistory` is omitted, the mock supplies multiple sessions per default character so local apps can exercise the same session-first flow.
 
+Customize mock memories with static memory data:
+
+```ts
+installLaylaMock({
+  memories: [
+    {
+      id: 1,
+      character_id: 'mock-aria',
+      rawText: 'Aria remembers that Alex likes quiet mornings.',
+      timestamp: Date.now(),
+      summary: 'Alex likes quiet mornings.',
+      knowledgeGraphJSON: null,
+    },
+  ],
+});
+
+const memories = await layla.memories.list('mock-aria');
+```
+
+When `memories` is omitted, the mock supplies a small memory set per default character.
+
 The returned handle can uninstall the mock.
 
 ```ts
@@ -588,9 +663,15 @@ Useful exported types include:
 - `LaylaChatRole`
 - `LaylaChatMessage`
 - `LaylaChatHistoryEntry`
+- `LaylaMemory`
+- `MemoryListOptions`
 - `LaylaApiEvent_onGetChatSessionsResponse`
 - `LaylaApiSaveChatMessage`
 - `LaylaApiEvent_onSaveChatMessageResponse`
+- `LaylaApiGetMemories`
+- `LaylaApiCreateOrUpdateMemories`
+- `LaylaApiEvent_onGetMemoriesResponse`
+- `LaylaApiEvent_onCreateOrUpdateMemoriesResponse`
 - `LaylaApiSaveFile`
 - `LaylaApiEvent_onSaveFileResponse`
 - `SaveFileResult`
@@ -617,6 +698,7 @@ The TypeScript source is the source of truth for current signatures:
 - `src/resources/characters.ts`
 - `src/resources/classifier.ts`
 - `src/resources/images.ts`
+- `src/resources/memories.ts`
 - `src/resources/utils.ts`
 - `src/protocol.ts`
 - `src/errors.ts`

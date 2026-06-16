@@ -26,6 +26,7 @@ import type {
   LaylaCharacter,
   LaylaChatHistoryEntry,
   LaylaChatMessage,
+  LaylaMemory,
   TavernCardV2,
 } from './protocol';
 import { makeMockChatHistory } from './mock-data/chat-history';
@@ -39,6 +40,10 @@ type MockReply =
 type MockChatHistorySource =
   | LaylaChatHistoryEntry[]
   | Record<string, LaylaChatHistoryEntry[]>;
+
+type MockMemorySource =
+  | LaylaMemory[]
+  | Record<string, LaylaMemory[]>;
 
 type MockChatSession =
   LaylaApiEvent_onGetChatSessionsResponse['data']['sessions'][number];
@@ -59,6 +64,12 @@ export interface LaylaMockOptions {
    * session id, character id, or any app-specific label.
    */
   chatHistory?: MockChatHistorySource;
+  /**
+   * Initial memories used by memory list and create/update calls.
+   * Pass an array of all memories, or a record of memory arrays keyed by
+   * character id or any app-specific label.
+   */
+  memories?: MockMemorySource;
   /** Delay before the first event of a response (simulated latency). Default 150ms. */
   latencyMs?: number;
   /** Delay between streamed tokens. Default 40ms. */
@@ -123,6 +134,22 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
   const defaultChatHistory = characters
     .flatMap((character) => makeMockChatHistory(character.id))
     .map((entry, index) => ({ ...entry, id: index + 1 }));
+  const defaultMemories = characters.flatMap((character, characterIndex) =>
+    [0, 1].map((memoryIndex) => ({
+      id: characterIndex * 2 + memoryIndex + 1,
+      character_id: character.id,
+      rawText:
+        memoryIndex === 0
+          ? `${character.data.data.name} likes testing mini-app memory flows.`
+          : `${character.data.data.name} keeps mock memories newest first.`,
+      timestamp: Date.now() - (characterIndex * 2 + memoryIndex) * 60_000,
+      summary:
+        memoryIndex === 0
+          ? 'Enjoys testing memory flows.'
+          : 'Uses newest-first mock memories.',
+      knowledgeGraphJSON: null,
+    })),
+  );
 
   // The single in-flight generation, mirroring the SDK's one-active-job model.
   let current: { cancelled: boolean } | null = null;
@@ -255,6 +282,15 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
 
   const chatHistory = flattenChatHistorySource(
     options.chatHistory ?? defaultChatHistory,
+  ).map((entry) => ({ ...entry }));
+
+  const flattenMemorySource = (
+    source: MockMemorySource,
+  ): LaylaMemory[] =>
+    Array.isArray(source) ? source : Object.values(source).flat();
+
+  const memories = flattenMemorySource(
+    options.memories ?? defaultMemories,
   ).map((entry) => ({ ...entry }));
 
   async function getChatHistoryEntries(data: {
@@ -515,6 +551,83 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     }
   }
 
+  async function handleGetMemories(data: {
+    character_id: string;
+    offset: number;
+    limit: number;
+    min_timestamp?: number;
+    max_timestamp?: number;
+  }): Promise<void> {
+    await delay(latencyMs);
+    if (shouldError()) {
+      emitError('Simulated memories error');
+      return;
+    }
+
+    const filtered = memories
+      .filter((memory) => memory.character_id === data.character_id)
+      .filter((memory) =>
+        data.min_timestamp === undefined
+          ? true
+          : memory.timestamp > data.min_timestamp,
+      )
+      .filter((memory) =>
+        data.max_timestamp === undefined
+          ? true
+          : memory.timestamp < data.max_timestamp,
+      )
+      .sort((a, b) => b.timestamp - a.timestamp);
+
+    emit({
+      event: 'on_get_memories_response',
+      data: {
+        character_id: data.character_id,
+        memories: filtered.slice(data.offset, data.offset + data.limit),
+      },
+    });
+  }
+
+  async function handleCreateOrUpdateMemories(
+    requestedMemories: LaylaMemory[],
+  ): Promise<void> {
+    await delay(latencyMs);
+    if (shouldError()) {
+      emitError('Simulated create or update memories error');
+      return;
+    }
+
+    const saved = requestedMemories.map((memory) => {
+      const existingIndex =
+        memory.id > 0
+          ? memories.findIndex((entry) => entry.id === memory.id)
+          : -1;
+      const savedMemory =
+        memory.id > 0
+          ? { ...memory }
+          : {
+              ...memory,
+              id:
+                memories.reduce(
+                  (maxId, entry) => Math.max(maxId, entry.id),
+                  0,
+                ) + 1,
+            };
+
+      if (existingIndex >= 0) memories[existingIndex] = savedMemory;
+      else memories.push(savedMemory);
+
+      return savedMemory;
+    });
+
+    emit({
+      event: 'on_create_or_update_memories_response',
+      data: {
+        character_id: saved[0]?.character_id ?? '',
+        memories: saved,
+      },
+    });
+  }
+
   const fakeBridge = {
     postMessage(raw: string): void {
       let msg: LaylaApiRequest;
@@ -557,6 +670,12 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
           break;
         case 'save_file':
           void handleSaveFile(msg.data);
+          break;
+        case 'get_memories':
+          void handleGetMemories(msg.data);
+          break;
+        case 'create_or_update_memories':
+          void handleCreateOrUpdateMemories(msg.data);
           break;
         default:
           break;

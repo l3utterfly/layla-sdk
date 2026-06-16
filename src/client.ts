@@ -10,6 +10,7 @@ import { Characters } from './resources/characters';
 import { Images } from './resources/images';
 import { Classifier } from './resources/classifier';
 import { Utils } from './resources/utils';
+import { Memories } from './resources/memories';
 
 export interface LaylaSDKOptions {
   /** Reserved for future use (e.g. default model). */
@@ -22,6 +23,7 @@ export class LaylaSDK {
   readonly images = new Images();
   readonly classifier = new Classifier();
   readonly utils = new Utils();
+  readonly memories = new Memories();
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   constructor(_options: LaylaSDKOptions = {}) {}

@@ -47,6 +47,17 @@ export interface LaylaCharacter {
   data: TavernCardV2;
 }
 
+/* ---- memory ----------------------------------------------------------------- */
+
+export interface LaylaMemory {
+  id: number;
+  character_id: string;
+  rawText: string;
+  timestamp: number;
+  summary: string | null;
+  knowledgeGraphJSON: string | null; // JSON string representing the knowledge graph associated with this memory, which may include entities, relationships, and other relevant metadata extracted from the memory content
+}
+
 /* ---- Sentiment Analysis ---------------------------------------------------- */
 export const SENTIMENT_EMOJIS = {
   admiration: '🤩',
@@ -292,6 +303,32 @@ export interface LaylaApiSaveFile {
 }
 
 /**
+ * Ask the host for the memories associated with a specific character ID.
+ * The host should respond with an `on_get_memories_response` event containing an array of memories, each including the content, timestamp, and any additional metadata.
+ * The memories should be returned in reverse chronological order (newest to oldest). 
+*/
+export interface LaylaApiGetMemories {
+  cmd: 'get_memories';
+  data: {
+    character_id: string;
+    offset: number;
+    limit: number;
+    min_timestamp?: number; // if provided, only return memories created after this timestamp
+    max_timestamp?: number; // if provided, only return memories created before this timestamp
+  };
+}
+
+/**
+ * Ask the host to create a new memory or update existing memories
+ * If `memory.id` is <= 0, a new memory will be created. Otherwise, the existing memory with the provided id will be updated.
+ * The host should respond with an `on_create_or_update_memories_response` event containing the created or updated memories after the operation is applied.
+ */
+export interface LaylaApiCreateOrUpdateMemories {
+  cmd: 'create_or_update_memories';
+  data: LaylaMemory[]; // if memory.id <= 0, a new memory will be created. Otherwise, the existing memory with the provided id will be updated.
+};
+
+/**
  * A request command (anything that opens a job and expects events back).
  * Add new one-shot commands here. `cancel` is not a request — it's a control
  * signal for an already-open job — so it lives outside this union.
@@ -307,7 +344,9 @@ export type LaylaApiRequest =
   | LaylaApiGetSentiment
   | LaylaApiGetChatSessions
   | LaylaApiSaveChatMessage
-  | LaylaApiSaveFile;
+  | LaylaApiSaveFile
+  | LaylaApiGetMemories
+  | LaylaApiCreateOrUpdateMemories;
 
 /* ---- RN -> Web events ------------------------------------------------------ */
 
@@ -437,6 +476,28 @@ export interface LaylaApiEvent_onSaveFileResponse {
   };
 }
 
+/**
+ * The response for a `get_memories` request, containing an array of memories associated with the specified character ID in reverse chronological order (newest to oldest).
+ */
+export interface LaylaApiEvent_onGetMemoriesResponse {
+  event: 'on_get_memories_response';
+  data: {
+    character_id: string;
+    memories: LaylaMemory[];
+  };
+}
+
+/**
+ * The response for a `create_or_update_memories` request, containing the created or updated memories after the operation is applied.
+ */
+export interface LaylaApiEvent_onCreateOrUpdateMemoriesResponse {
+  event: 'on_create_or_update_memories_response';
+  data: {
+    character_id: string;
+    memories: LaylaMemory[]; // the created or updated memories with their assigned IDs and other details
+  };
+}
+
 export type LaylaApiEvent =
   | LaylaApiEvent_onMsg
   | LaylaApiEvent_onMsgEnd
@@ -450,4 +511,6 @@ export type LaylaApiEvent =
   | LaylaApiEvent_onGetSentimentResponse
   | LaylaApiEvent_onGetChatSessionsResponse
   | LaylaApiEvent_onSaveChatMessageResponse
-  | LaylaApiEvent_onSaveFileResponse;
+  | LaylaApiEvent_onSaveFileResponse
+  | LaylaApiEvent_onGetMemoriesResponse
+  | LaylaApiEvent_onCreateOrUpdateMemoriesResponse;

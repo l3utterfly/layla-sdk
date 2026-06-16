@@ -17,6 +17,7 @@ export type {
   LaylaChatRole,
   LaylaChatMessage,
   LaylaChatHistoryEntry,
+  LaylaMemory,
   LaylaCharacter,
   TavernCardV2,
   TavernCharacterBook,
@@ -33,6 +34,8 @@ export type {
   LaylaApiGetChatSessions,
   LaylaApiSaveChatMessage,
   LaylaApiSaveFile,
+  LaylaApiGetMemories,
+  LaylaApiCreateOrUpdateMemories,
   LaylaApiCancel,
   LaylaApiRequest,
 
@@ -51,6 +54,8 @@ export type {
   LaylaApiEvent_onSaveChatMessageResponse,
   LaylaApiEvent_onGetSentimentResponse,
   LaylaApiEvent_onSaveFileResponse,
+  LaylaApiEvent_onGetMemoriesResponse,
+  LaylaApiEvent_onCreateOrUpdateMemoriesResponse,
 } from './protocol';
 
 // Errors.
@@ -79,6 +84,10 @@ export { Images } from './resources/images';
 // Utility resource surface.
 export { Utils } from './resources/utils';
 export type { SaveFileResult } from './resources/utils';
+
+// Memory resource surface.
+export { Memories } from './resources/memories';
+export type { MemoryListOptions } from './resources/memories';
 
 // Client.
 export { LaylaSDK, Layla } from './client';
