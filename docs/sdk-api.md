@@ -414,7 +414,7 @@ const updatedId = await layla.characters.update({
 });
 ```
 
-## `layla.images.generateImage(prompt, onProgress, options?)`
+## `layla.images.generateImage(prompt, onProgress, img2img_base64?, options?)`
 
 Generates an image from a prompt. Progress updates are reported through the callback. The returned value is a ready-to-use image source string, or `null` if the host does not return an image.
 
@@ -434,6 +434,18 @@ if (imageSrc) {
   previewImage.src = imageSrc;
 }
 ```
+
+Pass `img2img_base64` when the host should use an existing image as the image-to-image base. Include the data URI prefix, such as `data:image/png;base64,`.
+
+```ts
+const imageSrc = await layla.images.generateImage(
+  'Restyle this portrait as soft watercolor',
+  onProgress,
+  sourceImageBase64,
+);
+```
+
+When no base image is needed, request options can still be passed as the third argument.
 
 Use an abort signal when the UI can cancel image generation:
 

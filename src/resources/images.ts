@@ -88,17 +88,18 @@ export class Images {
   generateImage(
     prompt: string,
     onProgress: (status: string, step: number, total_step: number) => void,
-    options: RequestOptions = {}
+    img2img_base64?: string,
+    options?: RequestOptions
   ): Promise<string | null> {
     const setupSince = () => {
       const sink = new ImagesBridgeSink();
 
-      if (options.signal?.aborted) {
+      if (options?.signal?.aborted) {
         // Never enqueue an already-aborted request.
         queueMicrotask(() => sink.abort(new LaylaAbortError()));
         return sink;
       }
-      if (options.signal) {
+      if (options?.signal) {
         options.signal.addEventListener(
           'abort',
           () => sink.abort(new LaylaAbortError()),
@@ -107,7 +108,13 @@ export class Images {
       }
 
       LaylaBridge.shared().enqueue({
-        message: { cmd: 'generate_image', data: { prompt } },
+        message: {
+          cmd: 'generate_image',
+          data: {
+            prompt,
+            img2img_base64,
+          },
+        },
         sink: sink,
       });
 
@@ -132,7 +139,7 @@ export class Images {
 
       // Since the current `ImagesBridgeSink` implementation doesn't call `fail` on error,
       // we can listen for aborts via the signal's 'abort' event.
-      options.signal?.addEventListener('abort', () => {
+      options?.signal?.addEventListener('abort', () => {
         onFailure(new LaylaAbortError());
       });
     });

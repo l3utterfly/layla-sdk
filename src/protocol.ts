@@ -222,6 +222,7 @@ export interface LaylaApiGenerateImage {
   cmd: 'generate_image';
   data: {
     prompt: string;
+    img2img_base64?: string; // optional base64-encoded image for img2img generation (including the data URI prefix)
   };
 }
 
