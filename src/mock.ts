@@ -45,6 +45,8 @@ type MockMemorySource =
   | LaylaMemory[]
   | Record<string, LaylaMemory[]>;
 
+type MockFileSource = Record<string, string>;
+
 type MockChatSession =
   LaylaApiEvent_onGetChatSessionsResponse['data']['sessions'][number];
 
@@ -70,6 +72,11 @@ export interface LaylaMockOptions {
    * character id or any app-specific label.
    */
   memories?: MockMemorySource;
+  /**
+   * Initial private app files used by `utils.readFile`.
+   * Values may be raw base64 strings or ready-to-use data URIs.
+   */
+  files?: MockFileSource;
   /** Delay before the first event of a response (simulated latency). Default 150ms. */
   latencyMs?: number;
   /** Delay between streamed tokens. Default 40ms. */
@@ -292,6 +299,9 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
   const memories = flattenMemorySource(
     options.memories ?? defaultMemories,
   ).map((entry) => ({ ...entry }));
+  const files = new Map<string, string>(
+    Object.entries(options.files ?? {}),
+  );
 
   async function getChatHistoryEntries(data: {
     session_id: string;
@@ -516,6 +526,7 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
       for (let index = 0; index < binary.length; index++) {
         bytes[index] = binary.charCodeAt(index);
       }
+      files.set(data.filename, data.content_base64);
 
       const blob = new Blob([bytes], { type: 'application/octet-stream' });
       const url = URL.createObjectURL(blob);
@@ -549,6 +560,35 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
         },
       });
     }
+  }
+
+  const toDataUri = (contentBase64: string): string =>
+    contentBase64.startsWith('data:')
+      ? contentBase64
+      : `data:application/octet-stream;base64,${contentBase64}`;
+
+  async function handleReadFile(data: {
+    filename: string;
+  }): Promise<void> {
+    await delay(latencyMs);
+    if (shouldError()) {
+      emitError('Simulated file read error');
+      return;
+    }
+
+    const contentBase64 = files.get(data.filename);
+
+    emit({
+      event: 'on_read_file_response',
+      data: {
+        filename: data.filename,
+        content_base64:
+          contentBase64 === undefined ? null : toDataUri(contentBase64),
+        ...(contentBase64 === undefined
+          ? { message: 'File not found in the browser mock.' }
+          : {}),
+      },
+    });
   }
 
   async function handleGetMemories(data: {
@@ -670,6 +710,9 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
           break;
         case 'save_file':
           void handleSaveFile(msg.data);
+          break;
+        case 'read_file':
+          void handleReadFile(msg.data);
           break;
         case 'get_memories':
           void handleGetMemories(msg.data);

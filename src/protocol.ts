@@ -303,6 +303,17 @@ export interface LaylaApiSaveFile {
 }
 
 /**
+ * Asks the host to read the contents of a file with the given filename + extension. Only reads files in your app's private directory.
+ * The host will respond with an `on_read_file_response` event containing the file content encoded in base64 (including the data URI prefix).
+ */
+export interface LaylaApiReadFile {
+  cmd: 'read_file';
+  data: {
+    filename: string;
+  };
+}
+
+/**
  * Ask the host for the memories associated with a specific character ID.
  * The host should respond with an `on_get_memories_response` event containing an array of memories, each including the content, timestamp, and any additional metadata.
  * The memories should be returned in reverse chronological order (newest to oldest). 
@@ -345,6 +356,7 @@ export type LaylaApiRequest =
   | LaylaApiGetChatSessions
   | LaylaApiSaveChatMessage
   | LaylaApiSaveFile
+  | LaylaApiReadFile
   | LaylaApiGetMemories
   | LaylaApiCreateOrUpdateMemories;
 
@@ -477,6 +489,20 @@ export interface LaylaApiEvent_onSaveFileResponse {
 }
 
 /**
+ * The response for a `read_file` request, containing the file content encoded in base64 (including the data URI prefix) if the read operation was successful.
+ * If there was an error reading the file (e.g., file not found, access denied, etc.), `content_base64` will be null, and an optional message may be provided with additional information about the read operation (e.g., error details).
+ */
+export interface LaylaApiEvent_onReadFileResponse {
+  event: 'on_read_file_response';
+  data: {
+    filename: string;
+    content_base64: string | null; // file content encoded in base64 (including the data URI prefix). If null, it indicates that there was an error reading the file (e.g., file not found, access denied, etc.)
+    message?: string; // optional message providing additional information about the read operation (e.g., error details if content_base64 is null)
+  }
+}
+
+
+/**
  * The response for a `get_memories` request, containing an array of memories associated with the specified character ID in reverse chronological order (newest to oldest).
  */
 export interface LaylaApiEvent_onGetMemoriesResponse {
@@ -512,5 +538,6 @@ export type LaylaApiEvent =
   | LaylaApiEvent_onGetChatSessionsResponse
   | LaylaApiEvent_onSaveChatMessageResponse
   | LaylaApiEvent_onSaveFileResponse
+  | LaylaApiEvent_onReadFileResponse
   | LaylaApiEvent_onGetMemoriesResponse
   | LaylaApiEvent_onCreateOrUpdateMemoriesResponse;

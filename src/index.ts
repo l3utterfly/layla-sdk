@@ -34,6 +34,7 @@ export type {
   LaylaApiGetChatSessions,
   LaylaApiSaveChatMessage,
   LaylaApiSaveFile,
+  LaylaApiReadFile,
   LaylaApiGetMemories,
   LaylaApiCreateOrUpdateMemories,
   LaylaApiCancel,
@@ -54,6 +55,7 @@ export type {
   LaylaApiEvent_onSaveChatMessageResponse,
   LaylaApiEvent_onGetSentimentResponse,
   LaylaApiEvent_onSaveFileResponse,
+  LaylaApiEvent_onReadFileResponse,
   LaylaApiEvent_onGetMemoriesResponse,
   LaylaApiEvent_onCreateOrUpdateMemoriesResponse,
 } from './protocol';
@@ -83,7 +85,7 @@ export { Images } from './resources/images';
 
 // Utility resource surface.
 export { Utils } from './resources/utils';
-export type { SaveFileResult } from './resources/utils';
+export type { ReadFileResult, SaveFileResult } from './resources/utils';
 
 // Memory resource surface.
 export { Memories } from './resources/memories';

@@ -21,6 +21,7 @@ import LaylaSDK, {
   type LaylaMemory,
   type LaylaApiSaveChatMessage,
   type LaylaApiSaveFile,
+  type LaylaApiReadFile,
   type LaylaApiGetMemories,
   type LaylaApiCreateOrUpdateMemories,
   type LaylaApiEvent_onGetChatSessionsResponse,
@@ -28,8 +29,10 @@ import LaylaSDK, {
   type LaylaApiEvent_onGetMemoriesResponse,
   type LaylaApiEvent_onCreateOrUpdateMemoriesResponse,
   type LaylaApiEvent_onSaveFileResponse,
+  type LaylaApiEvent_onReadFileResponse,
   type LaylaCharacter,
   type MemoryListOptions,
+  type ReadFileResult,
   type SaveFileResult,
   type SentimentValues,
   type TavernCardV2,
@@ -486,6 +489,30 @@ await layla.utils.saveFile('hello.txt', contentBase64, false, {
 });
 ```
 
+## `layla.utils.readFile(filename, options?)`
+
+Reads a file from the mini-app's private directory. The returned
+`content_base64` includes a data URI prefix when the host finds the file, or
+`null` when the file cannot be read.
+
+```ts
+const result = await layla.utils.readFile('hello.txt');
+
+if (result.content_base64) {
+  downloadLink.href = result.content_base64;
+} else {
+  throw new Error(result.message ?? 'Unable to read file');
+}
+```
+
+Pass an abort signal as the second argument:
+
+```ts
+await layla.utils.readFile('hello.txt', {
+  signal: controller.signal,
+});
+```
+
 ## Abort Signals
 
 Chat, character requests, classifier requests, and image generation can be cancelled from the mini-app.
@@ -628,6 +655,21 @@ const memories = await layla.memories.list('mock-aria');
 
 When `memories` is omitted, the mock supplies a small memory set per default character.
 
+Customize mock private files with static base64 data or data URIs:
+
+```ts
+installLaylaMock({
+  files: {
+    'hello.txt': 'data:text/plain;base64,SGVsbG8gZnJvbSBMYXlsYS4=',
+  },
+});
+
+const result = await layla.utils.readFile('hello.txt');
+```
+
+Files saved through `layla.utils.saveFile(...)` are also available to later
+`layla.utils.readFile(...)` calls in the same mock session.
+
 The returned handle can uninstall the mock.
 
 ```ts
@@ -674,6 +716,9 @@ Useful exported types include:
 - `LaylaApiEvent_onCreateOrUpdateMemoriesResponse`
 - `LaylaApiSaveFile`
 - `LaylaApiEvent_onSaveFileResponse`
+- `LaylaApiReadFile`
+- `LaylaApiEvent_onReadFileResponse`
+- `ReadFileResult`
 - `SaveFileResult`
 - `LaylaCharacter`
 - `TavernCardV2`
