@@ -60,6 +60,9 @@ export type {
   LaylaApiEvent_onGetMemoriesResponse,
   LaylaApiEvent_onGetTopMemoriesResponse,
   LaylaApiEvent_onCreateOrUpdateMemoriesResponse,
+
+  // consts
+  SENTIMENT_THRESHOLDS,
 } from './protocol';
 
 // Errors.
