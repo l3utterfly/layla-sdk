@@ -162,8 +162,9 @@ const saved = await layla.chat.saveChatMessage({
 ## Memories
 
 Use `layla.memories.list(characterId, offset?, range?, options?)` to fetch a
-character's newest memories in reverse chronological order. Pass
-`minTimestamp` or `maxTimestamp` in the fourth argument to narrow the result.
+character's newest memories in reverse chronological order. Each memory includes
+the `session_id` of the chat session it belongs to. Pass `minTimestamp` or
+`maxTimestamp` in the fourth argument to narrow the result.
 
 ```ts
 const memories: LaylaMemory[] = await layla.memories.list(character.id, 0, 20);
@@ -186,6 +187,7 @@ const savedMemories = await layla.memories.createOrUpdate([
   {
     id: 0,
     character_id: character.id,
+    session_id: latestSessionId ?? crypto.randomUUID(),
     rawText: 'Alex prefers concise answers.',
     timestamp: Date.now(),
     summary: 'Prefers concise answers.',

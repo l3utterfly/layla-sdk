@@ -52,6 +52,7 @@ export interface LaylaCharacter {
 export interface LaylaMemory {
   id: number;
   character_id: string;
+  session_id: string;
   rawText: string;
   timestamp: number;
   summary: string | null;

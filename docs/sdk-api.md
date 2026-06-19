@@ -311,7 +311,7 @@ const saved = await layla.chat.saveChatMessage(message, {
 
 ## `layla.memories.list(characterId, offset?, range?, options?)`
 
-Fetches the newest memories for a specific character. Results come back as a paged array of `LaylaMemory` items in reverse chronological order.
+Fetches the newest memories for a specific character. Results come back as a paged array of `LaylaMemory` items in reverse chronological order. Each memory includes the `session_id` of the chat session it belongs to.
 
 ```ts
 const memories = await layla.memories.list(character.id);
@@ -361,6 +361,7 @@ const savedMemories = await layla.memories.createOrUpdate([
   {
     id: 0,
     character_id: character.id,
+    session_id: sessionId,
     rawText: 'Alex prefers concise answers.',
     timestamp: Date.now(),
     summary: 'Prefers concise answers.',
@@ -678,6 +679,7 @@ installLaylaMock({
     {
       id: 1,
       character_id: 'mock-aria',
+      session_id: 'mock-aria-session-1',
       rawText: 'Aria remembers that Alex likes quiet mornings.',
       timestamp: Date.now(),
       summary: 'Alex likes quiet mornings.',
