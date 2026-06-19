@@ -8,6 +8,7 @@ import type {
   LaylaApiEvent,
   LaylaApiEvent_onCreateOrUpdateMemoriesResponse,
   LaylaApiEvent_onGetMemoriesResponse,
+  LaylaApiEvent_onGetTopMemoriesResponse,
   LaylaMemory,
 } from '../protocol';
 import { oneShot, type RequestOptions } from '../internal/one-shot';
@@ -47,6 +48,30 @@ export class Memories {
       (event: LaylaApiEvent) =>
         (event as LaylaApiEvent_onGetMemoriesResponse).data.memories ?? [],
       signal,
+    );
+  }
+
+  /**
+   * Ask the native host for the top memories attached to a character.
+   * The host determines the ranking heuristic.
+   */
+  getTopMemories(
+    characterId: string,
+    limit = 10,
+    options: RequestOptions = {},
+  ): Promise<LaylaMemory[]> {
+    return oneShot<LaylaMemory[]>(
+      {
+        cmd: 'get_top_memories',
+        data: {
+          character_id: characterId,
+          limit,
+        },
+      },
+      'on_get_top_memories_response',
+      (event: LaylaApiEvent) =>
+        (event as LaylaApiEvent_onGetTopMemoriesResponse).data.memories ?? [],
+      options.signal,
     );
   }
 

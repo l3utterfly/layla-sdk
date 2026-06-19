@@ -627,6 +627,30 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     });
   }
 
+  async function handleGetTopMemories(data: {
+    character_id: string;
+    limit: number;
+  }): Promise<void> {
+    await delay(latencyMs);
+    if (shouldError()) {
+      emitError('Simulated top memories error');
+      return;
+    }
+
+    const topMemories = memories
+      .filter((memory) => memory.character_id === data.character_id)
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, data.limit);
+
+    emit({
+      event: 'on_get_top_memories_response',
+      data: {
+        character_id: data.character_id,
+        memories: topMemories,
+      },
+    });
+  }
+
   async function handleCreateOrUpdateMemories(
     requestedMemories: LaylaMemory[],
   ): Promise<void> {
@@ -716,6 +740,9 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
           break;
         case 'get_memories':
           void handleGetMemories(msg.data);
+          break;
+        case 'get_top_memories':
+          void handleGetTopMemories(msg.data);
           break;
         case 'create_or_update_memories':
           void handleCreateOrUpdateMemories(msg.data);

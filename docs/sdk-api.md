@@ -23,10 +23,12 @@ import LaylaSDK, {
   type LaylaApiSaveFile,
   type LaylaApiReadFile,
   type LaylaApiGetMemories,
+  type LaylaApiGetTopMemories,
   type LaylaApiCreateOrUpdateMemories,
   type LaylaApiEvent_onGetChatSessionsResponse,
   type LaylaApiEvent_onSaveChatMessageResponse,
   type LaylaApiEvent_onGetMemoriesResponse,
+  type LaylaApiEvent_onGetTopMemoriesResponse,
   type LaylaApiEvent_onCreateOrUpdateMemoriesResponse,
   type LaylaApiEvent_onSaveFileResponse,
   type LaylaApiEvent_onReadFileResponse,
@@ -324,6 +326,28 @@ Use `offset` and `range` when you need to page through a longer memory list. Pas
 ```ts
 const recentMemories = await layla.memories.list(character.id, 0, 20, {
   minTimestamp: Date.now() - 7 * 24 * 60 * 60 * 1000,
+  signal: controller.signal,
+});
+```
+
+## `layla.memories.getTopMemories(characterId, limit?, options?)`
+
+Fetches the top memories for a specific character. The host determines the
+ranking heuristic, and results come back as `LaylaMemory` items in reverse
+chronological order.
+
+```ts
+const topMemories = await layla.memories.getTopMemories(character.id, 5);
+
+for (const memory of topMemories) {
+  console.log(memory.summary ?? memory.rawText);
+}
+```
+
+Pass an abort signal as the third argument:
+
+```ts
+const topMemories = await layla.memories.getTopMemories(character.id, 5, {
   signal: controller.signal,
 });
 ```
@@ -663,9 +687,12 @@ installLaylaMock({
 });
 
 const memories = await layla.memories.list('mock-aria');
+const topMemories = await layla.memories.getTopMemories('mock-aria', 3);
 ```
 
-When `memories` is omitted, the mock supplies a small memory set per default character.
+When `memories` is omitted, the mock supplies a small memory set per default
+character. The top-memories mock response filters those same memories by
+character and returns the newest entries up to the requested limit.
 
 Customize mock private files with static base64 data or data URIs:
 
@@ -723,8 +750,10 @@ Useful exported types include:
 - `LaylaApiSaveChatMessage`
 - `LaylaApiEvent_onSaveChatMessageResponse`
 - `LaylaApiGetMemories`
+- `LaylaApiGetTopMemories`
 - `LaylaApiCreateOrUpdateMemories`
 - `LaylaApiEvent_onGetMemoriesResponse`
+- `LaylaApiEvent_onGetTopMemoriesResponse`
 - `LaylaApiEvent_onCreateOrUpdateMemoriesResponse`
 - `LaylaApiSaveFile`
 - `LaylaApiEvent_onSaveFileResponse`

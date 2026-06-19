@@ -331,6 +331,19 @@ export interface LaylaApiGetMemories {
 }
 
 /**
+ * Ask the host for the top memories associated with a specific character ID. This heuristic is determined by the host.
+ * The host should respond with an `on_get_top_memories_response` event containing an array of the top memories, each including the content, timestamp, and any additional metadata.
+ * The memories are returned in reverse chronological order (newest to oldest) and should include the content, timestamp, and any additional metadata.
+ */
+export interface LaylaApiGetTopMemories {
+  cmd: 'get_top_memories';
+  data: {
+    character_id: string;
+    limit: number;
+  };
+}
+
+/**
  * Ask the host to create a new memory or update existing memories
  * If `memory.id` is <= 0, a new memory will be created. Otherwise, the existing memory with the provided id will be updated.
  * The host should respond with an `on_create_or_update_memories_response` event containing the created or updated memories after the operation is applied.
@@ -359,6 +372,7 @@ export type LaylaApiRequest =
   | LaylaApiSaveFile
   | LaylaApiReadFile
   | LaylaApiGetMemories
+  | LaylaApiGetTopMemories
   | LaylaApiCreateOrUpdateMemories;
 
 /* ---- RN -> Web events ------------------------------------------------------ */
@@ -525,6 +539,17 @@ export interface LaylaApiEvent_onCreateOrUpdateMemoriesResponse {
   };
 }
 
+/**
+ * The response for a `get_top_memories` request, containing an array of the top memories associated with the specified character ID in reverse chronological order (newest to oldest).
+ */
+export interface LaylaApiEvent_onGetTopMemoriesResponse {
+  event: 'on_get_top_memories_response';
+  data: {
+    character_id: string;
+    memories: LaylaMemory[]; // the top memories returned by the host based on its heuristic, in reverse chronological order (newest to oldest) and including the content, timestamp, and any additional metadata
+  };
+}
+
 export type LaylaApiEvent =
   | LaylaApiEvent_onMsg
   | LaylaApiEvent_onMsgEnd
@@ -541,4 +566,5 @@ export type LaylaApiEvent =
   | LaylaApiEvent_onSaveFileResponse
   | LaylaApiEvent_onReadFileResponse
   | LaylaApiEvent_onGetMemoriesResponse
+  | LaylaApiEvent_onGetTopMemoriesResponse
   | LaylaApiEvent_onCreateOrUpdateMemoriesResponse;

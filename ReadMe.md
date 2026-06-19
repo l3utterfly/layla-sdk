@@ -70,7 +70,7 @@ Each release contains:
 ## Learn More
 
 - Read the [mini-apps overview](docs/mini-apps-overview.md) to understand app packaging, metadata, and the Layla WebView runtime.
-- Read the [SDK API reference](docs/sdk-api.md) for imports, chat completions, streaming, chat sessions, session history and message saves, memories, characters, image generation, file utilities, abort handling, and errors.
+- Read the [SDK API reference](docs/sdk-api.md) for imports, chat completions, streaming, chat sessions, session history and message saves, memory list/top/save APIs, characters, image generation, file utilities, abort handling, and errors.
 - Browse the [examples guide](examples/ReadMe.md) to choose a starting mini-app.
 
 ## Layla App

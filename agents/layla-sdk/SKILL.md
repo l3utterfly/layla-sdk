@@ -1,6 +1,6 @@
 ---
 name: layla-sdk
-description: Use the @layla-network/sdk package in third-party Layla mini-apps and WebView apps. Covers the public API surface for creating a Layla client, OpenAI-shaped chat completions and streams, paginated character listing, chat sessions, session history and message saves, character images, sentiment analysis, image generation progress/results, file saving, abort handling, SDK errors, exported TypeScript types, and runtime expectations inside the Layla WebView.
+description: Use the @layla-network/sdk package in third-party Layla mini-apps and WebView apps. Covers the public API surface for creating a Layla client, OpenAI-shaped chat completions and streams, paginated character listing, chat sessions, session history and message saves, memories, character images, sentiment analysis, image generation progress/results, file saving, abort handling, SDK errors, exported TypeScript types, and runtime expectations inside the Layla WebView.
 ---
 
 # Layla SDK
@@ -38,6 +38,7 @@ import LaylaSDK, {
   type LaylaChatMessage,
   type LaylaChatHistoryEntry,
   type LaylaCharacter,
+  type LaylaMemory,
   type SentimentValues,
   type TavernCardV2,
 } from '@layla-network/sdk';
@@ -71,6 +72,9 @@ await layla.chat.completions.create({ messages });
 await layla.chat.getChatSessions(characterId);
 await layla.chat.getChatHistory(sessionId);
 await layla.chat.saveChatMessage(message);
+await layla.memories.list(characterId);
+await layla.memories.getTopMemories(characterId);
+await layla.memories.createOrUpdate(memories);
 await layla.utils.saveFile(filename, contentBase64, share);
 ```
 
@@ -153,6 +157,41 @@ const saved = await layla.chat.saveChatMessage({
   session_id: latestSessionId ?? crypto.randomUUID(),
   timestamp: Date.now(),
 });
+```
+
+## Memories
+
+Use `layla.memories.list(characterId, offset?, range?, options?)` to fetch a
+character's newest memories in reverse chronological order. Pass
+`minTimestamp` or `maxTimestamp` in the fourth argument to narrow the result.
+
+```ts
+const memories: LaylaMemory[] = await layla.memories.list(character.id, 0, 20);
+```
+
+Use `layla.memories.getTopMemories(characterId, limit?, options?)` when you
+want the host's best-ranked memories for a character. The host determines the
+ranking heuristic, and the returned `LaylaMemory[]` is newest first.
+
+```ts
+const topMemories = await layla.memories.getTopMemories(character.id, 5);
+```
+
+Use `layla.memories.createOrUpdate(memories, options?)` to save memory records.
+Pass a non-positive `id` to create a memory, or an existing positive `id` to
+update it.
+
+```ts
+const savedMemories = await layla.memories.createOrUpdate([
+  {
+    id: 0,
+    character_id: character.id,
+    rawText: 'Alex prefers concise answers.',
+    timestamp: Date.now(),
+    summary: 'Prefers concise answers.',
+    knowledgeGraphJSON: null,
+  },
+]);
 ```
 
 ## Characters

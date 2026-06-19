@@ -36,6 +36,7 @@ export type {
   LaylaApiSaveFile,
   LaylaApiReadFile,
   LaylaApiGetMemories,
+  LaylaApiGetTopMemories,
   LaylaApiCreateOrUpdateMemories,
   LaylaApiCancel,
   LaylaApiRequest,
@@ -57,6 +58,7 @@ export type {
   LaylaApiEvent_onSaveFileResponse,
   LaylaApiEvent_onReadFileResponse,
   LaylaApiEvent_onGetMemoriesResponse,
+  LaylaApiEvent_onGetTopMemoriesResponse,
   LaylaApiEvent_onCreateOrUpdateMemoriesResponse,
 } from './protocol';
 
