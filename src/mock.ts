@@ -145,6 +145,7 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     [0, 1].map((memoryIndex) => ({
       id: characterIndex * 2 + memoryIndex + 1,
       character_id: character.id,
+      session_id: `mock-session-${characterIndex}`,
       rawText:
         memoryIndex === 0
           ? `${character.data.data.name} likes testing mini-app memory flows.`
