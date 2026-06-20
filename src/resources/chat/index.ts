@@ -11,9 +11,13 @@ import type {
   LaylaApiEvent,
   LaylaApiEvent_onGetChatHistoryResponse,
   LaylaApiEvent_onGetChatSessionsResponse,
+  LaylaApiEvent_onGetScheduledChatMessagesResponse,
   LaylaApiEvent_onSaveChatMessageResponse,
+  LaylaApiEvent_onCancelScheduledChatMessage,
+  LaylaApiEvent_onScheduledChatMessage,
   LaylaChatHistoryEntry,
   LaylaChatMessage,
+  LaylaScheduledChatMessage,
 } from '../../protocol';
 import { LaylaBridge } from '../../internal/bridge';
 import { ChatCompletionStream } from './stream';
@@ -143,6 +147,59 @@ export class Chat {
       'on_save_chat_message_response',
       (event: LaylaApiEvent) =>
         (event as LaylaApiEvent_onSaveChatMessageResponse).data,
+      options.signal,
+    );
+  }
+
+  /**
+   * Schedule a chat message to be sent by the host at a future timestamp.
+   * Pass `id <= 0` when creating a new scheduled message; the host returns the
+   * saved message with its assigned id.
+   */
+  scheduleChatMessage(
+    message: LaylaScheduledChatMessage,
+    options: RequestOptions = {},
+  ): Promise<LaylaScheduledChatMessage> {
+    return oneShot<LaylaScheduledChatMessage>(
+      { cmd: 'scheduled_chat_message', data: message },
+      'on_scheduled_chat_message',
+      (event: LaylaApiEvent) =>
+        (event as LaylaApiEvent_onScheduledChatMessage).data,
+      options.signal,
+    );
+  }
+
+  /**
+   * Fetch all scheduled chat messages known to the host.
+   *
+   * The host API is intentionally unpaged; callers should filter locally when
+   * they only need scheduled messages for one character or session.
+   */
+  getScheduledChatMessages(
+    options: RequestOptions = {},
+  ): Promise<LaylaScheduledChatMessage[]> {
+    return oneShot<LaylaScheduledChatMessage[]>(
+      { cmd: 'get_scheduled_chat_messages', data: null },
+      'on_get_scheduled_chat_messages_response',
+      (event: LaylaApiEvent) =>
+        (event as LaylaApiEvent_onGetScheduledChatMessagesResponse).data
+          .scheduled_messages ?? [],
+      options.signal,
+    );
+  }
+
+  /**
+   * Cancel a scheduled chat message by id.
+   */
+  cancelScheduledChatMessage(
+    id: number,
+    options: RequestOptions = {},
+  ): Promise<LaylaApiEvent_onCancelScheduledChatMessage['data']> {
+    return oneShot<LaylaApiEvent_onCancelScheduledChatMessage['data']>(
+      { cmd: 'cancel_scheduled_chat_message', data: { id } },
+      'on_cancel_scheduled_chat_message',
+      (event: LaylaApiEvent) =>
+        (event as LaylaApiEvent_onCancelScheduledChatMessage).data,
       options.signal,
     );
   }

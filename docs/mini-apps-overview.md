@@ -107,6 +107,9 @@ The SDK exposes this as higher-level APIs such as:
 
 - `layla.chat.completions.create(...)`
 - `layla.chat.completions.stream(...)`
+- `layla.chat.scheduleChatMessage(...)`
+- `layla.chat.getScheduledChatMessages(...)`
+- `layla.chat.cancelScheduledChatMessage(...)`
 - `layla.characters.list(...)`
 - `layla.characters.getImage(...)`
 - `layla.characters.update(...)`

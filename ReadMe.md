@@ -6,7 +6,7 @@
       <img src="assets/layla.png" alt="Layla butterfly logo" width="160">
     </td>
     <td>
-      The Layla SDK project provides the public TypeScript SDK for building custom Layla mini-apps. Mini-apps run inside Layla's WebView and can use <code>@layla-network/sdk</code> to talk to Layla app host through an OpenAI-shaped API for chat, streaming responses, characters, character images, memories, image generation, private file utilities, and local development mocks.
+      The Layla SDK project provides the public TypeScript SDK for building custom Layla mini-apps. Mini-apps run inside Layla's WebView and can use <code>@layla-network/sdk</code> to talk to Layla app host through an OpenAI-shaped API for chat, streaming responses, scheduled chat messages, characters, character images, memories, image generation, private file utilities, and local development mocks.
     </td>
   </tr>
 </table>
@@ -70,7 +70,7 @@ Each release contains:
 ## Learn More
 
 - Read the [mini-apps overview](docs/mini-apps-overview.md) to understand app packaging, metadata, and the Layla WebView runtime.
-- Read the [SDK API reference](docs/sdk-api.md) for imports, chat completions, streaming, chat sessions, session history and message saves, memory list/top/save APIs, characters, image generation, file utilities, abort handling, and errors.
+- Read the [SDK API reference](docs/sdk-api.md) for imports, chat completions, streaming, chat sessions, session history, message saves, scheduled chat messages, memory list/top/save APIs, characters, image generation, file utilities, abort handling, and errors.
 - Browse the [examples guide](examples/ReadMe.md) to choose a starting mini-app.
 
 ## Layla App

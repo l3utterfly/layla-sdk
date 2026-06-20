@@ -40,6 +40,14 @@ export interface LaylaChatHistoryEntry extends LaylaChatMessage {
   timestamp: number;
 }
 
+export interface LaylaScheduledChatMessage {
+  id: number;
+  character_id: string;
+  session_id: string | null;
+  timestamp: number;
+  message: string;
+}
+
 /* ---- character cards ------------------------------------------------------- */
 
 export interface LaylaCharacter {
@@ -355,6 +363,38 @@ export interface LaylaApiCreateOrUpdateMemories {
 };
 
 /**
+ * Ask the host to schedule a chat message to be sent at a specific timestamp (in the future).
+ * The host should store the scheduled message and send it at the specified time for the given character and optional session.
+ * The host should respond with an `on_scheduled_chat_message` event containing the scheduled chat message details, including the id, character_id, session_id, timestamp, and message content.
+ */
+export interface LaylaApiScheduledChatMessage {
+  cmd: 'scheduled_chat_message';
+  data: LaylaScheduledChatMessage;
+}
+
+/**
+ * Ask the host for the list of scheduled chat messages.
+ * The host should respond with an `on_scheduled_chat_message` event containing an array of scheduled messages, each containing the scheduled chat message details, including the id, character_id, session_id, timestamp, and message content.
+ * Note: this API will return ALL scheduled messages. Layla is not designed to handle a large number of scheduled messages, so this API does not support pagination or filtering. The host should return all scheduled messages in a single response and the client should handle any necessary filtering or pagination on its own.
+ */
+export interface LaylaApiGetScheduledChatMessages {
+  cmd: 'get_scheduled_chat_messages';
+  data: null; // no additional data is needed for this request
+}
+
+/**
+ * Ask the host to cancel a previously scheduled chat message by its ID.
+ * The host should remove the scheduled message from its storage and prevent it from being sent at the specified time.
+ * The host should respond with an `on_cancel_scheduled_chat_message` event indicating whether the cancellation was successful or if the scheduled message was not found.
+ */
+export interface LaylaApiCancelScheduledChatMessage {
+  cmd: 'cancel_scheduled_chat_message';
+  data: {
+    id: number; // the id of the scheduled chat message to cancel
+  };
+}
+
+/**
  * A request command (anything that opens a job and expects events back).
  * Add new one-shot commands here. `cancel` is not a request — it's a control
  * signal for an already-open job — so it lives outside this union.
@@ -374,7 +414,10 @@ export type LaylaApiRequest =
   | LaylaApiReadFile
   | LaylaApiGetMemories
   | LaylaApiGetTopMemories
-  | LaylaApiCreateOrUpdateMemories;
+  | LaylaApiCreateOrUpdateMemories
+  | LaylaApiScheduledChatMessage
+  | LaylaApiCancelScheduledChatMessage
+  | LaylaApiGetScheduledChatMessages;
 
 /* ---- RN -> Web events ------------------------------------------------------ */
 
@@ -551,6 +594,39 @@ export interface LaylaApiEvent_onGetTopMemoriesResponse {
   };
 }
 
+/**
+ * The response for a `scheduled_chat_message` request, containing the scheduled chat message details, including the id, character_id, session_id, timestamp, and message content.
+ * This event is emitted by the host after successfully scheduling a chat message to be sent at a specific timestamp (in the future).
+ */
+export interface LaylaApiEvent_onScheduledChatMessage {
+  event: 'on_scheduled_chat_message';
+  data: LaylaScheduledChatMessage;
+}
+
+/**
+ * The response for a `cancel_scheduled_chat_message` request, indicating whether the cancellation was successful or if the scheduled message was not found.
+ * This event is emitted by the host after attempting to cancel a previously scheduled chat message by its ID.
+ */
+export interface LaylaApiEvent_onCancelScheduledChatMessage {
+  event: 'on_cancel_scheduled_chat_message';
+  data: {
+    id: number; // the id of the scheduled chat message that was requested to be canceled
+    success: boolean; // whether the cancellation was successful (true) or if the scheduled message was not found (false)
+    message?: string; // optional message providing additional information about the cancellation operation (e.g., error details if success is false)
+  };
+}
+
+/**
+ * The response for a `get_scheduled_chat_messages` request, containing an array of all scheduled chat messages, each including the id, character_id, session_id, timestamp, and message content.
+ * This event is emitted by the host after successfully retrieving the list of scheduled chat messages.
+ */
+export interface LaylaApiEvent_onGetScheduledChatMessagesResponse {
+  event: 'on_get_scheduled_chat_messages_response';
+  data: {
+    scheduled_messages: LaylaScheduledChatMessage[]; // an array of all scheduled chat messages, each containing the id, character_id, session_id, timestamp, and message content
+  };
+}
+
 export type LaylaApiEvent =
   | LaylaApiEvent_onMsg
   | LaylaApiEvent_onMsgEnd
@@ -568,4 +644,7 @@ export type LaylaApiEvent =
   | LaylaApiEvent_onReadFileResponse
   | LaylaApiEvent_onGetMemoriesResponse
   | LaylaApiEvent_onGetTopMemoriesResponse
-  | LaylaApiEvent_onCreateOrUpdateMemoriesResponse;
+  | LaylaApiEvent_onCreateOrUpdateMemoriesResponse
+  | LaylaApiEvent_onScheduledChatMessage
+  | LaylaApiEvent_onCancelScheduledChatMessage
+  | LaylaApiEvent_onGetScheduledChatMessagesResponse;

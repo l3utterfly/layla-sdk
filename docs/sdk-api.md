@@ -18,8 +18,12 @@ import LaylaSDK, {
   makeMockCharacter,
   type LaylaChatMessage,
   type LaylaChatHistoryEntry,
+  type LaylaScheduledChatMessage,
   type LaylaMemory,
   type LaylaApiSaveChatMessage,
+  type LaylaApiScheduledChatMessage,
+  type LaylaApiGetScheduledChatMessages,
+  type LaylaApiCancelScheduledChatMessage,
   type LaylaApiSaveFile,
   type LaylaApiReadFile,
   type LaylaApiGetMemories,
@@ -27,6 +31,9 @@ import LaylaSDK, {
   type LaylaApiCreateOrUpdateMemories,
   type LaylaApiEvent_onGetChatSessionsResponse,
   type LaylaApiEvent_onSaveChatMessageResponse,
+  type LaylaApiEvent_onScheduledChatMessage,
+  type LaylaApiEvent_onGetScheduledChatMessagesResponse,
+  type LaylaApiEvent_onCancelScheduledChatMessage,
   type LaylaApiEvent_onGetMemoriesResponse,
   type LaylaApiEvent_onGetTopMemoriesResponse,
   type LaylaApiEvent_onCreateOrUpdateMemoriesResponse,
@@ -305,6 +312,74 @@ Pass an abort signal as the second argument:
 
 ```ts
 const saved = await layla.chat.saveChatMessage(message, {
+  signal: controller.signal,
+});
+```
+
+## `layla.chat.scheduleChatMessage(message, options?)`
+
+Creates a scheduled chat message and returns the saved
+`LaylaScheduledChatMessage`. Pass `id: 0` (or another non-positive value) to
+create a scheduled message; the host returns the assigned id.
+
+```ts
+const scheduled = await layla.chat.scheduleChatMessage({
+  id: 0,
+  character_id: character.id,
+  session_id: sessionId ?? null,
+  timestamp: Date.now() + 60 * 60 * 1000,
+  message: 'Check in about the plan in one hour.',
+});
+
+console.log(scheduled.id);
+```
+
+Pass an abort signal as the second argument:
+
+```ts
+const scheduled = await layla.chat.scheduleChatMessage(message, {
+  signal: controller.signal,
+});
+```
+
+## `layla.chat.getScheduledChatMessages(options?)`
+
+Fetches all scheduled chat messages known to the host. The host protocol does
+not paginate or filter this response, so filter locally when you only need
+messages for one character or session.
+
+```ts
+const scheduledMessages = await layla.chat.getScheduledChatMessages();
+const forCharacter = scheduledMessages.filter(
+  (entry) => entry.character_id === character.id,
+);
+```
+
+Pass an abort signal as the first argument:
+
+```ts
+const scheduledMessages = await layla.chat.getScheduledChatMessages({
+  signal: controller.signal,
+});
+```
+
+## `layla.chat.cancelScheduledChatMessage(id, options?)`
+
+Cancels a scheduled chat message by id. The response contains the requested
+`id`, a `success` boolean, and an optional `message` from the host.
+
+```ts
+const result = await layla.chat.cancelScheduledChatMessage(scheduled.id);
+
+if (!result.success) {
+  throw new Error(result.message ?? 'Unable to cancel scheduled message');
+}
+```
+
+Pass an abort signal as the second argument:
+
+```ts
+const result = await layla.chat.cancelScheduledChatMessage(scheduled.id, {
   signal: controller.signal,
 });
 ```
@@ -671,6 +746,35 @@ const history = sessions[0]
 
 When `chatHistory` is omitted, the mock supplies multiple sessions per default character so local apps can exercise the same session-first flow.
 
+Customize mock scheduled messages with static schedule data:
+
+```ts
+installLaylaMock({
+  scheduledChatMessages: [
+    {
+      id: 1,
+      character_id: 'mock-aria',
+      session_id: 'mock-aria-session-1',
+      timestamp: Date.now() + 60 * 60 * 1000,
+      message: 'Follow up on the saved idea.',
+    },
+  ],
+});
+
+const scheduled = await layla.chat.getScheduledChatMessages();
+const saved = await layla.chat.scheduleChatMessage({
+  id: 0,
+  character_id: 'mock-aria',
+  session_id: null,
+  timestamp: Date.now() + 2 * 60 * 60 * 1000,
+  message: 'Start a fresh check-in later.',
+});
+await layla.chat.cancelScheduledChatMessage(saved.id);
+```
+
+Scheduled messages created through the mock are available to later
+`layla.chat.getScheduledChatMessages()` calls in the same mock session.
+
 Customize mock memories with static memory data:
 
 ```ts
@@ -746,11 +850,18 @@ Useful exported types include:
 - `LaylaChatRole`
 - `LaylaChatMessage`
 - `LaylaChatHistoryEntry`
+- `LaylaScheduledChatMessage`
 - `LaylaMemory`
 - `MemoryListOptions`
 - `LaylaApiEvent_onGetChatSessionsResponse`
 - `LaylaApiSaveChatMessage`
 - `LaylaApiEvent_onSaveChatMessageResponse`
+- `LaylaApiScheduledChatMessage`
+- `LaylaApiGetScheduledChatMessages`
+- `LaylaApiCancelScheduledChatMessage`
+- `LaylaApiEvent_onScheduledChatMessage`
+- `LaylaApiEvent_onGetScheduledChatMessagesResponse`
+- `LaylaApiEvent_onCancelScheduledChatMessage`
 - `LaylaApiGetMemories`
 - `LaylaApiGetTopMemories`
 - `LaylaApiCreateOrUpdateMemories`

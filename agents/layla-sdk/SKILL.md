@@ -1,6 +1,6 @@
 ---
 name: layla-sdk
-description: Use the @layla-network/sdk package in third-party Layla mini-apps and WebView apps. Covers the public API surface for creating a Layla client, OpenAI-shaped chat completions and streams, paginated character listing, chat sessions, session history and message saves, memories, character images, sentiment analysis, image generation progress/results, file saving, abort handling, SDK errors, exported TypeScript types, and runtime expectations inside the Layla WebView.
+description: Use the @layla-network/sdk package in third-party Layla mini-apps and WebView apps. Covers the public API surface for creating a Layla client, OpenAI-shaped chat completions and streams, paginated character listing, chat sessions, session history, message saves, scheduled chat messages, memories, character images, sentiment analysis, image generation progress/results, file saving, abort handling, SDK errors, exported TypeScript types, and runtime expectations inside the Layla WebView.
 ---
 
 # Layla SDK
@@ -37,6 +37,7 @@ import LaylaSDK, {
   LaylaError,
   type LaylaChatMessage,
   type LaylaChatHistoryEntry,
+  type LaylaScheduledChatMessage,
   type LaylaCharacter,
   type LaylaMemory,
   type SentimentValues,
@@ -72,6 +73,9 @@ await layla.chat.completions.create({ messages });
 await layla.chat.getChatSessions(characterId);
 await layla.chat.getChatHistory(sessionId);
 await layla.chat.saveChatMessage(message);
+await layla.chat.scheduleChatMessage(scheduledMessage);
+await layla.chat.getScheduledChatMessages();
+await layla.chat.cancelScheduledChatMessage(scheduledMessageId);
 await layla.memories.list(characterId);
 await layla.memories.getTopMemories(characterId);
 await layla.memories.createOrUpdate(memories);
@@ -157,6 +161,39 @@ const saved = await layla.chat.saveChatMessage({
   session_id: latestSessionId ?? crypto.randomUUID(),
   timestamp: Date.now(),
 });
+```
+
+Use `layla.chat.scheduleChatMessage(message, options?)` to create a scheduled
+message. Pass a non-positive `id` when creating a scheduled message; the host
+returns the assigned id. `session_id` can be `null` when the host should
+schedule against the character without a specific existing session.
+
+```ts
+const scheduled: LaylaScheduledChatMessage =
+  await layla.chat.scheduleChatMessage({
+    id: 0,
+    character_id: character.id,
+    session_id: latestSessionId ?? null,
+    timestamp: Date.now() + 60 * 60 * 1000,
+    message: 'Check in about this in one hour.',
+  });
+```
+
+Use `layla.chat.getScheduledChatMessages(options?)` to fetch all scheduled chat
+messages. The host protocol returns all scheduled messages in one response, so
+filter locally for a character or session when needed.
+
+```ts
+const scheduledForCharacter = (await layla.chat.getScheduledChatMessages())
+  .filter((entry) => entry.character_id === character.id);
+```
+
+Use `layla.chat.cancelScheduledChatMessage(id, options?)` to cancel a scheduled
+message. The result includes `id`, `success`, and an optional host `message`.
+
+```ts
+const result = await layla.chat.cancelScheduledChatMessage(scheduled.id);
+if (!result.success) throw new Error(result.message ?? 'Unable to cancel');
 ```
 
 ## Memories

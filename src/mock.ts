@@ -27,6 +27,7 @@ import type {
   LaylaChatHistoryEntry,
   LaylaChatMessage,
   LaylaMemory,
+  LaylaScheduledChatMessage,
   TavernCardV2,
 } from './protocol';
 import { makeMockChatHistory } from './mock-data/chat-history';
@@ -46,6 +47,8 @@ type MockMemorySource =
   | Record<string, LaylaMemory[]>;
 
 type MockFileSource = Record<string, string>;
+
+type MockScheduledChatMessageSource = LaylaScheduledChatMessage[];
 
 type MockChatSession =
   LaylaApiEvent_onGetChatSessionsResponse['data']['sessions'][number];
@@ -77,6 +80,10 @@ export interface LaylaMockOptions {
    * Values may be raw base64 strings or ready-to-use data URIs.
    */
   files?: MockFileSource;
+  /**
+   * Initial scheduled chat messages used by scheduled-message APIs.
+   */
+  scheduledChatMessages?: MockScheduledChatMessageSource;
   /** Delay before the first event of a response (simulated latency). Default 150ms. */
   latencyMs?: number;
   /** Delay between streamed tokens. Default 40ms. */
@@ -300,6 +307,9 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
   const memories = flattenMemorySource(
     options.memories ?? defaultMemories,
   ).map((entry) => ({ ...entry }));
+  const scheduledChatMessages = (options.scheduledChatMessages ?? []).map(
+    (entry) => ({ ...entry }),
+  );
   const files = new Map<string, string>(
     Object.entries(options.files ?? {}),
   );
@@ -693,6 +703,84 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     });
   }
 
+  async function handleScheduledChatMessage(
+    message: LaylaScheduledChatMessage,
+  ): Promise<void> {
+    await delay(latencyMs);
+    if (shouldError()) {
+      emitError('Simulated scheduled chat message error');
+      return;
+    }
+
+    const existingIndex =
+      message.id > 0
+        ? scheduledChatMessages.findIndex((entry) => entry.id === message.id)
+        : -1;
+    const scheduled =
+      message.id > 0
+        ? { ...message }
+        : {
+            ...message,
+            id:
+              scheduledChatMessages.reduce(
+                (maxId, entry) => Math.max(maxId, entry.id),
+                0,
+              ) + 1,
+          };
+
+    if (existingIndex >= 0) scheduledChatMessages[existingIndex] = scheduled;
+    else scheduledChatMessages.push(scheduled);
+
+    emit({
+      event: 'on_scheduled_chat_message',
+      data: scheduled,
+    });
+  }
+
+  async function handleGetScheduledChatMessages(): Promise<void> {
+    await delay(latencyMs);
+    if (shouldError()) {
+      emitError('Simulated get scheduled chat messages error');
+      return;
+    }
+
+    emit({
+      event: 'on_get_scheduled_chat_messages_response',
+      data: {
+        scheduled_messages: [...scheduledChatMessages].sort(
+          (a, b) => a.timestamp - b.timestamp,
+        ),
+      },
+    });
+  }
+
+  async function handleCancelScheduledChatMessage(data: {
+    id: number;
+  }): Promise<void> {
+    await delay(latencyMs);
+    if (shouldError()) {
+      emitError('Simulated cancel scheduled chat message error');
+      return;
+    }
+
+    const existingIndex = scheduledChatMessages.findIndex(
+      (entry) => entry.id === data.id,
+    );
+    const success = existingIndex >= 0;
+    if (success) scheduledChatMessages.splice(existingIndex, 1);
+
+    emit({
+      event: 'on_cancel_scheduled_chat_message',
+      data: {
+        id: data.id,
+        success,
+        ...(success
+          ? {}
+          : { message: 'Scheduled chat message not found in the browser mock.' }),
+      },
+    });
+  }
+
   const fakeBridge = {
     postMessage(raw: string): void {
       let msg: LaylaApiRequest;
@@ -747,6 +835,15 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
           break;
         case 'create_or_update_memories':
           void handleCreateOrUpdateMemories(msg.data);
+          break;
+        case 'scheduled_chat_message':
+          void handleScheduledChatMessage(msg.data);
+          break;
+        case 'get_scheduled_chat_messages':
+          void handleGetScheduledChatMessages();
+          break;
+        case 'cancel_scheduled_chat_message':
+          void handleCancelScheduledChatMessage(msg.data);
           break;
         default:
           break;
