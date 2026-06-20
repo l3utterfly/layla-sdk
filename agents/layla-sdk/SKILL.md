@@ -1,6 +1,6 @@
 ---
 name: layla-sdk
-description: Use the @layla-network/sdk package in third-party Layla mini-apps and WebView apps. Covers the public API surface for creating a Layla client, OpenAI-shaped chat completions and streams, paginated character listing, chat sessions, session history, message saves, scheduled chat messages, memories, character images, sentiment analysis, image generation progress/results, file saving, abort handling, SDK errors, exported TypeScript types, and runtime expectations inside the Layla WebView.
+description: Use the @layla-network/sdk package in third-party Layla mini-apps and WebView apps. Covers the public API surface for creating a Layla client, OpenAI-shaped chat completions and streams, paginated character listing, chat sessions, session history, message saves, scheduled chat messages, memories, personas, character images, sentiment analysis, image generation progress/results, file saving, abort handling, SDK errors, exported TypeScript types, and runtime expectations inside the Layla WebView.
 ---
 
 # Layla SDK
@@ -40,6 +40,7 @@ import LaylaSDK, {
   type LaylaScheduledChatMessage,
   type LaylaCharacter,
   type LaylaMemory,
+  type LaylaPersona,
   type SentimentValues,
   type TavernCardV2,
 } from '@layla-network/sdk';
@@ -79,6 +80,7 @@ await layla.chat.cancelScheduledChatMessage(scheduledMessageId);
 await layla.memories.list(characterId);
 await layla.memories.getTopMemories(characterId);
 await layla.memories.createOrUpdate(memories);
+await layla.personas.get(characterId);
 await layla.utils.saveFile(filename, contentBase64, share);
 ```
 
@@ -266,6 +268,19 @@ const updatedId = await layla.characters.update({
 ```
 
 If the host creates a new character, the returned id may differ from the requested id.
+
+## Personas
+
+Use `layla.personas.get(characterId?, options?)` to fetch the default persona
+when `characterId` is omitted or `null`, or a character-specific persona when a
+character id is passed.
+
+```ts
+const persona: LaylaPersona = await layla.personas.get();
+const characterPersona = await layla.personas.get(character.id);
+```
+
+The returned persona has `name` and `description` fields.
 
 ## Sentiment
 

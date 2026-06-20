@@ -67,6 +67,13 @@ export interface LaylaMemory {
   knowledgeGraphJSON: string | null; // JSON string representing the knowledge graph associated with this memory, which may include entities, relationships, and other relevant metadata extracted from the memory content
 }
 
+/* ---- persona --------------------------------------------------------------- */
+
+export interface LaylaPersona {
+  name: string;
+  description: string;
+}
+
 /* ---- Sentiment Analysis ---------------------------------------------------- */
 export const SENTIMENT_EMOJIS = {
   admiration: '🤩',
@@ -395,6 +402,18 @@ export interface LaylaApiCancelScheduledChatMessage {
 }
 
 /**
+ * Ask the host for the default persona or a specific character's persona.
+ * The host should respond with an `on_get_persona_response` event containing the requested persona data.
+ * If `character_id` is null, the host should return the default persona.
+ */
+export interface LaylaApiGetPersona {
+  cmd: 'get_persona';
+  data: {
+    character_id: string | null; // if null, return the default persona
+  }
+}
+
+/**
  * A request command (anything that opens a job and expects events back).
  * Add new one-shot commands here. `cancel` is not a request — it's a control
  * signal for an already-open job — so it lives outside this union.
@@ -417,7 +436,8 @@ export type LaylaApiRequest =
   | LaylaApiCreateOrUpdateMemories
   | LaylaApiScheduledChatMessage
   | LaylaApiCancelScheduledChatMessage
-  | LaylaApiGetScheduledChatMessages;
+  | LaylaApiGetScheduledChatMessages
+  | LaylaApiGetPersona;
 
 /* ---- RN -> Web events ------------------------------------------------------ */
 
@@ -627,6 +647,14 @@ export interface LaylaApiEvent_onGetScheduledChatMessagesResponse {
   };
 }
 
+export interface LaylaApiEvent_onGetPersonaResponse {
+  event: 'on_get_persona_response';
+  data: {
+    character_id: string | null; // the character ID for which the persona was requested. If null, this is the default persona.
+    persona: LaylaPersona;
+  }
+};
+
 export type LaylaApiEvent =
   | LaylaApiEvent_onMsg
   | LaylaApiEvent_onMsgEnd
@@ -647,4 +675,5 @@ export type LaylaApiEvent =
   | LaylaApiEvent_onCreateOrUpdateMemoriesResponse
   | LaylaApiEvent_onScheduledChatMessage
   | LaylaApiEvent_onCancelScheduledChatMessage
-  | LaylaApiEvent_onGetScheduledChatMessagesResponse;
+  | LaylaApiEvent_onGetScheduledChatMessagesResponse
+  | LaylaApiEvent_onGetPersonaResponse;

@@ -113,6 +113,7 @@ The SDK exposes this as higher-level APIs such as:
 - `layla.characters.list(...)`
 - `layla.characters.getImage(...)`
 - `layla.characters.update(...)`
+- `layla.personas.get(...)`
 - `layla.images.generateImage(...)`
 
 ## Runtime Expectations

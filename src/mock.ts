@@ -27,6 +27,7 @@ import type {
   LaylaChatHistoryEntry,
   LaylaChatMessage,
   LaylaMemory,
+  LaylaPersona,
   LaylaScheduledChatMessage,
   TavernCardV2,
 } from './protocol';
@@ -45,6 +46,8 @@ type MockChatHistorySource =
 type MockMemorySource =
   | LaylaMemory[]
   | Record<string, LaylaMemory[]>;
+
+type MockPersonaSource = Record<string, LaylaPersona>;
 
 type MockFileSource = Record<string, string>;
 
@@ -75,6 +78,10 @@ export interface LaylaMockOptions {
    * character id or any app-specific label.
    */
   memories?: MockMemorySource;
+  /** Default persona returned by `get_persona` when no character id is passed. */
+  persona?: LaylaPersona;
+  /** Character-specific personas keyed by character id. */
+  personas?: MockPersonaSource;
   /**
    * Initial private app files used by `utils.readFile`.
    * Values may be raw base64 strings or ready-to-use data URIs.
@@ -207,6 +214,22 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
           : 'Uses newest-first mock memories.',
       knowledgeGraphJSON: null,
     })),
+  );
+  const defaultPersona: LaylaPersona = {
+    name: 'Mock User',
+    description: 'A default mock persona for local browser development.',
+  };
+  const defaultPersonas: MockPersonaSource = Object.fromEntries(
+    characters.map((character) => [
+      character.id,
+      {
+        name: character.data.data.name,
+        description:
+          character.data.data.description ||
+          character.data.data.personality ||
+          `${character.data.data.name} is a mock persona.`,
+      },
+    ]),
   );
 
   // The single in-flight generation, mirroring the SDK's one-active-job model.
@@ -350,6 +373,11 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
   const memories = flattenMemorySource(
     options.memories ?? defaultMemories,
   ).map((entry) => ({ ...entry }));
+  const persona = { ...(options.persona ?? defaultPersona) };
+  const personas: MockPersonaSource = {
+    ...defaultPersonas,
+    ...(options.personas ?? {}),
+  };
   const scheduledChatMessages = (options.scheduledChatMessages ?? []).map(
     (entry) => ({ ...entry }),
   );
@@ -746,6 +774,27 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     });
   }
 
+  async function handleGetPersona(data: {
+    character_id: string | null;
+  }): Promise<void> {
+    await delay(latencyMs);
+    if (shouldError()) {
+      emitError('Simulated persona error');
+      return;
+    }
+
+    emit({
+      event: 'on_get_persona_response',
+      data: {
+        character_id: data.character_id,
+        persona:
+          data.character_id === null
+            ? persona
+            : personas[data.character_id] ?? persona,
+      },
+    });
+  }
+
   async function handleScheduledChatMessage(
     message: LaylaScheduledChatMessage,
   ): Promise<void> {
@@ -878,6 +927,9 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
           break;
         case 'create_or_update_memories':
           void handleCreateOrUpdateMemories(msg.data);
+          break;
+        case 'get_persona':
+          void handleGetPersona(msg.data);
           break;
         case 'scheduled_chat_message':
           void handleScheduledChatMessage(msg.data);

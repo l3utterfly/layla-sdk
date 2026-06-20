@@ -20,6 +20,7 @@ import LaylaSDK, {
   type LaylaChatHistoryEntry,
   type LaylaScheduledChatMessage,
   type LaylaMemory,
+  type LaylaPersona,
   type LaylaApiSaveChatMessage,
   type LaylaApiScheduledChatMessage,
   type LaylaApiGetScheduledChatMessages,
@@ -29,6 +30,7 @@ import LaylaSDK, {
   type LaylaApiGetMemories,
   type LaylaApiGetTopMemories,
   type LaylaApiCreateOrUpdateMemories,
+  type LaylaApiGetPersona,
   type LaylaApiEvent_onGetChatSessionsResponse,
   type LaylaApiEvent_onSaveChatMessageResponse,
   type LaylaApiEvent_onScheduledChatMessage,
@@ -37,6 +39,7 @@ import LaylaSDK, {
   type LaylaApiEvent_onGetMemoriesResponse,
   type LaylaApiEvent_onGetTopMemoriesResponse,
   type LaylaApiEvent_onCreateOrUpdateMemoriesResponse,
+  type LaylaApiEvent_onGetPersonaResponse,
   type LaylaApiEvent_onSaveFileResponse,
   type LaylaApiEvent_onReadFileResponse,
   type LaylaCharacter,
@@ -455,6 +458,28 @@ const savedMemories = await layla.memories.createOrUpdate(memories, {
 });
 ```
 
+## `layla.personas.get(characterId?, options?)`
+
+Fetches the default persona when `characterId` is omitted or `null`. Pass a
+character id to ask the host for that character-specific persona.
+
+```ts
+const defaultPersona = await layla.personas.get();
+
+console.log(defaultPersona.name, defaultPersona.description);
+```
+
+```ts
+const characterPersona = await layla.personas.get(character.id, {
+  signal: controller.signal,
+});
+```
+
+The returned `LaylaPersona` contains:
+
+- `name`
+- `description`
+
 ## `layla.classifier.getSentiment(text, options?)`
 
 Scores a piece of text with Layla's sentiment classifier and returns `SentimentValues`, keyed by emotion category.
@@ -801,6 +826,30 @@ When `memories` is omitted, the mock supplies a small memory set per default
 character. The top-memories mock response filters those same memories by
 character and returns the newest entries up to the requested limit.
 
+Customize mock personas:
+
+```ts
+installLaylaMock({
+  persona: {
+    name: 'Alex',
+    description: 'A thoughtful local-development user persona.',
+  },
+  personas: {
+    'mock-aria': {
+      name: 'Aria',
+      description: 'A focused character-specific mock persona.',
+    },
+  },
+});
+
+const defaultPersona = await layla.personas.get();
+const ariaPersona = await layla.personas.get('mock-aria');
+```
+
+When `persona` is omitted, the mock supplies a default persona. When
+`personas` is omitted, the mock derives character-specific personas from the
+mock character cards.
+
 Customize mock private files with static base64 data or data URIs:
 
 ```ts
@@ -854,6 +903,7 @@ Useful exported types include:
 - `LaylaChatHistoryEntry`
 - `LaylaScheduledChatMessage`
 - `LaylaMemory`
+- `LaylaPersona`
 - `MemoryListOptions`
 - `LaylaApiEvent_onGetChatSessionsResponse`
 - `LaylaApiSaveChatMessage`
@@ -867,9 +917,11 @@ Useful exported types include:
 - `LaylaApiGetMemories`
 - `LaylaApiGetTopMemories`
 - `LaylaApiCreateOrUpdateMemories`
+- `LaylaApiGetPersona`
 - `LaylaApiEvent_onGetMemoriesResponse`
 - `LaylaApiEvent_onGetTopMemoriesResponse`
 - `LaylaApiEvent_onCreateOrUpdateMemoriesResponse`
+- `LaylaApiEvent_onGetPersonaResponse`
 - `LaylaApiSaveFile`
 - `LaylaApiEvent_onSaveFileResponse`
 - `LaylaApiReadFile`
@@ -900,6 +952,7 @@ The TypeScript source is the source of truth for current signatures:
 - `src/resources/classifier.ts`
 - `src/resources/images.ts`
 - `src/resources/memories.ts`
+- `src/resources/personas.ts`
 - `src/resources/utils.ts`
 - `src/protocol.ts`
 - `src/errors.ts`
