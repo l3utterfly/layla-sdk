@@ -318,7 +318,8 @@ if (!result.success) {
 }
 ```
 
-With the browser mock installed, this downloads the content as a `Blob`.
+With the browser mock installed, this stores the content in browser
+`localStorage`. Passing `share: true` also downloads the content as a `Blob`.
 
 ## Abort Handling
 

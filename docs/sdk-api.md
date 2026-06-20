@@ -590,8 +590,9 @@ if (!result.success) {
 }
 ```
 
-The browser mock downloads the content as a `Blob`. Browsers cannot reproduce
-the native share sheet, so `share: true` still performs a regular download.
+The browser mock stores saved files in browser `localStorage`. Browsers cannot
+reproduce the native share sheet, so `share: true` also performs a regular
+download.
 
 Pass an abort signal as the fourth argument:
 
@@ -812,8 +813,9 @@ installLaylaMock({
 const result = await layla.utils.readFile('hello.txt');
 ```
 
-Files saved through `layla.utils.saveFile(...)` are also available to later
-`layla.utils.readFile(...)` calls in the same mock session.
+Files saved through `layla.utils.saveFile(...)` are stored in browser
+`localStorage`, so later `layla.utils.readFile(...)` calls can read them on the
+same origin.
 
 The returned handle can uninstall the mock.
 

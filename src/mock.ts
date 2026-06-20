@@ -100,6 +100,49 @@ export interface LaylaMockHandle {
 }
 
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+const mockFileStoragePrefix = '@layla-network/sdk:mock:file:';
+
+const mockFileStorageKey = (filename: string): string =>
+  `${mockFileStoragePrefix}${filename}`;
+
+const storageErrorMessage = (error: unknown): string =>
+  error instanceof Error
+    ? error.message
+    : 'Browser localStorage is not available.';
+
+const writeStoredFile = (filename: string, contentBase64: string): void => {
+  window.localStorage.setItem(mockFileStorageKey(filename), contentBase64);
+};
+
+const readStoredFile = (filename: string): string | undefined => {
+  const contentBase64 = window.localStorage.getItem(mockFileStorageKey(filename));
+  return contentBase64 === null ? undefined : contentBase64;
+};
+
+const base64ToBytes = (contentBase64: string): Uint8Array<ArrayBuffer> => {
+  const binary = window.atob(contentBase64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+};
+
+const downloadFile = (
+  filename: string,
+  bytes: Uint8Array<ArrayBuffer>,
+): void => {
+  const blob = new Blob([bytes], { type: 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.style.display = 'none';
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+};
 
 /** Build a valid Character Card V2 with sensible mock defaults. */
 export function makeMockCharacter(
@@ -310,9 +353,13 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
   const scheduledChatMessages = (options.scheduledChatMessages ?? []).map(
     (entry) => ({ ...entry }),
   );
-  const files = new Map<string, string>(
-    Object.entries(options.files ?? {}),
-  );
+  try {
+    for (const [filename, contentBase64] of Object.entries(options.files ?? {})) {
+      writeStoredFile(filename, contentBase64);
+    }
+  } catch (error) {
+    log('unable to seed mock files in localStorage', error);
+  }
 
   async function getChatHistoryEntries(data: {
     session_id: string;
@@ -532,23 +579,12 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     }
 
     try {
-      const binary = window.atob(data.content_base64);
-      const bytes = new Uint8Array(binary.length);
-      for (let index = 0; index < binary.length; index++) {
-        bytes[index] = binary.charCodeAt(index);
-      }
-      files.set(data.filename, data.content_base64);
+      const bytes = base64ToBytes(data.content_base64);
+      writeStoredFile(data.filename, data.content_base64);
 
-      const blob = new Blob([bytes], { type: 'application/octet-stream' });
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement('a');
-      anchor.href = url;
-      anchor.download = data.filename;
-      anchor.style.display = 'none';
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 0);
+      if (data.share) {
+        downloadFile(data.filename, bytes);
+      }
 
       emit({
         event: 'on_save_file_response',
@@ -556,8 +592,8 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
           filename: data.filename,
           success: true,
           message: data.share
-            ? 'Downloaded by the browser mock; share sheets are not available in browsers.'
-            : 'Downloaded by the browser mock.',
+            ? 'Saved to browser localStorage and downloaded by the browser mock; share sheets are not available in browsers.'
+            : 'Saved to browser localStorage.',
         },
       });
     } catch (error) {
@@ -567,7 +603,7 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
           filename: data.filename,
           success: false,
           message:
-            error instanceof Error ? error.message : 'Unable to download file.',
+            error instanceof Error ? error.message : 'Unable to save file.',
         },
       });
     }
@@ -587,7 +623,14 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
       return;
     }
 
-    const contentBase64 = files.get(data.filename);
+    let contentBase64: string | undefined;
+    let message: string | undefined;
+
+    try {
+      contentBase64 = readStoredFile(data.filename);
+    } catch (error) {
+      message = storageErrorMessage(error);
+    }
 
     emit({
       event: 'on_read_file_response',
@@ -596,7 +639,7 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
         content_base64:
           contentBase64 === undefined ? null : toDataUri(contentBase64),
         ...(contentBase64 === undefined
-          ? { message: 'File not found in the browser mock.' }
+          ? { message: message ?? 'File not found in browser localStorage.' }
           : {}),
       },
     });
