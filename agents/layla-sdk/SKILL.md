@@ -1,6 +1,6 @@
 ---
 name: layla-sdk
-description: Use the @layla-network/sdk package in third-party Layla mini-apps and WebView apps. Covers the public API surface for creating a Layla client, OpenAI-shaped chat completions and streams, paginated character listing, chat sessions, session history, message saves, scheduled chat messages, memories, personas, character images, sentiment analysis, image generation progress/results, file saving, abort handling, SDK errors, exported TypeScript types, and runtime expectations inside the Layla WebView.
+description: Use the @layla-network/sdk package in third-party Layla mini-apps and WebView apps. Covers the public API surface for creating a Layla client, OpenAI-shaped chat completions and streams, paginated character listing, chat sessions, session history, message saves, scheduled chat messages, memories, personas, TTS voices and playback, character images, sentiment analysis, image generation progress/results, file saving, abort handling, SDK errors, exported TypeScript types, and runtime expectations inside the Layla WebView.
 ---
 
 # Layla SDK
@@ -41,6 +41,7 @@ import LaylaSDK, {
   type LaylaCharacter,
   type LaylaMemory,
   type LaylaPersona,
+  type LaylaTTSVoice,
   type SentimentValues,
   type TavernCardV2,
 } from '@layla-network/sdk';
@@ -81,6 +82,8 @@ await layla.memories.list(characterId);
 await layla.memories.getTopMemories(characterId);
 await layla.memories.createOrUpdate(memories);
 await layla.personas.get(characterId);
+await layla.tts.getVoices();
+await layla.tts.generateVoice(ttsVoiceId, text);
 await layla.utils.saveFile(filename, contentBase64, share);
 ```
 
@@ -281,6 +284,30 @@ const characterPersona = await layla.personas.get(character.id);
 ```
 
 The returned persona has `name` and `description` fields.
+
+## Text-To-Speech
+
+Use `layla.tts.getVoices(options?)` to fetch the TTS voices installed in Layla.
+
+```ts
+const voices: LaylaTTSVoice[] = await layla.tts.getVoices();
+const voice = voices[0];
+```
+
+Each voice includes `id`, `type`, `tags`, and `name`.
+
+Use `layla.tts.generateVoice(ttsVoiceId, text, options?)` to ask Layla to
+generate and play voice audio on the device. The promise resolves after the host
+emits `on_finished_speaking`, meaning playback has completed.
+
+```ts
+if (voice) {
+  await layla.tts.generateVoice(
+    voice.id,
+    'This line will be spoken by Layla.',
+  );
+}
+```
 
 ## Sentiment
 

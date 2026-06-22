@@ -20,6 +20,7 @@ export type {
   LaylaScheduledChatMessage,
   LaylaMemory,
   LaylaPersona,
+  LaylaTTSVoice,
   LaylaCharacter,
   TavernCardV2,
   TavernCharacterBook,
@@ -44,6 +45,8 @@ export type {
   LaylaApiGetTopMemories,
   LaylaApiCreateOrUpdateMemories,
   LaylaApiGetPersona,
+  LaylaApiGetTTSVoices,
+  LaylaApiGenerateVoice,
   LaylaApiCancel,
   LaylaApiRequest,
 
@@ -70,6 +73,8 @@ export type {
   LaylaApiEvent_onGetTopMemoriesResponse,
   LaylaApiEvent_onCreateOrUpdateMemoriesResponse,
   LaylaApiEvent_onGetPersonaResponse,
+  LaylaApiEvent_onGetTTSVoicesResponse,
+  LaylaApiEvent_onFinishedSpeaking,
 } from './protocol';
 export { SENTIMENT_THRESHOLDS } from './protocol';
 
@@ -106,6 +111,9 @@ export type { MemoryListOptions } from './resources/memories';
 
 // Persona resource surface.
 export { Personas } from './resources/personas';
+
+// Text-to-speech resource surface.
+export { TTS } from './resources/tts';
 
 // Client.
 export { LaylaSDK, Layla } from './client';

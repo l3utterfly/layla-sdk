@@ -114,6 +114,8 @@ The SDK exposes this as higher-level APIs such as:
 - `layla.characters.getImage(...)`
 - `layla.characters.update(...)`
 - `layla.personas.get(...)`
+- `layla.tts.getVoices(...)`
+- `layla.tts.generateVoice(...)`
 - `layla.images.generateImage(...)`
 
 ## Runtime Expectations

@@ -74,6 +74,14 @@ export interface LaylaPersona {
   description: string;
 }
 
+/* --- TTS voices ------------------------------------------------------------- */
+export interface LaylaTTSVoice {
+  id: string;
+  type: string;
+  tags: string[];
+  name: string;
+};
+
 /* ---- Sentiment Analysis ---------------------------------------------------- */
 export const SENTIMENT_EMOJIS = {
   admiration: '🤩',
@@ -414,6 +422,30 @@ export interface LaylaApiGetPersona {
 }
 
 /**
+ * Ask the host for the list of available TTS voices installed in Layla.
+ * The host should respond with an `on_get_tts_voices` event containing an array of TTS voices.
+ */
+export interface LaylaApiGetTTSVoices {
+  cmd: 'get_tts_voices';
+  data: null; // no additional data is needed for this request
+}
+
+/**
+ * Ask the host to generate voice audio for the provided text using the specified TTS voice.
+ * The host will generate the audio and automatically play it on device. The host will respond with an `on_finished_speaking` event when the playback has finished.
+ * Developer note:
+ *   - the host handles queuing of multiple `generate_voice` requests WITH THE SAME `ttsVoiceId`, so the client does not need to manage queuing or waiting for playback to finish before sending the next request. The host will ensure that each request is processed in order and that the `on_finished_speaking` event is emitted after each playback completes.
+ *   - if a different `ttsVoiceId` is used in a subsequent request, this incurs a small performance penalty as the host needs to swap TTS models. Additionally, currently queued voices will be cancelled and playback stopped.
+ */
+export interface LaylaApiGenerateVoice {
+  cmd: 'generate_voice';
+  data: {
+    ttsVoiceId: string;
+    text: string;
+  }
+}
+
+/**
  * A request command (anything that opens a job and expects events back).
  * Add new one-shot commands here. `cancel` is not a request — it's a control
  * signal for an already-open job — so it lives outside this union.
@@ -437,7 +469,9 @@ export type LaylaApiRequest =
   | LaylaApiScheduledChatMessage
   | LaylaApiCancelScheduledChatMessage
   | LaylaApiGetScheduledChatMessages
-  | LaylaApiGetPersona;
+  | LaylaApiGetPersona
+  | LaylaApiGetTTSVoices
+  | LaylaApiGenerateVoice;
 
 /* ---- RN -> Web events ------------------------------------------------------ */
 
@@ -647,6 +681,10 @@ export interface LaylaApiEvent_onGetScheduledChatMessagesResponse {
   };
 }
 
+/**
+ * The response for a `get_persona` request, containing the requested persona data for a specific character or the default persona if `character_id` is null.
+ * This event is emitted by the host after successfully retrieving the persona data.
+ */
 export interface LaylaApiEvent_onGetPersonaResponse {
   event: 'on_get_persona_response';
   data: {
@@ -654,6 +692,27 @@ export interface LaylaApiEvent_onGetPersonaResponse {
     persona: LaylaPersona;
   }
 };
+
+/**
+ * The response for a `get_tts_voices` request, containing an array of all available TTS voices installed in Layla.
+ * This event is emitted by the host after successfully retrieving the list of TTS voices.
+ */
+export interface LaylaApiEvent_onGetTTSVoicesResponse {
+  event: 'on_get_tts_voices_response';
+  data: {
+    voices: LaylaTTSVoice[]; // an array of all available TTS voices installed in Layla
+  };
+}
+
+/**
+ * The response for a `generate_voice` request, indicating that the voice audio playback has finished.
+ * This event is emitted by the host after successfully generating and playing the voice audio for the provided text using the specified TTS voice.
+ * Note: this event is emitted AFTER the playback has completely finished, so the client can use this event to trigger any follow-up actions or UI updates after the voice playback is done.
+ */
+export interface LaylaApiEvent_onFinishedSpeaking {
+  event: 'on_finished_speaking';
+  data: null; // no additional data is needed for this event
+}
 
 export type LaylaApiEvent =
   | LaylaApiEvent_onMsg
@@ -676,4 +735,6 @@ export type LaylaApiEvent =
   | LaylaApiEvent_onScheduledChatMessage
   | LaylaApiEvent_onCancelScheduledChatMessage
   | LaylaApiEvent_onGetScheduledChatMessagesResponse
-  | LaylaApiEvent_onGetPersonaResponse;
+  | LaylaApiEvent_onGetPersonaResponse
+  | LaylaApiEvent_onGetTTSVoicesResponse
+  | LaylaApiEvent_onFinishedSpeaking;

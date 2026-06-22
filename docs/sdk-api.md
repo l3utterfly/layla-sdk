@@ -21,6 +21,7 @@ import LaylaSDK, {
   type LaylaScheduledChatMessage,
   type LaylaMemory,
   type LaylaPersona,
+  type LaylaTTSVoice,
   type LaylaApiSaveChatMessage,
   type LaylaApiScheduledChatMessage,
   type LaylaApiGetScheduledChatMessages,
@@ -31,6 +32,8 @@ import LaylaSDK, {
   type LaylaApiGetTopMemories,
   type LaylaApiCreateOrUpdateMemories,
   type LaylaApiGetPersona,
+  type LaylaApiGetTTSVoices,
+  type LaylaApiGenerateVoice,
   type LaylaApiEvent_onGetChatSessionsResponse,
   type LaylaApiEvent_onSaveChatMessageResponse,
   type LaylaApiEvent_onScheduledChatMessage,
@@ -40,6 +43,8 @@ import LaylaSDK, {
   type LaylaApiEvent_onGetTopMemoriesResponse,
   type LaylaApiEvent_onCreateOrUpdateMemoriesResponse,
   type LaylaApiEvent_onGetPersonaResponse,
+  type LaylaApiEvent_onGetTTSVoicesResponse,
+  type LaylaApiEvent_onFinishedSpeaking,
   type LaylaApiEvent_onSaveFileResponse,
   type LaylaApiEvent_onReadFileResponse,
   type LaylaCharacter,
@@ -480,6 +485,58 @@ The returned `LaylaPersona` contains:
 - `name`
 - `description`
 
+## `layla.tts.getVoices(options?)`
+
+Fetches the TTS voices installed in Layla.
+
+```ts
+const voices = await layla.tts.getVoices();
+
+for (const voice of voices) {
+  console.log(voice.id, voice.name, voice.tags);
+}
+```
+
+Pass an abort signal as the first argument:
+
+```ts
+const voices = await layla.tts.getVoices({
+  signal: controller.signal,
+});
+```
+
+Each `LaylaTTSVoice` contains:
+
+- `id`
+- `type`
+- `tags`
+- `name`
+
+## `layla.tts.generateVoice(ttsVoiceId, text, options?)`
+
+Generates and plays voice audio on the host device using the selected TTS
+voice. The promise resolves after the host emits `on_finished_speaking`, which
+means playback has completed.
+
+```ts
+const [voice] = await layla.tts.getVoices();
+
+if (voice) {
+  await layla.tts.generateVoice(
+    voice.id,
+    'I will say this out loud through Layla.',
+  );
+}
+```
+
+Pass an abort signal as the third argument:
+
+```ts
+await layla.tts.generateVoice(voice.id, 'Stop me if the UI changes.', {
+  signal: controller.signal,
+});
+```
+
 ## `layla.classifier.getSentiment(text, options?)`
 
 Scores a piece of text with Layla's sentiment classifier and returns `SentimentValues`, keyed by emotion category.
@@ -850,6 +907,27 @@ When `persona` is omitted, the mock supplies a default persona. When
 `personas` is omitted, the mock derives character-specific personas from the
 mock character cards.
 
+Customize mock TTS voices:
+
+```ts
+installLaylaMock({
+  ttsVoices: [
+    {
+      id: 'local-narrator',
+      type: 'mock',
+      tags: ['narrator', 'demo'],
+      name: 'Local Narrator',
+    },
+  ],
+});
+
+const voices = await layla.tts.getVoices();
+await layla.tts.generateVoice(voices[0].id, 'Preview this voice.');
+```
+
+The browser mock does not synthesize audio; `generateVoice(...)` waits for the
+mock latency and then emits `on_finished_speaking`.
+
 Customize mock private files with static base64 data or data URIs:
 
 ```ts
@@ -904,6 +982,7 @@ Useful exported types include:
 - `LaylaScheduledChatMessage`
 - `LaylaMemory`
 - `LaylaPersona`
+- `LaylaTTSVoice`
 - `MemoryListOptions`
 - `LaylaApiEvent_onGetChatSessionsResponse`
 - `LaylaApiSaveChatMessage`
@@ -918,10 +997,14 @@ Useful exported types include:
 - `LaylaApiGetTopMemories`
 - `LaylaApiCreateOrUpdateMemories`
 - `LaylaApiGetPersona`
+- `LaylaApiGetTTSVoices`
+- `LaylaApiGenerateVoice`
 - `LaylaApiEvent_onGetMemoriesResponse`
 - `LaylaApiEvent_onGetTopMemoriesResponse`
 - `LaylaApiEvent_onCreateOrUpdateMemoriesResponse`
 - `LaylaApiEvent_onGetPersonaResponse`
+- `LaylaApiEvent_onGetTTSVoicesResponse`
+- `LaylaApiEvent_onFinishedSpeaking`
 - `LaylaApiSaveFile`
 - `LaylaApiEvent_onSaveFileResponse`
 - `LaylaApiReadFile`
@@ -953,6 +1036,7 @@ The TypeScript source is the source of truth for current signatures:
 - `src/resources/images.ts`
 - `src/resources/memories.ts`
 - `src/resources/personas.ts`
+- `src/resources/tts.ts`
 - `src/resources/utils.ts`
 - `src/protocol.ts`
 - `src/errors.ts`

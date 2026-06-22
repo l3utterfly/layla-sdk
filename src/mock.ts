@@ -29,6 +29,7 @@ import type {
   LaylaMemory,
   LaylaPersona,
   LaylaScheduledChatMessage,
+  LaylaTTSVoice,
   TavernCardV2,
 } from './protocol';
 import { makeMockChatHistory } from './mock-data/chat-history';
@@ -91,6 +92,8 @@ export interface LaylaMockOptions {
    * Initial scheduled chat messages used by scheduled-message APIs.
    */
   scheduledChatMessages?: MockScheduledChatMessageSource;
+  /** TTS voices returned by `tts.getVoices()`. Defaults to two sample voices. */
+  ttsVoices?: LaylaTTSVoice[];
   /** Delay before the first event of a response (simulated latency). Default 150ms. */
   latencyMs?: number;
   /** Delay between streamed tokens. Default 40ms. */
@@ -231,6 +234,20 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
       },
     ]),
   );
+  const ttsVoices = options.ttsVoices ?? [
+    {
+      id: 'mock-voice-aria',
+      type: 'mock',
+      tags: ['female', 'warm', 'local-dev'],
+      name: 'Mock Aria',
+    },
+    {
+      id: 'mock-voice-kai',
+      type: 'mock',
+      tags: ['male', 'calm', 'local-dev'],
+      name: 'Mock Kai',
+    },
+  ];
 
   // The single in-flight generation, mirroring the SDK's one-active-job model.
   let current: { cancelled: boolean } | null = null;
@@ -873,6 +890,38 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     });
   }
 
+  async function handleGetTTSVoices(): Promise<void> {
+    await delay(latencyMs);
+    if (shouldError()) {
+      emitError('Simulated TTS voices error');
+      return;
+    }
+
+    emit({
+      event: 'on_get_tts_voices_response',
+      data: {
+        voices: ttsVoices.map((voice) => ({ ...voice })),
+      },
+    });
+  }
+
+  async function handleGenerateVoice(data: {
+    ttsVoiceId: string;
+    text: string;
+  }): Promise<void> {
+    void data;
+    await delay(latencyMs);
+    if (shouldError()) {
+      emitError('Simulated TTS generation error');
+      return;
+    }
+
+    emit({
+      event: 'on_finished_speaking',
+      data: null,
+    });
+  }
+
   const fakeBridge = {
     postMessage(raw: string): void {
       let msg: LaylaApiRequest;
@@ -939,6 +988,12 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
           break;
         case 'cancel_scheduled_chat_message':
           void handleCancelScheduledChatMessage(msg.data);
+          break;
+        case 'get_tts_voices':
+          void handleGetTTSVoices();
+          break;
+        case 'generate_voice':
+          void handleGenerateVoice(msg.data);
           break;
         default:
           break;
