@@ -1,0 +1,853 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TTS Tester · Layla</title>
+    <style>
+      /* ---- Layla design tokens ---- */
+      :root {
+        --primary: #47a6ff;
+        --background: #1c1c1c;
+        --secondaryBg: #222222;
+        --card: #2a2a2a;
+        --elevated: #333333;
+        --border: #343434;
+        --danger: #ff6347;
+        --success: #34c759;
+        --text: #ffffff;
+        --secondaryText: lightgrey;
+        --muted: #888888;
+        --chipBg: #383838;
+
+        --primary-10: rgba(71, 166, 255, 0.1);
+        --primary-12: rgba(71, 166, 255, 0.12);
+        --primary-15: rgba(71, 166, 255, 0.15);
+        --primary-25: rgba(71, 166, 255, 0.25);
+
+        --r-sm: 8px;
+        --r-md: 10px;
+        --r-lg: 12px;
+        --r-xl: 14px;
+        --r-xxl: 16px;
+        --r-pill: 20px;
+
+        --screenH: 20px;
+        --cardPad: 14px;
+        --sectionGap: 24px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        background: var(--background);
+        color: var(--text);
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+          Arial, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        min-height: 100vh;
+      }
+
+      .screen {
+        max-width: 640px;
+        margin: 0 auto;
+        padding: 0 var(--screenH) 48px;
+      }
+
+      /* ---- Header ---- */
+      .header {
+        display: flex;
+        align-items: center;
+        padding: 22px 0 18px;
+      }
+      .header .titleIcon {
+        width: 38px;
+        height: 38px;
+        border-radius: 19px;
+        background: var(--primary-12);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+      }
+      .header .titleCol {
+        margin-left: 14px;
+      }
+      .headerTitle {
+        font-size: 20px;
+        font-weight: 700;
+        line-height: 1.1;
+      }
+      .headerSubtitle {
+        font-size: 12px;
+        font-weight: 400;
+        color: var(--secondaryText);
+        margin-top: 3px;
+      }
+
+      /* ---- Section label ---- */
+      .sectionLabel {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin: var(--sectionGap) 0 10px;
+      }
+      .sectionLabelText {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 1px;
+        color: var(--secondaryText);
+        text-transform: uppercase;
+      }
+
+      /* ---- "What to say" input ---- */
+      .sayCard {
+        background: var(--secondaryBg);
+        border: 1px solid var(--border);
+        border-radius: var(--r-xl);
+        padding: var(--cardPad);
+      }
+      textarea.sayInput {
+        width: 100%;
+        resize: vertical;
+        min-height: 64px;
+        background: transparent;
+        border: none;
+        color: var(--text);
+        font: inherit;
+        font-size: 14px;
+        line-height: 1.5;
+        outline: none;
+        padding: 0;
+      }
+      textarea.sayInput::placeholder {
+        color: var(--muted);
+      }
+      .sayFoot {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 0.5px solid var(--border);
+      }
+      .sayHint {
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .charCount {
+        font-size: 11px;
+        color: var(--muted);
+      }
+
+      /* ---- Search ---- */
+      .searchWrap {
+        position: relative;
+        display: flex;
+        align-items: center;
+        background: var(--secondaryBg);
+        border: 1px solid var(--border);
+        border-radius: var(--r-pill);
+        padding: 0 14px;
+      }
+      .searchWrap:focus-within {
+        border-color: var(--primary);
+      }
+      .searchWrap svg {
+        flex: 0 0 auto;
+      }
+      .searchInput {
+        flex: 1;
+        background: transparent;
+        border: none;
+        color: var(--text);
+        font: inherit;
+        font-size: 14px;
+        padding: 11px 10px;
+        outline: none;
+      }
+      .searchInput::placeholder {
+        color: var(--muted);
+      }
+      .clearSearch {
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        display: none;
+        padding: 4px;
+        border-radius: 50%;
+        color: var(--muted);
+      }
+      .clearSearch:hover {
+        color: var(--text);
+      }
+      .clearSearch.show {
+        display: inline-flex;
+      }
+
+      /* ---- Filter chips ---- */
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .chip {
+        appearance: none;
+        background: var(--chipBg);
+        color: var(--secondaryText);
+        border: 1px solid transparent;
+        border-radius: var(--r-pill);
+        padding: 6px 12px;
+        font-size: 11px;
+        font-weight: 500;
+        cursor: pointer;
+        transition:
+          background 0.12s ease,
+          color 0.12s ease,
+          border-color 0.12s ease;
+      }
+      .chip:hover {
+        background: var(--elevated);
+      }
+      .chip.active {
+        background: var(--primary-15);
+        color: var(--primary);
+        border-color: var(--primary-25);
+      }
+      .clearFilters {
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        color: var(--muted);
+        font: inherit;
+        font-size: 11px;
+        font-weight: 600;
+        padding: 6px 4px;
+        margin-left: auto;
+        display: none;
+      }
+      .clearFilters.show {
+        display: inline;
+      }
+      .clearFilters:hover {
+        color: var(--danger);
+      }
+
+      /* ---- Voice cards ---- */
+      .voiceList {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .voiceCard {
+        background: var(--card);
+        border-radius: var(--r-xl);
+        padding: var(--cardPad);
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .avatar {
+        width: 44px;
+        height: 44px;
+        flex: 0 0 auto;
+        border-radius: 22px;
+        background: var(--primary-10);
+        color: var(--primary);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 15px;
+        font-weight: 700;
+        position: relative;
+        overflow: hidden;
+      }
+      .voiceInfo {
+        flex: 1;
+        min-width: 0;
+      }
+      .voiceName {
+        font-size: 15px;
+        font-weight: 600;
+      }
+      .voiceTags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 6px;
+      }
+      .tag {
+        background: var(--chipBg);
+        color: var(--secondaryText);
+        border-radius: var(--r-sm);
+        padding: 2px 8px;
+        font-size: 10px;
+        font-weight: 500;
+      }
+      /* play button */
+      .playBtn {
+        flex: 0 0 auto;
+        width: 42px;
+        height: 42px;
+        border-radius: 21px;
+        border: none;
+        cursor: pointer;
+        background: var(--primary-15);
+        color: var(--primary);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition:
+          background 0.12s ease,
+          transform 0.08s ease;
+      }
+      .playBtn:hover {
+        background: var(--primary-25);
+      }
+      .playBtn:active {
+        transform: scale(0.94);
+      }
+      .playBtn.playing {
+        background: var(--primary);
+        color: #0d1117;
+      }
+
+      /* equalizer (signature element) shown on the avatar while speaking */
+      .eq {
+        display: none;
+        gap: 2px;
+        align-items: flex-end;
+        height: 18px;
+      }
+      .voiceCard.playing .avatar .initials {
+        display: none;
+      }
+      .voiceCard.playing .avatar .eq {
+        display: flex;
+      }
+      .eq span {
+        width: 3px;
+        height: 6px;
+        border-radius: 2px;
+        background: var(--primary);
+        animation: bounce 0.9s ease-in-out infinite;
+      }
+      .eq span:nth-child(2) {
+        animation-delay: 0.15s;
+      }
+      .eq span:nth-child(3) {
+        animation-delay: 0.3s;
+      }
+      .eq span:nth-child(4) {
+        animation-delay: 0.45s;
+      }
+      @keyframes bounce {
+        0%,
+        100% {
+          height: 5px;
+        }
+        50% {
+          height: 17px;
+        }
+      }
+
+      /* ---- Empty state ---- */
+      .emptyState {
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        padding: 48px 20px;
+      }
+      .emptyState.show {
+        display: flex;
+      }
+      .emptyTitle {
+        font-size: 15px;
+        font-weight: 600;
+        margin-top: 14px;
+      }
+      .emptySubtitle {
+        font-size: 12px;
+        color: var(--secondaryText);
+        margin-top: 4px;
+        max-width: 240px;
+      }
+
+      /* unsupported notice */
+      .notice {
+        display: none;
+        background: var(--secondaryBg);
+        border: 1px solid var(--border);
+        border-left: 3px solid var(--danger);
+        border-radius: var(--r-md);
+        padding: 10px 12px;
+        font-size: 12px;
+        color: var(--secondaryText);
+        margin-top: 12px;
+      }
+      .notice.show {
+        display: block;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .eq span {
+          animation: none;
+          height: 12px;
+        }
+        .playBtn:active {
+          transform: none;
+        }
+      }
+
+      :focus-visible {
+        outline: 2px solid var(--primary);
+        outline-offset: 2px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="screen">
+      <!-- Header -->
+      <header class="header">
+        <div class="titleIcon" aria-hidden="true">
+          <!-- megaphone / sound icon -->
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#47A6FF"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M11 5 6 9H2v6h4l5 4z" />
+            <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+            <path d="M18.5 5.5a9 9 0 0 1 0 13" />
+          </svg>
+        </div>
+        <div class="titleCol">
+          <div class="headerTitle">TTS Tester</div>
+          <div class="headerSubtitle">
+            Type a line, then preview it in any voice
+          </div>
+        </div>
+      </header>
+
+      <!-- What to say -->
+      <div class="sectionLabel">
+        <span class="sectionLabelText">What to say</span>
+      </div>
+      <div class="sayCard">
+        <textarea
+          id="sayInput"
+          class="sayInput"
+          maxlength="400"
+          placeholder="Type something to hear it spoken aloud…"
+        >Hello from Layla. This is a quick text-to-speech preview.</textarea>
+        <div class="sayFoot">
+          <span class="sayHint">Press play on a voice to preview</span>
+          <span class="charCount"><span id="charCount">57</span>/400</span>
+        </div>
+      </div>
+      <div id="ttsNotice" class="notice"></div>
+
+      <!-- Search + tag filter -->
+      <div class="sectionLabel">
+        <span class="sectionLabelText">Find a voice</span>
+      </div>
+      <div class="searchWrap">
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#888888"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <circle cx="11" cy="11" r="7" />
+          <path d="m21 21-4.3-4.3" />
+        </svg>
+        <input
+          id="searchInput"
+          class="searchInput"
+          type="text"
+          placeholder="Search by name, type, or tag…"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <button id="clearSearch" class="clearSearch" aria-label="Clear search">
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.2"
+            stroke-linecap="round"
+          >
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      <div
+        class="chips"
+        id="filterChips"
+        role="group"
+        aria-label="Filter by type"
+      ></div>
+      <button id="clearFilters" class="clearFilters">Clear filters</button>
+
+      <!-- Voices -->
+      <div class="sectionLabel">
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="lightgrey"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4" />
+        </svg>
+        <span class="sectionLabelText" id="voicesLabel">Voices</span>
+      </div>
+      <div class="voiceList" id="voiceList"></div>
+
+      <!-- Empty state -->
+      <div class="emptyState" id="emptyState">
+        <svg
+          width="40"
+          height="40"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#343434"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <circle cx="11" cy="11" r="7" />
+          <path d="m21 21-4.3-4.3" />
+        </svg>
+        <div class="emptyTitle">No matching voices</div>
+        <div class="emptySubtitle">
+          Try a different search term or clear your type filters.
+        </div>
+      </div>
+    </div>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "@layla-network/sdk": "https://esm.sh/@layla-network/sdk@0.1.24"
+        }
+      }
+    </script>
+    <script type="module">
+      import LaylaSDK, {
+        LaylaAbortError,
+        LaylaBridgeUnavailableError,
+        LaylaError,
+      } from "@layla-network/sdk";
+
+      const layla = new LaylaSDK();
+
+      // ---- State ----
+      let voices = [];
+      let isLoadingVoices = true;
+      const activeTypes = new Set();
+      let searchText = "";
+      let current = null; // { card, btn, controller }
+
+      // ---- Elements ----
+      const $list = document.getElementById("voiceList");
+      const $chips = document.getElementById("filterChips");
+      const $empty = document.getElementById("emptyState");
+      const $label = document.getElementById("voicesLabel");
+      const $search = document.getElementById("searchInput");
+      const $clearSearch = document.getElementById("clearSearch");
+      const $clearFilters = document.getElementById("clearFilters");
+      const $say = document.getElementById("sayInput");
+      const $charCount = document.getElementById("charCount");
+      const $notice = document.getElementById("ttsNotice");
+
+      function showNotice(message) {
+        $notice.textContent = message;
+        $notice.classList.toggle("show", Boolean(message));
+      }
+
+      function initials(name) {
+        return name
+          .replace(/[^A-Za-zÀ-ÿ]/g, "")
+          .slice(0, 2)
+          .toUpperCase();
+      }
+
+      // ---- Build filter chips ----
+      function buildFilterChips() {
+        const allTypes = [...new Set(voices.map((voice) => voice.type))]
+          .filter(Boolean)
+          .sort((a, b) => a.localeCompare(b));
+
+        $chips.innerHTML = "";
+        allTypes.forEach((type) => {
+          const btn = document.createElement("button");
+          btn.className = "chip";
+          btn.type = "button";
+          btn.textContent = type;
+          btn.classList.toggle("active", activeTypes.has(type));
+          btn.setAttribute("aria-pressed", activeTypes.has(type).toString());
+          btn.addEventListener("click", () => {
+            if (activeTypes.has(type)) {
+              activeTypes.delete(type);
+              btn.classList.remove("active");
+              btn.setAttribute("aria-pressed", "false");
+            } else {
+              activeTypes.add(type);
+              btn.classList.add("active");
+              btn.setAttribute("aria-pressed", "true");
+            }
+            $clearFilters.classList.toggle("show", activeTypes.size > 0);
+            render();
+          });
+          $chips.appendChild(btn);
+        });
+      }
+
+      // ---- Filtering ----
+      function matches(v) {
+        // type chips: OR within selection (voice shows if it has any active type)
+        if (activeTypes.size > 0 && !activeTypes.has(v.type)) {
+          return false;
+        }
+        // free-text search across name, type, and tags
+        if (searchText) {
+          const hay = [v.name, v.type, ...v.tags].join(" ").toLowerCase();
+          if (!hay.includes(searchText)) return false;
+        }
+        return true;
+      }
+
+      // ---- Render ----
+      function render() {
+        const shown = voices.filter(matches);
+        $list.innerHTML = "";
+
+        if (isLoadingVoices) {
+          $label.textContent = "Voices";
+          $empty.classList.add("show");
+          $empty.querySelector(".emptyTitle").textContent = "Loading voices";
+          $empty.querySelector(".emptySubtitle").textContent =
+            "Fetching installed voices from Layla.";
+          return;
+        }
+
+        shown.forEach((v) => {
+          const card = document.createElement("div");
+          card.className = "voiceCard";
+
+          const avatar = document.createElement("div");
+          avatar.className = "avatar";
+          avatar.setAttribute("aria-hidden", "true");
+
+          const initial = document.createElement("span");
+          initial.className = "initials";
+          initial.textContent = initials(v.name);
+
+          const eq = document.createElement("span");
+          eq.className = "eq";
+          for (let i = 0; i < 4; i += 1) {
+            eq.appendChild(document.createElement("span"));
+          }
+
+          avatar.append(initial, eq);
+
+          const info = document.createElement("div");
+          info.className = "voiceInfo";
+
+          const name = document.createElement("div");
+          name.className = "voiceName";
+          name.textContent = v.name;
+
+          const tags = document.createElement("div");
+          tags.className = "voiceTags";
+          v.tags.forEach((tag) => {
+            const chip = document.createElement("span");
+            chip.className = "tag";
+            chip.textContent = tag;
+            tags.appendChild(chip);
+          });
+
+          info.append(name, tags);
+
+          const btn = document.createElement("button");
+          btn.className = "playBtn";
+          btn.type = "button";
+          btn.setAttribute("aria-label", `Preview ${v.name}`);
+
+          setPlayIcon(btn, false);
+          btn.addEventListener("click", () => togglePlay(v, card, btn));
+          card.append(avatar, info, btn);
+          $list.appendChild(card);
+        });
+
+        $label.textContent = `Voices (${shown.length})`;
+        const emptyTitle = $empty.querySelector(".emptyTitle");
+        const emptySubtitle = $empty.querySelector(".emptySubtitle");
+        if (voices.length === 0) {
+          emptyTitle.textContent = "No voices installed";
+          emptySubtitle.textContent =
+            "Install TTS voices in Layla, then reopen this mini-app.";
+        } else {
+          emptyTitle.textContent = "No matching voices";
+          emptySubtitle.textContent =
+            "Try a different search term or clear your type filters.";
+        }
+        $empty.classList.toggle("show", shown.length === 0);
+      }
+
+      function setPlayIcon(btn, playing) {
+        btn.innerHTML = playing
+          ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>`
+          : `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.14v13.72a1 1 0 0 0 1.54.84l10.3-6.86a1 1 0 0 0 0-1.68L9.54 4.3A1 1 0 0 0 8 5.14z"/></svg>`;
+      }
+
+      function resetCurrent() {
+        if (!current) return;
+        current.card.classList.remove("playing");
+        current.btn.classList.remove("playing");
+        setPlayIcon(current.btn, false);
+        current = null;
+      }
+
+      function stopCurrent() {
+        if (!current) return;
+        current.controller.abort();
+        resetCurrent();
+      }
+
+      async function togglePlay(voice, card, btn) {
+        const speaking = current && current.btn === btn;
+        stopCurrent();
+        if (speaking) return; // tapping the active one stops it
+
+        const text = $say.value.trim();
+        if (!text) {
+          showNotice("Type something first, then press play on a voice.");
+          return;
+        }
+
+        showNotice("");
+        const controller = new AbortController();
+        current = { card, btn, controller };
+        card.classList.add("playing");
+        btn.classList.add("playing");
+        setPlayIcon(btn, true);
+
+        try {
+          await layla.tts.generateVoice(voice.id, text, {
+            signal: controller.signal,
+          });
+        } catch (error) {
+          if (error instanceof LaylaAbortError) return;
+          showNotice(messageForError(error));
+          console.error(error);
+        } finally {
+          if (current?.btn === btn) resetCurrent();
+        }
+      }
+
+      // ---- Inputs ----
+      $search.addEventListener("input", () => {
+        searchText = $search.value.trim().toLowerCase();
+        $clearSearch.classList.toggle("show", $search.value.length > 0);
+        render();
+      });
+      $clearSearch.addEventListener("click", () => {
+        $search.value = "";
+        searchText = "";
+        $clearSearch.classList.remove("show");
+        $search.focus();
+        render();
+      });
+      $clearFilters.addEventListener("click", () => {
+        activeTypes.clear();
+        $chips.querySelectorAll(".chip.active").forEach((c) => {
+          c.classList.remove("active");
+          c.setAttribute("aria-pressed", "false");
+        });
+        $clearFilters.classList.remove("show");
+        render();
+      });
+      $say.addEventListener("input", () => {
+        $charCount.textContent = $say.value.length;
+      });
+
+      function normalizeVoice(voice) {
+        const tags = Array.isArray(voice.tags)
+          ? voice.tags.filter((tag) => typeof tag === "string" && tag.trim())
+          : [];
+
+        return {
+          id: voice.id,
+          name: voice.name || voice.id,
+          type: voice.type || "",
+          tags,
+        };
+      }
+
+      function messageForError(error) {
+        if (error instanceof LaylaBridgeUnavailableError) {
+          return "Open this mini-app inside Layla to load and preview installed TTS voices.";
+        }
+
+        if (error instanceof LaylaError) {
+          return error.message;
+        }
+
+        return "Something went wrong while talking to Layla.";
+      }
+
+      async function loadVoices() {
+        isLoadingVoices = true;
+        render();
+
+        try {
+          voices = (await layla.tts.getVoices())
+            .filter((voice) => voice?.id)
+            .map(normalizeVoice);
+          showNotice("");
+        } catch (error) {
+          voices = [];
+          showNotice(messageForError(error));
+          console.error(error);
+        } finally {
+          isLoadingVoices = false;
+          activeTypes.clear();
+          $clearFilters.classList.remove("show");
+          buildFilterChips();
+          render();
+        }
+      }
+
+      // Stop speech if the page is hidden/unloaded.
+      window.addEventListener("pagehide", stopCurrent);
+
+      loadVoices();
+    </script>
+  </body>
+</html>
