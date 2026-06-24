@@ -474,7 +474,7 @@ async function generateImageWithTimeout(
   prompt: string,
   onProgress: (status: string, step: number, totalSteps: number) => void,
 ): Promise<string | null> {
-  return await layla.images.generateImage(prompt, onProgress, {});
+  return await layla.images.generateImage(prompt, onProgress, undefined, {});
 }
 
 function errorMessage(error: unknown): string {
