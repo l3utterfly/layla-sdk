@@ -12,7 +12,11 @@ if (import.meta.env.DEV) {
     respond: () => {
       const name = names[n % names.length];
       n += 1;
-      return JSON.stringify({
+      return `<think>
+I am choosing a compact dating profile with a clear visual prompt.
+The JSON should stay machine-readable after the reasoning block is removed.
+</think>
+${JSON.stringify({
         name,
         age: 27 + (n % 7),
         tagline: "Makes ordinary afternoons feel slightly cinematic",
@@ -22,7 +26,7 @@ if (import.meta.env.DEV) {
         likes: ["ramen", "photography", "quiet nights in"],
         dislikes: ["clubbing"],
         imagePrompt: `${name}, stylish fictional young adult, soft natural light, city cafe window seat, warm smile, contemporary outfit, shallow depth of field`,
-      });
+      })}`;
     },
     latencyMs: 220,
     tokenDelayMs: 12,
