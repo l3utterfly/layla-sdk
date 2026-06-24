@@ -14,7 +14,7 @@ export interface ChatCompletionChunk {
   model: string;
   choices: Array<{
     index: number;
-    delta: { role?: 'assistant'; content?: string };
+    delta: { role?: 'assistant'; content?: string; reasoning?: string };
     finish_reason: 'stop' | null;
   }>;
 }
@@ -26,7 +26,7 @@ export interface ChatCompletion {
   model: string;
   choices: Array<{
     index: number;
-    message: { role: 'assistant'; content: string };
+    message: { role: 'assistant'; content: string; reasoning?: string };
     finish_reason: 'stop';
   }>;
 }

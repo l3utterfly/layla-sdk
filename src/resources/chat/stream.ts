@@ -17,6 +17,16 @@ import { LaylaBridge, type BridgeSink } from '../../internal/bridge';
 import type { ChatCompletion, ChatCompletionChunk } from './types';
 
 type Listener = (...args: any[]) => void;
+type ChatCompletionDelta = NonNullable<
+  ChatCompletionChunk['choices'][number]['delta']
+>;
+
+const THINK_OPEN_TAG = '<think>';
+const THINK_CLOSE_TAG = '</think>';
+
+const isPotentialThinkTag = (value: string): boolean =>
+  (THINK_OPEN_TAG.startsWith(value) || THINK_CLOSE_TAG.startsWith(value)) &&
+  value.length < Math.max(THINK_OPEN_TAG.length, THINK_CLOSE_TAG.length);
 
 export class ChatCompletionStream
   implements BridgeSink, AsyncIterable<ChatCompletionChunk>
@@ -31,7 +41,11 @@ export class ChatCompletionStream
   private resolvers: Array<(r: IteratorResult<ChatCompletionChunk>) => void> = [];
   private rejectors: Array<(e: unknown) => void> = [];
 
-  private snapshot = '';
+  private rawSnapshot = '';
+  private contentSnapshot = '';
+  private reasoningSnapshot = '';
+  private pendingTag = '';
+  private inReasoning = false;
   private ended = false;
   private closed = false;
   private failure: Error | null = null;
@@ -49,6 +63,7 @@ export class ChatCompletionStream
   /* ---- event emitter (mirrors OpenAI's .stream() helper) ---------------- */
 
   on(event: 'content', listener: (delta: string, snapshot: string) => void): this;
+  on(event: 'reasoning', listener: (delta: string, snapshot: string) => void): this;
   on(event: 'chunk', listener: (chunk: ChatCompletionChunk) => void): this;
   on(event: 'end', listener: () => void): this;
   on(event: 'error', listener: (err: Error) => void): this;
@@ -122,15 +137,30 @@ export class ChatCompletionStream
 
   private handleDelta(delta: string, snapshot: string): void {
     if (this.closed) return;
-    this.snapshot = snapshot || this.snapshot + delta;
-    const chunk = this.makeChunk({ content: delta }, null);
+    const rawDelta = this.resolveRawDelta(delta, snapshot);
+    const parsed = this.parseTaggedDelta(rawDelta);
+    this.contentSnapshot += parsed.content;
+    this.reasoningSnapshot += parsed.reasoning;
+
+    const chunkDelta: ChatCompletionDelta = {};
+    if (parsed.content) chunkDelta.content = parsed.content;
+    if (parsed.reasoning) chunkDelta.reasoning = parsed.reasoning;
+    if (!chunkDelta.content && !chunkDelta.reasoning) return;
+
+    const chunk = this.makeChunk(chunkDelta, null);
     this.pushChunk(chunk);
     this.emit('chunk', chunk);
-    if (delta) this.emit('content', delta, this.snapshot);
+    if (parsed.content) {
+      this.emit('content', parsed.content, this.contentSnapshot);
+    }
+    if (parsed.reasoning) {
+      this.emit('reasoning', parsed.reasoning, this.reasoningSnapshot);
+    }
   }
 
   private handleEnd(): void {
     if (this.closed) return;
+    this.flushPendingTag();
     // Final chunk with empty delta + finish_reason, matching OpenAI semantics.
     const finalChunk = this.makeChunk({}, 'stop');
     this.pushChunk(finalChunk);
@@ -207,8 +237,84 @@ export class ChatCompletionStream
     }
   }
 
+  private resolveRawDelta(delta: string, snapshot: string): string {
+    if (snapshot) {
+      const rawDelta = snapshot.startsWith(this.rawSnapshot)
+        ? snapshot.slice(this.rawSnapshot.length)
+        : delta;
+      this.rawSnapshot = snapshot;
+      return rawDelta || delta;
+    }
+
+    this.rawSnapshot += delta;
+    return delta;
+  }
+
+  private parseTaggedDelta(delta: string): { content: string; reasoning: string } {
+    let content = '';
+    let reasoning = '';
+    const append = (value: string) => {
+      if (this.inReasoning) reasoning += value;
+      else content += value;
+    };
+
+    const text = this.pendingTag + delta;
+    this.pendingTag = '';
+
+    let index = 0;
+    while (index < text.length) {
+      const tagStart = text.indexOf('<', index);
+      if (tagStart === -1) {
+        append(text.slice(index));
+        break;
+      }
+
+      append(text.slice(index, tagStart));
+
+      const remaining = text.slice(tagStart);
+      if (remaining.startsWith(THINK_OPEN_TAG)) {
+        this.inReasoning = true;
+        index = tagStart + THINK_OPEN_TAG.length;
+        continue;
+      }
+      if (remaining.startsWith(THINK_CLOSE_TAG)) {
+        this.inReasoning = false;
+        index = tagStart + THINK_CLOSE_TAG.length;
+        continue;
+      }
+      if (isPotentialThinkTag(remaining)) {
+        this.pendingTag = remaining;
+        break;
+      }
+
+      append('<');
+      index = tagStart + 1;
+    }
+
+    return { content, reasoning };
+  }
+
+  private flushPendingTag(): void {
+    if (!this.pendingTag) return;
+    const parsed = this.inReasoning
+      ? { content: '', reasoning: this.pendingTag }
+      : { content: this.pendingTag, reasoning: '' };
+    this.pendingTag = '';
+    this.contentSnapshot += parsed.content;
+    this.reasoningSnapshot += parsed.reasoning;
+
+    if (!parsed.content && !parsed.reasoning) return;
+    const chunk = this.makeChunk(parsed, null);
+    this.pushChunk(chunk);
+    this.emit('chunk', chunk);
+    if (parsed.content) this.emit('content', parsed.content, this.contentSnapshot);
+    if (parsed.reasoning) {
+      this.emit('reasoning', parsed.reasoning, this.reasoningSnapshot);
+    }
+  }
+
   private makeChunk(
-    delta: { role?: 'assistant'; content?: string },
+    delta: ChatCompletionDelta,
     finish: 'stop' | null,
   ): ChatCompletionChunk {
     return {
@@ -221,6 +327,12 @@ export class ChatCompletionStream
   }
 
   private buildCompletion(): ChatCompletion {
+    const message: ChatCompletion['choices'][number]['message'] = {
+      role: 'assistant',
+      content: this.contentSnapshot,
+    };
+    if (this.reasoningSnapshot) message.reasoning = this.reasoningSnapshot;
+
     return {
       id: this.id,
       object: 'chat.completion',
@@ -229,7 +341,7 @@ export class ChatCompletionStream
       choices: [
         {
           index: 0,
-          message: { role: 'assistant', content: this.snapshot },
+          message,
           finish_reason: 'stop',
         },
       ],

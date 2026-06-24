@@ -147,12 +147,22 @@ You can also stream with async iteration:
 const stream = layla.chat.completions.stream({ messages });
 
 for await (const chunk of stream) {
-  const delta = chunk.choices[0]?.delta.content ?? '';
-  appendToAssistantMessage(delta);
+  const choice = chunk.choices[0];
+  const content = choice?.delta.content ?? '';
+  const reasoning = choice?.delta.reasoning ?? '';
+
+  appendToAssistantMessage(content);
+  appendToReasoningPanel(reasoning);
 }
 ```
 
 Breaking out of the `for await` loop aborts the stream.
+
+When the Layla host wraps generated text in `<think>` and `</think>` tags, the
+SDK removes those tags from the visible assistant content. Text inside the tags
+is streamed as `choices[0].delta.reasoning` and returned on the final
+`choices[0].message.reasoning`; text outside the tags remains in
+`choices[0].delta.content` and `choices[0].message.content`.
 
 ## `layla.chat.completions.create({ stream: true, ... })`
 
@@ -182,9 +192,14 @@ const logContent = (delta: string, snapshot: string) => {
 
 stream.on('chunk', (chunk) => {
   console.log(chunk.choices[0]?.delta.content ?? '');
+  console.log(chunk.choices[0]?.delta.reasoning ?? '');
 });
 
 stream.on('content', logContent);
+
+stream.on('reasoning', (delta, snapshot) => {
+  console.log(delta, snapshot);
+});
 
 stream.off('content', logContent);
 
