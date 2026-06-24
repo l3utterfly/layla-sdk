@@ -1,6 +1,6 @@
 ---
 name: layla-sdk
-description: Use the @layla-network/sdk package in third-party Layla mini-apps and WebView apps. Covers the public API surface for creating a Layla client, OpenAI-shaped chat completions and streams, paginated character listing, chat sessions, session history, message saves, scheduled chat messages, memories, personas, TTS voices and playback, character images, sentiment analysis, image generation progress/results, file saving, abort handling, SDK errors, exported TypeScript types, and runtime expectations inside the Layla WebView.
+description: Use the @layla-network/sdk package in third-party Layla mini-apps and WebView apps. Covers the public API surface for creating a Layla client, OpenAI-shaped chat completions and streams including reasoning deltas, paginated character listing, chat sessions, session history, message saves, scheduled chat messages, memories, personas, TTS voices and playback, character images, sentiment analysis, image generation progress/results, file saving, abort handling, SDK errors, exported TypeScript types, and runtime expectations inside the Layla WebView.
 ---
 
 # Layla SDK
@@ -123,12 +123,21 @@ stream.on('error', (err) => {
 const finalText = await stream.finalContent();
 ```
 
+When the host wraps text in `<think>` and `</think>` tags, the SDK strips those
+tags from visible content. The text inside the tags streams as
+`choices[0].delta.reasoning`, is available through `stream.on('reasoning',
+(delta, snapshot) => ...)`, and appears on the final
+`choices[0].message.reasoning`. `finalContent()` returns only visible assistant
+content.
+
 `ChatCompletionStream` is also async iterable:
 
 ```ts
 for await (const chunk of stream) {
-  const delta = chunk.choices[0]?.delta.content ?? '';
-  append(delta);
+  const content = chunk.choices[0]?.delta.content ?? '';
+  const reasoning = chunk.choices[0]?.delta.reasoning ?? '';
+  append(content);
+  appendReasoning(reasoning);
 }
 ```
 
