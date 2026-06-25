@@ -7,9 +7,16 @@
 import type {
   LaylaApiEvent,
   LaylaApiEvent_onGetTTSVoicesResponse,
+  LaylaApiEvent_onError,
+  LaylaApiStopSpeaking,
   LaylaTTSVoice,
 } from '../protocol';
 import { oneShot, type RequestOptions } from '../internal/one-shot';
+import {
+  LaylaAbortError,
+  LaylaBridgeUnavailableError,
+  LaylaError,
+} from '../errors';
 
 export class TTS {
   /**
@@ -47,6 +54,80 @@ export class TTS {
       'on_finished_speaking',
       () => undefined,
       options.signal,
+      () => ({ cmd: 'stop_speaking', data: null }),
     );
+  }
+
+  /**
+   * Ask the native host to stop any in-progress voice playback.
+   *
+   * This control message bypasses the normal request queue so it can interrupt
+   * an active `generateVoice(...)` call.
+   */
+  stopSpeaking(options: RequestOptions = {}): Promise<void> {
+    const command: LaylaApiStopSpeaking = {
+      cmd: 'stop_speaking',
+      data: null,
+    };
+
+    return new Promise<void>((resolve, reject) => {
+      if (options.signal?.aborted) {
+        reject(new LaylaAbortError());
+        return;
+      }
+
+      if (typeof window === 'undefined' || !window.ReactNativeWebView) {
+        reject(new LaylaBridgeUnavailableError());
+        return;
+      }
+
+      let settled = false;
+      const cleanup = () => {
+        window.removeEventListener('message', onWindowMessage);
+        options.signal?.removeEventListener('abort', onAbort);
+      };
+      const settle = (fn: () => void) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        fn();
+      };
+      const onAbort = () => {
+        settle(() => reject(new LaylaAbortError()));
+      };
+      const onWindowMessage = (event: MessageEvent) => {
+        if (typeof event.data !== 'string') return;
+
+        let parsed: Partial<LaylaApiEvent>;
+        try {
+          parsed = JSON.parse(event.data);
+        } catch {
+          return;
+        }
+
+        if (parsed.event === 'on_finished_speaking') {
+          settle(resolve);
+          return;
+        }
+
+        if (parsed.event === 'on_error') {
+          const data = (parsed as LaylaApiEvent_onError).data;
+          settle(() =>
+            reject(new LaylaError(data?.message || 'Layla TTS stop error')),
+          );
+        }
+      };
+
+      options.signal?.addEventListener('abort', onAbort, { once: true });
+      window.addEventListener('message', onWindowMessage);
+
+      try {
+        window.ReactNativeWebView.postMessage(JSON.stringify(command));
+      } catch (error) {
+        settle(() =>
+          reject(error instanceof Error ? error : new LaylaError(String(error))),
+        );
+      }
+    });
   }
 }

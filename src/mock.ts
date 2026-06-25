@@ -251,6 +251,7 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
 
   // The single in-flight generation, mirroring the SDK's one-active-job model.
   let current: { cancelled: boolean } | null = null;
+  let currentSpeech: { cancelled: boolean } | null = null;
 
   const log = (...a: unknown[]) => {
     if (options.debug) console.log('[layla-mock]', ...a);
@@ -910,16 +911,34 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     text: string;
   }): Promise<void> {
     void data;
-    await delay(latencyMs);
-    if (shouldError()) {
-      emitError('Simulated TTS generation error');
-      return;
-    }
+    const speech = { cancelled: false };
+    currentSpeech = speech;
+    try {
+      await delay(latencyMs);
+      if (speech.cancelled) return;
+      if (shouldError()) {
+        emitError('Simulated TTS generation error');
+        return;
+      }
 
-    emit({
-      event: 'on_finished_speaking',
-      data: null,
-    });
+      emit({
+        event: 'on_finished_speaking',
+        data: null,
+      });
+    } finally {
+      if (currentSpeech === speech) currentSpeech = null;
+    }
+  }
+
+  function handleStopSpeaking(): void {
+    if (currentSpeech) currentSpeech.cancelled = true;
+
+    queueMicrotask(() =>
+      emit({
+        event: 'on_finished_speaking',
+        data: null,
+      }),
+    );
   }
 
   const fakeBridge = {
@@ -995,6 +1014,9 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
         case 'generate_voice':
           void handleGenerateVoice(msg.data);
           break;
+        case 'stop_speaking':
+          handleStopSpeaking();
+          break;
         default:
           break;
       }
@@ -1014,6 +1036,7 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
       if (!installed) return;
       installed = false;
       if (current) current.cancelled = true;
+      if (currentSpeech) currentSpeech.cancelled = true;
       if (previous) window.ReactNativeWebView = previous;
       else delete window.ReactNativeWebView;
       log('uninstalled');

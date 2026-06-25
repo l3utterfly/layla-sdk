@@ -446,6 +446,15 @@ export interface LaylaApiGenerateVoice {
 }
 
 /**
+ * Ask the host to stop any in-progress voice audio playback.
+ * The host will immediately stop the playback and respond with an `on_finished_speaking` event to indicate that the playback has been stopped.
+ */
+export interface LaylaApiStopSpeaking {
+  cmd: 'stop_speaking';
+  data: null; // no additional data is needed for this request
+}
+
+/**
  * A request command (anything that opens a job and expects events back).
  * Add new one-shot commands here. `cancel` is not a request — it's a control
  * signal for an already-open job — so it lives outside this union.
@@ -471,7 +480,8 @@ export type LaylaApiRequest =
   | LaylaApiGetScheduledChatMessages
   | LaylaApiGetPersona
   | LaylaApiGetTTSVoices
-  | LaylaApiGenerateVoice;
+  | LaylaApiGenerateVoice
+  | LaylaApiStopSpeaking;
 
 /* ---- RN -> Web events ------------------------------------------------------ */
 

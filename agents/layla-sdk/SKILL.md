@@ -84,6 +84,7 @@ await layla.memories.createOrUpdate(memories);
 await layla.personas.get(characterId);
 await layla.tts.getVoices();
 await layla.tts.generateVoice(ttsVoiceId, text);
+await layla.tts.stopSpeaking();
 await layla.utils.saveFile(filename, contentBase64, share);
 ```
 
@@ -316,6 +317,13 @@ if (voice) {
     'This line will be spoken by Layla.',
   );
 }
+```
+
+Use `layla.tts.stopSpeaking(options?)` to stop any in-progress TTS playback.
+The promise resolves after the host emits `on_finished_speaking`.
+
+```ts
+await layla.tts.stopSpeaking();
 ```
 
 ## Sentiment

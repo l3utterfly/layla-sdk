@@ -30,6 +30,7 @@ class OneShotRequest<T> implements BridgeSink {
     command: LaylaApiRequest,
     private readonly responseEvent: LaylaApiEvent['event'],
     private readonly extract: (event: LaylaApiEvent) => T,
+    private readonly cancel: (() => LaylaApiRequest | null) | null = null,
   ) {
     // Avoid an unhandled rejection if the caller aborts and never awaits.
     this.deferred.promise.catch(() => undefined);
@@ -67,7 +68,9 @@ class OneShotRequest<T> implements BridgeSink {
     return this.closed;
   }
 
-  // No cancelMessage(): a one-shot has no generation to stop on the host side.
+  cancelMessage(): LaylaApiRequest | null {
+    return this.cancel?.() ?? null;
+  }
 
   /** Abort from the consumer side. */
   abort(reason?: unknown): void {
@@ -88,8 +91,14 @@ export function oneShot<T>(
   responseEvent: LaylaApiEvent['event'],
   extract: (event: LaylaApiEvent) => T,
   signal?: AbortSignal,
+  cancelMessage?: () => LaylaApiRequest | null,
 ): Promise<T> {
-  const req = new OneShotRequest<T>(command, responseEvent, extract);
+  const req = new OneShotRequest<T>(
+    command,
+    responseEvent,
+    extract,
+    cancelMessage ?? null,
+  );
 
   if (signal?.aborted) {
     // Never enqueue an already-aborted request.

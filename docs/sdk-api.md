@@ -34,6 +34,7 @@ import LaylaSDK, {
   type LaylaApiGetPersona,
   type LaylaApiGetTTSVoices,
   type LaylaApiGenerateVoice,
+  type LaylaApiStopSpeaking,
   type LaylaApiEvent_onGetChatSessionsResponse,
   type LaylaApiEvent_onSaveChatMessageResponse,
   type LaylaApiEvent_onScheduledChatMessage,
@@ -552,6 +553,30 @@ await layla.tts.generateVoice(voice.id, 'Stop me if the UI changes.', {
 });
 ```
 
+Aborting an in-progress `generateVoice(...)` call sends `stop_speaking` to the
+host.
+
+## `layla.tts.stopSpeaking(options?)`
+
+Stops any in-progress TTS playback on the host device. The promise resolves
+after the host emits `on_finished_speaking`, which is also the event used when
+normal playback completes.
+
+```ts
+stopButton.onclick = () => {
+  void layla.tts.stopSpeaking();
+};
+```
+
+Pass an abort signal as the first argument if the UI no longer needs to wait for
+the stop acknowledgement:
+
+```ts
+await layla.tts.stopSpeaking({
+  signal: controller.signal,
+});
+```
+
 ## `layla.classifier.getSentiment(text, options?)`
 
 Scores a piece of text with Layla's sentiment classifier and returns `SentimentValues`, keyed by emotion category.
@@ -938,10 +963,12 @@ installLaylaMock({
 
 const voices = await layla.tts.getVoices();
 await layla.tts.generateVoice(voices[0].id, 'Preview this voice.');
+await layla.tts.stopSpeaking();
 ```
 
 The browser mock does not synthesize audio; `generateVoice(...)` waits for the
-mock latency and then emits `on_finished_speaking`.
+mock latency and then emits `on_finished_speaking`. `stopSpeaking()` immediately
+emits the same completion event and cancels any pending mock TTS completion.
 
 Customize mock private files with static base64 data or data URIs:
 
@@ -1014,6 +1041,7 @@ Useful exported types include:
 - `LaylaApiGetPersona`
 - `LaylaApiGetTTSVoices`
 - `LaylaApiGenerateVoice`
+- `LaylaApiStopSpeaking`
 - `LaylaApiEvent_onGetMemoriesResponse`
 - `LaylaApiEvent_onGetTopMemoriesResponse`
 - `LaylaApiEvent_onCreateOrUpdateMemoriesResponse`

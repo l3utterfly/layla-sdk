@@ -47,6 +47,7 @@ export type {
   LaylaApiGetPersona,
   LaylaApiGetTTSVoices,
   LaylaApiGenerateVoice,
+  LaylaApiStopSpeaking,
   LaylaApiCancel,
   LaylaApiRequest,
 
