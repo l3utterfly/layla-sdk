@@ -34,12 +34,13 @@ export class TTS {
 
   /**
    * Ask the native host to generate and play voice audio for the provided text.
+   * Pass `null` to use the global default TTS voice.
    *
    * Resolves after the host emits `on_finished_speaking`, which indicates that
    * audio playback has completed.
    */
   generateVoice(
-    ttsVoiceId: string,
+    ttsVoiceId: string | null,
     text: string,
     options: RequestOptions = {},
   ): Promise<void> {

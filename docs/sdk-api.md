@@ -528,11 +528,21 @@ Each `LaylaTTSVoice` contains:
 - `tags`
 - `name`
 
-## `layla.tts.generateVoice(ttsVoiceId, text, options?)`
+## `layla.tts.generateVoice(ttsVoiceId: string | null, text, options?)`
 
 Generates and plays voice audio on the host device using the selected TTS
 voice. The promise resolves after the host emits `on_finished_speaking`, which
-means playback has completed.
+means playback has completed. Pass `null` as `ttsVoiceId` to use Layla's global
+default TTS voice:
+
+```ts
+await layla.tts.generateVoice(
+  null,
+  'I will use your default Layla voice.',
+);
+```
+
+Pass a voice ID to use a specific installed voice:
 
 ```ts
 const [voice] = await layla.tts.getVoices();
@@ -963,12 +973,14 @@ installLaylaMock({
 
 const voices = await layla.tts.getVoices();
 await layla.tts.generateVoice(voices[0].id, 'Preview this voice.');
+await layla.tts.generateVoice(null, 'Preview the global default voice.');
 await layla.tts.stopSpeaking();
 ```
 
 The browser mock does not synthesize audio; `generateVoice(...)` waits for the
-mock latency and then emits `on_finished_speaking`. `stopSpeaking()` immediately
-emits the same completion event and cancels any pending mock TTS completion.
+mock latency and then emits `on_finished_speaking`, whether passed a configured
+voice ID or `null` for the global default. `stopSpeaking()` immediately emits
+the same completion event and cancels any pending mock TTS completion.
 
 Customize mock private files with static base64 data or data URIs:
 

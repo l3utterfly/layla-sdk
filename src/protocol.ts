@@ -440,7 +440,7 @@ export interface LaylaApiGetTTSVoices {
 export interface LaylaApiGenerateVoice {
   cmd: 'generate_voice';
   data: {
-    ttsVoiceId: string;
+    ttsVoiceId: string | null; // if null, use the default global TTS voice
     text: string;
   }
 }

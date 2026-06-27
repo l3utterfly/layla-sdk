@@ -907,7 +907,7 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
   }
 
   async function handleGenerateVoice(data: {
-    ttsVoiceId: string;
+    ttsVoiceId: string | null;
     text: string;
   }): Promise<void> {
     void data;

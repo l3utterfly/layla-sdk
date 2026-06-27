@@ -307,8 +307,17 @@ const voice = voices[0];
 Each voice includes `id`, `type`, `tags`, and `name`.
 
 Use `layla.tts.generateVoice(ttsVoiceId, text, options?)` to ask Layla to
-generate and play voice audio on the device. The promise resolves after the host
-emits `on_finished_speaking`, meaning playback has completed.
+generate and play voice audio on the device. Pass a voice ID to select an
+installed voice, or pass `null` to use Layla's global default TTS voice. The
+promise resolves after the host emits `on_finished_speaking`, meaning playback
+has completed.
+
+```ts
+await layla.tts.generateVoice(
+  null,
+  'This line will use the global default Layla voice.',
+);
+```
 
 ```ts
 if (voice) {
