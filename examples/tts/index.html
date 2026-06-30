@@ -553,13 +553,12 @@
     <script type="importmap">
       {
         "imports": {
-          "@layla-network/sdk": "https://esm.sh/@layla-network/sdk@0.1.24"
+          "@layla-network/sdk": "https://esm.sh/@layla-network/sdk@0.1.27"
         }
       }
     </script>
     <script type="module">
       import LaylaSDK, {
-        LaylaAbortError,
         LaylaBridgeUnavailableError,
         LaylaError,
       } from "@layla-network/sdk";
@@ -571,7 +570,7 @@
       let isLoadingVoices = true;
       const activeTypes = new Set();
       let searchText = "";
-      let current = null; // { card, btn, controller }
+      let current = null; // { card, btn }
 
       // ---- Elements ----
       const $list = document.getElementById("voiceList");
@@ -734,15 +733,21 @@
         current = null;
       }
 
-      function stopCurrent() {
+      async function stopCurrent() {
         if (!current) return;
-        current.controller.abort();
         resetCurrent();
+        await layla.tts.stopSpeaking();
       }
 
       async function togglePlay(voice, card, btn) {
         const speaking = current && current.btn === btn;
-        stopCurrent();
+        try {
+          await stopCurrent();
+        } catch (error) {
+          showNotice(messageForError(error));
+          console.error(error);
+          return;
+        }
         if (speaking) return; // tapping the active one stops it
 
         const text = $say.value.trim();
@@ -752,18 +757,16 @@
         }
 
         showNotice("");
-        const controller = new AbortController();
-        current = { card, btn, controller };
+        current = { card, btn };
         card.classList.add("playing");
         btn.classList.add("playing");
         setPlayIcon(btn, true);
 
         try {
-          await layla.tts.generateVoice(voice.id, text, {
-            signal: controller.signal,
-          });
+          alert('starting tts');
+          await layla.tts.generateVoice(voice.id, text);
+          alert('done generating tts');
         } catch (error) {
-          if (error instanceof LaylaAbortError) return;
           showNotice(messageForError(error));
           console.error(error);
         } finally {
@@ -845,7 +848,9 @@
       }
 
       // Stop speech if the page is hidden/unloaded.
-      window.addEventListener("pagehide", stopCurrent);
+      window.addEventListener("pagehide", () => {
+        void stopCurrent().catch(console.error);
+      });
 
       loadVoices();
     </script>
