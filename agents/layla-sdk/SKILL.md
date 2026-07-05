@@ -1,6 +1,6 @@
 ---
 name: layla-sdk
-description: Use the @layla-network/sdk package in third-party Layla mini-apps and WebView apps. Covers the public API surface for creating a Layla client, OpenAI-shaped chat completions and streams including reasoning deltas, paginated character listing, chat sessions, session history, message saves, scheduled chat messages, memories, personas, TTS voices and playback, character images, sentiment analysis, image generation progress/results, file saving, abort handling, SDK errors, exported TypeScript types, and runtime expectations inside the Layla WebView.
+description: Use the @layla-network/sdk package in third-party Layla mini-apps and WebView apps. Covers the public API surface for creating a Layla client, OpenAI-shaped chat completions and streams including reasoning deltas, inference engine selection, paginated character listing, chat sessions, session history, message saves, scheduled chat messages, memories, personas, TTS voices and playback, character images, sentiment analysis, image generation progress/results, file saving, abort handling, SDK errors, exported TypeScript types, and runtime expectations inside the Layla WebView.
 ---
 
 # Layla SDK
@@ -72,6 +72,8 @@ await layla.characters.update(character);
 await layla.classifier.getSentiment('This is a happy message.');
 await layla.images.generateImage(prompt, onProgress);
 await layla.chat.completions.create({ messages });
+await layla.chat.getInferenceEngines();
+await layla.chat.setInferenceEngine(engineName);
 await layla.chat.getChatSessions(characterId);
 await layla.chat.getChatHistory(sessionId);
 await layla.chat.saveChatMessage(message);
@@ -143,6 +145,23 @@ for await (const chunk of stream) {
 ```
 
 Breaking out of `for await` aborts the request.
+
+Use `layla.chat.getInferenceEngines(options?)` to list the inference engines
+available for subsequent chat completions. Select one with
+`layla.chat.setInferenceEngine(engineName, options?)`, or pass `null` to reset
+to the host's default engine.
+
+```ts
+const engines = await layla.chat.getInferenceEngines();
+const selection = await layla.chat.setInferenceEngine(engines[0] ?? null);
+
+if (!selection.success) {
+  throw new Error('The requested inference engine is unavailable.');
+}
+```
+
+The setter resolves with `success` and `engineName`. If a requested name is not
+available, the host returns `success: false` and resets to its default engine.
 
 Use `layla.chat.getChatSessions(characterId, offset?, range?, options?)` to list a character's chat sessions before choosing which transcript to load. The result includes the character id and a newest-first `sessions` array with each session's `session_id`, `last_message_timestamp`, and `last_message_content`.
 

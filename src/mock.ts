@@ -92,6 +92,11 @@ export interface LaylaMockOptions {
    * Initial scheduled chat messages used by scheduled-message APIs.
    */
   scheduledChatMessages?: MockScheduledChatMessageSource;
+  /**
+   * Inference engines returned by `chat.getInferenceEngines()`.
+   * Defaults to three sample engines.
+   */
+  inferenceEngines?: string[];
   /** TTS voices returned by `tts.getVoices()`. Defaults to two sample voices. */
   ttsVoices?: LaylaTTSVoice[];
   /** Delay before the first event of a response (simulated latency). Default 150ms. */
@@ -399,6 +404,12 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
   const scheduledChatMessages = (options.scheduledChatMessages ?? []).map(
     (entry) => ({ ...entry }),
   );
+  const inferenceEngines = options.inferenceEngines ?? [
+    'mock-default',
+    'mock-fast',
+    'mock-quality',
+  ];
+  let selectedInferenceEngine: string | null = null;
   try {
     for (const [filename, contentBase64] of Object.entries(options.files ?? {})) {
       writeStoredFile(filename, contentBase64);
@@ -906,6 +917,43 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     });
   }
 
+  async function handleGetInferenceEngines(): Promise<void> {
+    await delay(latencyMs);
+    if (shouldError()) {
+      emitError('Simulated inference engines error');
+      return;
+    }
+
+    emit({
+      event: 'on_get_inference_engines_response',
+      data: {
+        engines: [...inferenceEngines],
+      },
+    });
+  }
+
+  async function handleSetInferenceEngine(data: {
+    engineName: string | null;
+  }): Promise<void> {
+    await delay(latencyMs);
+    if (shouldError()) {
+      emitError('Simulated set inference engine error');
+      return;
+    }
+
+    const success =
+      data.engineName === null || inferenceEngines.includes(data.engineName);
+    selectedInferenceEngine = success ? data.engineName : null;
+
+    emit({
+      event: 'on_set_inference_engine_response',
+      data: {
+        success,
+        engineName: selectedInferenceEngine,
+      },
+    });
+  }
+
   async function handleGenerateVoice(data: {
     ttsVoiceId: string | null;
     text: string;
@@ -1016,6 +1064,12 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
           break;
         case 'stop_speaking':
           handleStopSpeaking();
+          break;
+        case 'get_inference_engines':
+          void handleGetInferenceEngines();
+          break;
+        case 'set_inference_engine':
+          void handleSetInferenceEngine(msg.data);
           break;
         default:
           break;

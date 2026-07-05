@@ -10,11 +10,13 @@ import { LaylaAbortError } from '../../errors';
 import type {
   LaylaApiEvent,
   LaylaApiEvent_onGetChatHistoryResponse,
+  LaylaApiEvent_onGetInferenceEnginesResponse,
   LaylaApiEvent_onGetChatSessionsResponse,
   LaylaApiEvent_onGetScheduledChatMessagesResponse,
   LaylaApiEvent_onSaveChatMessageResponse,
   LaylaApiEvent_onCancelScheduledChatMessage,
   LaylaApiEvent_onScheduledChatMessage,
+  LaylaApiEvent_onSetInferenceEngineResponse,
   LaylaChatHistoryEntry,
   LaylaChatMessage,
   LaylaScheduledChatMessage,
@@ -88,6 +90,36 @@ class Completions {
 
 export class Chat {
   readonly completions = new Completions();
+
+  /**
+   * Fetch the inference engines available for subsequent chat completions.
+   */
+  getInferenceEngines(options: RequestOptions = {}): Promise<string[]> {
+    return oneShot<string[]>(
+      { cmd: 'get_inference_engines', data: null },
+      'on_get_inference_engines_response',
+      (event: LaylaApiEvent) =>
+        (event as LaylaApiEvent_onGetInferenceEnginesResponse).data.engines,
+      options.signal,
+    );
+  }
+
+  /**
+   * Select the inference engine used for subsequent chat completions.
+   * Pass `null` to reset to the host's default engine.
+   */
+  setInferenceEngine(
+    engineName: string | null,
+    options: RequestOptions = {},
+  ): Promise<LaylaApiEvent_onSetInferenceEngineResponse['data']> {
+    return oneShot<LaylaApiEvent_onSetInferenceEngineResponse['data']>(
+      { cmd: 'set_inference_engine', data: { engineName } },
+      'on_set_inference_engine_response',
+      (event: LaylaApiEvent) =>
+        (event as LaylaApiEvent_onSetInferenceEngineResponse).data,
+      options.signal,
+    );
+  }
 
   /**
    * Ask the native host for a character's chat history. Resolves once with the host's `on_get_chat_history_response` payload, or rejects on error/abort.

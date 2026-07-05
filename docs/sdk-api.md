@@ -35,6 +35,8 @@ import LaylaSDK, {
   type LaylaApiGetTTSVoices,
   type LaylaApiGenerateVoice,
   type LaylaApiStopSpeaking,
+  type LaylaApiGetInferenceEngines,
+  type LaylaApiSetInferenceEngine,
   type LaylaApiEvent_onGetChatSessionsResponse,
   type LaylaApiEvent_onSaveChatMessageResponse,
   type LaylaApiEvent_onScheduledChatMessage,
@@ -45,6 +47,8 @@ import LaylaSDK, {
   type LaylaApiEvent_onCreateOrUpdateMemoriesResponse,
   type LaylaApiEvent_onGetPersonaResponse,
   type LaylaApiEvent_onGetTTSVoicesResponse,
+  type LaylaApiEvent_onGetInferenceEnginesResponse,
+  type LaylaApiEvent_onSetInferenceEngineResponse,
   type LaylaApiEvent_onFinishedSpeaking,
   type LaylaApiEvent_onSaveFileResponse,
   type LaylaApiEvent_onReadFileResponse,
@@ -177,6 +181,54 @@ const stream = await layla.chat.completions.create({
 
 stream.on('content', (_delta, snapshot) => {
   setAssistantText(snapshot);
+});
+```
+
+## `layla.chat.getInferenceEngines(options?)`
+
+Fetches the inference engines available for subsequent chat completions.
+
+```ts
+const engines = await layla.chat.getInferenceEngines();
+
+for (const engineName of engines) {
+  console.log(engineName);
+}
+```
+
+Pass an abort signal as the first argument:
+
+```ts
+const engines = await layla.chat.getInferenceEngines({
+  signal: controller.signal,
+});
+```
+
+## `layla.chat.setInferenceEngine(engineName, options?)`
+
+Selects the inference engine used for subsequent chat completions. Use a name
+returned by `getInferenceEngines()`, or pass `null` to reset to the host's
+default engine.
+
+```ts
+const engines = await layla.chat.getInferenceEngines();
+const result = await layla.chat.setInferenceEngine(engines[0] ?? null);
+
+if (!result.success) {
+  throw new Error('The requested inference engine is unavailable.');
+}
+
+console.log(result.engineName); // selected name, or null for the default
+```
+
+The host returns `success: false` and resets to its default engine when the
+requested name is not found.
+
+Pass an abort signal as the second argument:
+
+```ts
+await layla.chat.setInferenceEngine('local-engine', {
+  signal: controller.signal,
 });
 ```
 
@@ -855,6 +907,21 @@ installLaylaMock({
 });
 ```
 
+Customize the inference engines exposed by the mock:
+
+```ts
+installLaylaMock({
+  inferenceEngines: ['local-fast', 'local-quality'],
+});
+
+const engines = await layla.chat.getInferenceEngines();
+await layla.chat.setInferenceEngine(engines[0] ?? null);
+```
+
+The mock accepts names in `inferenceEngines` and `null`. An unknown name returns
+`success: false`, resets the mock to its default engine, and reports
+`engineName: null`.
+
 Customize mock session history with static transcript data:
 
 ```ts
@@ -1054,11 +1121,15 @@ Useful exported types include:
 - `LaylaApiGetTTSVoices`
 - `LaylaApiGenerateVoice`
 - `LaylaApiStopSpeaking`
+- `LaylaApiGetInferenceEngines`
+- `LaylaApiSetInferenceEngine`
 - `LaylaApiEvent_onGetMemoriesResponse`
 - `LaylaApiEvent_onGetTopMemoriesResponse`
 - `LaylaApiEvent_onCreateOrUpdateMemoriesResponse`
 - `LaylaApiEvent_onGetPersonaResponse`
 - `LaylaApiEvent_onGetTTSVoicesResponse`
+- `LaylaApiEvent_onGetInferenceEnginesResponse`
+- `LaylaApiEvent_onSetInferenceEngineResponse`
 - `LaylaApiEvent_onFinishedSpeaking`
 - `LaylaApiSaveFile`
 - `LaylaApiEvent_onSaveFileResponse`

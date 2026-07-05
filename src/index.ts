@@ -48,6 +48,8 @@ export type {
   LaylaApiGetTTSVoices,
   LaylaApiGenerateVoice,
   LaylaApiStopSpeaking,
+  LaylaApiGetInferenceEngines,
+  LaylaApiSetInferenceEngine,
   LaylaApiCancel,
   LaylaApiRequest,
 
@@ -75,6 +77,8 @@ export type {
   LaylaApiEvent_onCreateOrUpdateMemoriesResponse,
   LaylaApiEvent_onGetPersonaResponse,
   LaylaApiEvent_onGetTTSVoicesResponse,
+  LaylaApiEvent_onGetInferenceEnginesResponse,
+  LaylaApiEvent_onSetInferenceEngineResponse,
   LaylaApiEvent_onFinishedSpeaking,
 } from './protocol';
 export { SENTIMENT_THRESHOLDS } from './protocol';

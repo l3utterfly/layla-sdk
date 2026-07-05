@@ -455,6 +455,29 @@ export interface LaylaApiStopSpeaking {
 }
 
 /**
+ * Ask the host for the list of available inference engines.
+ * The host should respond with an `on_get_inference_engines_response` event containing an array of inference engine names.
+ * These names can be used to set the inference engine before calling `send_message` to generate a response.
+ */
+export interface LaylaApiGetInferenceEngines {
+  cmd: 'get_inference_engines';
+  data: null; // no additional data is needed for this request
+}
+
+/**
+ * Ask the host to set the inference engine to use for subsequent `send_message` requests.
+ * The host should respond with an `on_set_inference_engine_response` event indicating whether the inference engine was set successfully or if the specified engine name was not found.
+ * If the engine is not found, the host should reset to the default inference engine.
+ * If `engineName` is null, the host should reset to the default inference engine.
+ */
+export interface LaylaApiSetInferenceEngine {
+  cmd: 'set_inference_engine';
+  data: {
+    engineName: string | null; // the name of the inference engine to set, if null, the host should reset to the default inference engine
+  };
+}
+
+/**
  * A request command (anything that opens a job and expects events back).
  * Add new one-shot commands here. `cancel` is not a request — it's a control
  * signal for an already-open job — so it lives outside this union.
@@ -481,7 +504,9 @@ export type LaylaApiRequest =
   | LaylaApiGetPersona
   | LaylaApiGetTTSVoices
   | LaylaApiGenerateVoice
-  | LaylaApiStopSpeaking;
+  | LaylaApiStopSpeaking
+  | LaylaApiGetInferenceEngines
+  | LaylaApiSetInferenceEngine;
 
 /* ---- RN -> Web events ------------------------------------------------------ */
 
@@ -724,6 +749,29 @@ export interface LaylaApiEvent_onFinishedSpeaking {
   data: null; // no additional data is needed for this event
 }
 
+/**
+ * The response for a `get_inference_engines` request, containing an array of all available inference engine names.
+ * This event is emitted by the host after successfully retrieving the list of inference engines.
+ */
+export interface LaylaApiEvent_onGetInferenceEnginesResponse {
+  event: 'on_get_inference_engines_response';
+  data: {
+    engines: string[]; // an array of all available inference engine names
+  };
+}
+
+/**
+ * The response for a `set_inference_engine` request, indicating whether the specified inference engine was set successfully.
+ * This event is emitted by the host after attempting to set the inference engine.
+ */
+export interface LaylaApiEvent_onSetInferenceEngineResponse {
+  event: 'on_set_inference_engine_response';
+  data: {
+    success: boolean; // indicates whether the inference engine was set successfully
+    engineName: string | null; // the name of the inference engine that was set, or null if the default engine was used
+  };
+}
+
 export type LaylaApiEvent =
   | LaylaApiEvent_onMsg
   | LaylaApiEvent_onMsgEnd
@@ -747,4 +795,6 @@ export type LaylaApiEvent =
   | LaylaApiEvent_onGetScheduledChatMessagesResponse
   | LaylaApiEvent_onGetPersonaResponse
   | LaylaApiEvent_onGetTTSVoicesResponse
+  | LaylaApiEvent_onGetInferenceEnginesResponse
+  | LaylaApiEvent_onSetInferenceEngineResponse
   | LaylaApiEvent_onFinishedSpeaking;
