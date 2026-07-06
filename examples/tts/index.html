@@ -571,6 +571,12 @@
       const activeTypes = new Set();
       let searchText = "";
       let current = null; // { card, btn }
+      const defaultVoice = {
+        id: null,
+        name: "Default",
+        type: "",
+        tags: ["Host default"],
+      };
 
       // ---- Elements ----
       const $list = document.getElementById("voiceList");
@@ -763,9 +769,7 @@
         setPlayIcon(btn, true);
 
         try {
-          alert('starting tts');
           await layla.tts.generateVoice(voice.id, text);
-          alert('done generating tts');
         } catch (error) {
           showNotice(messageForError(error));
           console.error(error);
@@ -830,9 +834,10 @@
         render();
 
         try {
-          voices = (await layla.tts.getVoices())
+          const installedVoices = (await layla.tts.getVoices())
             .filter((voice) => voice?.id)
             .map(normalizeVoice);
+          voices = [defaultVoice, ...installedVoices];
           showNotice("");
         } catch (error) {
           voices = [];
