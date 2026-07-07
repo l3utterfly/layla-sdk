@@ -23,6 +23,11 @@ Run SDK calls inside the Layla WebView. The host injects the React Native WebVie
 
 Do not use this SDK as an ordinary browser HTTP client. There is no API key, base URL, or fetch endpoint to configure. The SDK sends bridge messages to the Layla host.
 
+Layla SDK is designed to work with local LLMs running on device, so response
+times can be slow. When building mini-apps, prioritize streaming APIs and show
+appropriate loading, thinking, and progress states instead of leaving the UI
+idle while a request runs.
+
 For local browser development outside Layla, use `installLaylaMock(...)` before the first SDK call when the app needs SDK responses during development.
 
 ## Core Import
@@ -110,7 +115,8 @@ const completion = await layla.chat.completions.create({ messages });
 const text = completion.choices[0]?.message.content ?? '';
 ```
 
-Use streaming chat when updating UI as tokens arrive:
+Prefer streaming chat for user-facing mini-app flows so the UI can update as
+tokens arrive, especially when on-device local LLM responses take time:
 
 ```ts
 const stream = layla.chat.completions.stream({ messages });
