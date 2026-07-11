@@ -1,0 +1,23 @@
+{
+  "name": "vrm-vrma-viewer",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "A React + Vite viewer for VRM avatar models and VRMA animations.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@pixiv/three-vrm": "^3.5.5",
+    "@pixiv/three-vrm-animation": "^3.5.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "three": "^0.185.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^6.0.7"
+  }
+}

@@ -1,0 +1,72 @@
+{
+  "model": "Aera.vrm",
+
+  "animations": {
+    "admiration": ["Clapping.vrma"],
+    "amusement": ["Spin.vrma", "Squat.vrma"],
+    "anger": ["Angry.vrma", "Shoot.vrma"],
+    "annoyance": ["Angry.vrma"],
+    "approval": ["Clapping.vrma", "Peace.vrma"],
+    "caring": ["Greeting.vrma"],
+    "confusion": ["Thinking.vrma"],
+    "curiosity": ["LookAround.vrma", "Thinking.vrma"],
+    "desire": ["Blush.vrma"],
+    "disappointment": ["Sad.vrma"],
+    "disapproval": ["Angry.vrma"],
+    "disgust": ["Angry.vrma"],
+    "embarrassment": ["Blush.vrma"],
+    "excitement": ["Jump.vrma", "Spin.vrma"],
+    "fear": ["Surprised.vrma", "LookAround.vrma"],
+    "gratitude": ["Greeting.vrma", "Clapping.vrma"],
+    "grief": ["Sad.vrma"],
+    "joy": ["Jump.vrma", "Peace.vrma", "Spin.vrma"],
+    "love": ["Blush.vrma", "Peace.vrma"],
+    "nervousness": ["LookAround.vrma"],
+    "optimism": ["Peace.vrma", "Pose.vrma"],
+    "pride": ["Pose.vrma", "FullBody.vrma"],
+    "realization": ["Surprised.vrma", "Thinking.vrma"],
+    "relief": ["Relax.vrma"],
+    "remorse": ["Sad.vrma"],
+    "sadness": ["Sad.vrma", "Goodbye.vrma", "Sleepy.vrma"],
+    "surprise": ["Surprised.vrma"],
+    "neutral": [
+      "FullBody.vrma",
+      "Relax.vrma",
+      "Sleepy.vrma",
+      "LookAround.vrma",
+      "Pose.vrma",
+      "Thinking.vrma",
+      "Greeting.vrma"
+    ]
+  },
+
+  "animation": {
+    "mode": "sequence",
+    "crossFadeDuration": 0.4,
+    "loopSingle": true,
+    "randomizeStart": false
+  },
+
+  "camera": {
+    "position": [0, 1.25, 2.6],
+    "target": [0, 1.1, 0],
+    "fov": 30
+  },
+
+  "zoom": 0.7,
+
+  "transform": {
+    "position": [0, 0.3, 0],
+    "rotation": [0, 0, 0],
+    "scale": 1.0
+  },
+
+  "background": "transparent",
+
+  "lighting": {
+    "environment": true,
+    "ambientIntensity": 1.2,
+    "directionalIntensity": 1.6,
+    "directionalPosition": [1, 1.5, 1]
+  }
+}
