@@ -2,9 +2,9 @@
 
 A React + Vite app that renders a single VRM avatar as a non-interactive
 background layer. No controls, no UI — the camera is fixed and the avatar plays
-through a list of VRMA animations on its own. Everything is configured from one
-`settings.json` file, so you can re-frame the character or swap animations
-without touching code.
+random animations from the `neutral` group until the host app triggers another
+animation. Everything is configured from one `settings.json` file, so you can
+re-frame the character or swap animations without touching code.
 
 ## Setup
 
@@ -20,7 +20,7 @@ Then open the URL Vite prints (usually http://localhost:5173).
 Each `.vrma` becomes a standard Three.js `AnimationClip` on one `AnimationMixer`,
 so transitions are just weighted cross-fades — one clip fades out while the next
 fades in, and starting a fade at any moment interrupts what's playing. Beyond the
-automatic cycling, you can drive this from `window.avatar`:
+automatic neutral idle, you can drive this from `window.avatar`:
 
 ```js
 avatar.getAnimations();                 // list loaded clips (paths) to target
@@ -29,10 +29,10 @@ avatar.getAnimations();                 // list loaded clips (paths) to target
 avatar.play("idle", { fade: 0.4 });
 
 // Play a gesture once, then flow back to what it interrupted
-avatar.playOnce("wave");                // returns to the auto sequence / idle
+avatar.playOnce("wave");                // returns to a random neutral idle
 avatar.playOnce("point", { returnTo: "idle", fade: 0.25 });
 
-avatar.resumeAuto();                     // hand control back to auto-cycling
+avatar.resumeAuto();                     // hand control back to neutral idling
 avatar.stop({ fade: 0.5 });             // ease to rest
 avatar.setSpeed(1.5);                    // speed up the current clip
 ```
@@ -103,10 +103,8 @@ refresh the page.
 | Key | Description |
 | --- | --- |
 | `model` | Path to the `.vrm` file (required). |
-| `animations` | Array of `.vrma` paths. Loaded in order and cycled through. |
-| `animation.mode` | `"sequence"` (in order), `"random"`, or `"single"` (loop the first only). |
+| `animations` | Emotion-to-path arrays. Only `neutral` plays automatically; other groups are app-triggered. A legacy array is treated as neutral. |
 | `animation.crossFadeDuration` | Seconds to blend between animations. |
-| `animation.randomizeStart` | Start on a random clip instead of the first. |
 | `camera.position` | `[x, y, z]` camera location. +Z is in front of the avatar. |
 | `camera.target` | `[x, y, z]` point the camera looks at (e.g. the face/chest). |
 | `camera.fov` | Field of view in degrees. Lower = more zoomed / flatter. |
@@ -148,7 +146,7 @@ equirectangular image into `public/` and point `background` at it.
 
 The whole thing is a full-viewport, transparent canvas. To layer it over your
 own content, either run it as-is and put your content behind it, or lift
-`src/viewer/ViewerEngine.js` and `src/App.jsx` into your project and mount
+`src/viewer/ViewerEngine.ts` and `src/App.tsx` into your project and mount
 `<App />` inside a positioned container.
 
 ## Tech

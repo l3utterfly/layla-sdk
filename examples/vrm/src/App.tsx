@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import { ViewerEngine } from "./viewer/ViewerEngine.js";
+import { ViewerEngine, type ViewerSettings } from "./viewer/ViewerEngine";
 import "./App.css";
 
 export default function App() {
-  const containerRef = useRef(null);
-  const [status, setStatus] = useState("loading"); // loading | ready | error
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [message, setMessage] = useState("");
 
   useEffect(() => {
-    let engine = null;
+    let engine: ViewerEngine | null = null;
     let cancelled = false;
 
     async function boot() {
@@ -17,9 +17,9 @@ export default function App() {
         // cache: no-store so edits show up on refresh without a hard reload.
         const res = await fetch("/settings.json", { cache: "no-store" });
         if (!res.ok) throw new Error(`Could not load settings.json (${res.status})`);
-        const settings = await res.json();
+        const settings = (await res.json()) as ViewerSettings;
 
-        if (cancelled) return;
+        if (cancelled || !containerRef.current) return;
 
         engine = new ViewerEngine(containerRef.current, settings);
         await engine.load();
@@ -34,10 +34,10 @@ export default function App() {
         // avatar.setAutoBlink(false), avatar.setExpression("happy", 1).
         window.avatar = engine;
         setStatus("ready");
-      } catch (err) {
+      } catch (err: unknown) {
         console.error(err);
         if (!cancelled) {
-          setMessage(err.message ?? String(err));
+          setMessage(err instanceof Error ? err.message : String(err));
           setStatus("error");
         }
       }

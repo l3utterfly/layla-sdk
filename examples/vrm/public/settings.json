@@ -41,10 +41,7 @@
   },
 
   "animation": {
-    "mode": "sequence",
-    "crossFadeDuration": 0.4,
-    "loopSingle": true,
-    "randomizeStart": false
+    "crossFadeDuration": 0.4
   },
 
   "camera": {

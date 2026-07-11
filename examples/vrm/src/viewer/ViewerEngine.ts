@@ -1,4 +1,6 @@
 import * as THREE from "three";
+import type { VRM } from "@pixiv/three-vrm";
+import type { VRMAnimation } from "@pixiv/three-vrm-animation";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { VRMLoaderPlugin, VRMUtils } from "@pixiv/three-vrm";
@@ -9,53 +11,110 @@ import {
 
 const DEG2RAD = Math.PI / 180;
 
-const _isImagePath = (v) =>
+type Vector3Tuple = [number, number, number];
+type AnimationTarget = number | string;
+type AnimationReturnTarget = AnimationTarget | "auto";
+type BlinkPhase = "idle" | "closing" | "opening";
+
+export interface ViewerSettings {
+  model: string;
+  animations?: string[] | Record<string, string[]>;
+  animation?: {
+    crossFadeDuration?: number;
+  };
+  camera?: {
+    position?: Vector3Tuple;
+    target?: Vector3Tuple;
+    fov?: number;
+  };
+  zoom?: number;
+  transform?: {
+    position?: Vector3Tuple;
+    rotation?: Vector3Tuple;
+    scale?: number;
+  };
+  background?: string | null;
+  lighting?: {
+    environment?: boolean;
+    ambientIntensity?: number;
+    directionalIntensity?: number;
+    directionalPosition?: Vector3Tuple;
+  };
+}
+
+interface ActivateOptions {
+  fade?: number;
+  loop?: boolean;
+  clamp?: boolean;
+}
+
+interface BlinkState {
+  phase: BlinkPhase;
+  timer: number;
+  t: number;
+  next: number;
+}
+
+const _isImagePath = (v: unknown): v is string =>
   typeof v === "string" && /\.(png|jpe?g|webp)$/i.test(v);
 
-const _clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
+const _clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 
 // Randomized idle time between blinks, in seconds.
 const _randomBlinkDelay = () => 2.5 + Math.random() * 3.5;
 
 // "/models/wave.vrma" -> "wave"
-const _basename = (p) =>
-  String(p).split("/").pop().replace(/\.[^.]+$/, "");
+const _basename = (path: string) =>
+  path.split("/").pop()?.replace(/\.[^.]+$/, "") ?? path;
 
 /**
  * Renders a single VRM avatar as an ambient, non-interactive background.
  * Everything is driven by the settings object (loaded from /settings.json).
- * There are no user controls — the camera is fixed and the avatar cycles
- * through its animations on its own.
+ * There are no user controls — the camera is fixed and the avatar idles using
+ * random animations from the neutral group until the host app takes over.
  */
 export class ViewerEngine {
-  constructor(container, settings) {
+  private readonly container: HTMLDivElement;
+  private readonly settings: ViewerSettings;
+  private renderer!: THREE.WebGLRenderer;
+  private scene!: THREE.Scene;
+  private camera!: THREE.PerspectiveCamera;
+  private readonly clock = new THREE.Clock();
+  private vrm: VRM | null = null;
+  private mixer: THREE.AnimationMixer | null = null;
+  private readonly actions: THREE.AnimationAction[] = [];
+  private activeAction: THREE.AnimationAction | null = null;
+  private activeIndex = -1;
+  private readonly _indexByName = new Map<string, number>();
+  private readonly _neutralIndices: number[] = [];
+  private _autoNeutral = false;
+  private _returnTo: AnimationReturnTarget | null = null;
+  private _resumeIndex = -1;
+  private _timeScale = 1;
+  private _raf: number | null = null;
+  private _disposed = false;
+  private _autoBlink = true;
+  private _blinkWeight = 0;
+  private readonly _blink: BlinkState = {
+    phase: "idle",
+    timer: 0,
+    t: 0,
+    next: _randomBlinkDelay(),
+  };
+  private readonly _overrides = new Map<string, number>();
+  private readonly _managed = new Set<string>(["blink"]);
+  private _releaseNext: Set<string> | null = null;
+  private _envTex?: THREE.Texture;
+  private _bgTex?: THREE.Texture;
+  private _cameraTarget?: THREE.Vector3;
+
+  constructor(container: HTMLDivElement, settings: ViewerSettings) {
     this.container = container;
     this.settings = settings;
-
-    this.vrm = null;
-    this.mixer = null;
-    this.actions = [];
-    this.activeAction = null;
-    this.activeIndex = -1;
-    this._indexByName = new Map(); // path + basename -> action index
-    this._autoCycle = false; // does the finished-handler auto-advance?
-    this._returnTo = null; // where a one-shot returns to when it ends
-    this._resumeIndex = -1; // clip to fall back to after a one-shot
-    this._timeScale = 1;
-
-    this.clock = new THREE.Clock();
-    this._raf = null;
-    this._disposed = false;
 
     // --- procedural face state (blinking + expression overrides) ---
     // Auto-blink is on by default so the avatar feels alive. Any expression you
     // drive via setExpression() takes precedence and is re-applied every frame.
-    this._autoBlink = true;
-    this._blinkWeight = 0;
-    this._blink = { phase: "idle", timer: 0, t: 0, next: _randomBlinkDelay() };
-    this._overrides = new Map(); // name -> weight (0..1), applied every frame
-    this._managed = new Set(["blink"]); // expressions we actively write each frame
-
     this._initRenderer();
     this._initScene();
     this._initCamera();
@@ -177,7 +236,7 @@ export class ViewerEngine {
     if (!modelUrl) throw new Error('settings.json is missing a "model" path.');
 
     const gltf = await loader.loadAsync(modelUrl);
-    const vrm = gltf.userData.vrm;
+    const vrm = gltf.userData.vrm as VRM | undefined;
     if (!vrm) throw new Error(`No VRM data found in ${modelUrl}`);
 
     // Optimizations (safe no-ops if not applicable)
@@ -197,11 +256,16 @@ export class ViewerEngine {
     this.mixer = new THREE.AnimationMixer(vrm.scene);
     this.mixer.addEventListener("finished", (e) => this._onActionFinished(e));
 
-    const animPaths = this.settings.animations ?? [];
+    const configuredAnimations = this.settings.animations ?? [];
+    const animPaths = Array.isArray(configuredAnimations)
+      ? configuredAnimations
+      : [...new Set(Object.values(configuredAnimations).flat())];
     for (const path of animPaths) {
       try {
         const animGltf = await loader.loadAsync(path);
-        const vrmAnim = animGltf.userData.vrmAnimations?.[0];
+        const vrmAnim = animGltf.userData.vrmAnimations?.[0] as
+          | VRMAnimation
+          | undefined;
         if (!vrmAnim) {
           console.warn(`No VRMA animation found in ${path}, skipping.`);
           continue;
@@ -218,11 +282,23 @@ export class ViewerEngine {
       }
     }
 
+    // Only neutral animations participate in ambient playback. Every other
+    // group is loaded for explicit play()/playOnce() calls from the host app.
+    const neutralPaths = Array.isArray(configuredAnimations)
+      ? configuredAnimations
+      : configuredAnimations.neutral ?? [];
+    for (const path of neutralPaths) {
+      const index = this._indexByName.get(path);
+      if (index !== undefined && !this._neutralIndices.includes(index)) {
+        this._neutralIndices.push(index);
+      }
+    }
+
     this._startPlayback();
     return this;
   }
 
-  _applyTransform(root) {
+  private _applyTransform(root: THREE.Object3D) {
     const t = this.settings.transform ?? {};
     const [px, py, pz] = t.position ?? [0, 0, 0];
     const [rx, ry, rz] = t.rotation ?? [0, 0, 0];
@@ -237,24 +313,9 @@ export class ViewerEngine {
   /* -------------------------------------------------------------- animation */
 
   _startPlayback() {
-    if (this.actions.length === 0) return;
-
-    const a = this.settings.animation ?? {};
-    const single = this.actions.length === 1 || a.mode === "single";
-    const fade = a.crossFadeDuration ?? 0.4;
-
-    let start = 0;
-    if (a.randomizeStart) start = Math.floor(Math.random() * this.actions.length);
-
-    if (single) {
-      // Loop one clip forever; no auto-cycling.
-      this._autoCycle = false;
-      this._activate(start, { fade: 0, loop: true });
-    } else {
-      // Play each clip once, cross-fading to the next when it ends.
-      this._autoCycle = true;
-      this._activate(start, { fade: 0, loop: false });
-    }
+    if (this._neutralIndices.length === 0) return;
+    this._autoNeutral = true;
+    this._playNextNeutral(0);
   }
 
   /**
@@ -263,7 +324,10 @@ export class ViewerEngine {
    * Because the mixer sums actions by weight, overlapping the fade-in and
    * fade-out is what makes the transition look continuous.
    */
-  _activate(index, { fade = 0.4, loop = true, clamp = !loop } = {}) {
+  private _activate(
+    index: number,
+    { fade = 0.4, loop = true, clamp = !loop }: ActivateOptions = {},
+  ) {
     const next = this.actions[index];
     if (!next) return null;
 
@@ -285,7 +349,7 @@ export class ViewerEngine {
     return next;
   }
 
-  _onActionFinished(e) {
+  private _onActionFinished(e: { action: THREE.AnimationAction }) {
     // Ignore stray events from clips we've already faded away from.
     if (e && e.action !== this.activeAction) return;
 
@@ -297,12 +361,11 @@ export class ViewerEngine {
       const target = this._returnTo;
       this._returnTo = null;
       if (target === "auto") {
-        const canCycle = this.actions.length > 1 && a.mode !== "single";
-        if (canCycle) {
-          this._autoCycle = true;
-          this._advanceAuto(fade);
+        if (this._neutralIndices.length > 0) {
+          this._autoNeutral = true;
+          this._playNextNeutral(fade);
         } else if (this._resumeIndex >= 0) {
-          // Nothing to cycle through — flow back to the clip we interrupted.
+          // No neutral idle is configured — flow back to the interrupted clip.
           this._activate(this._resumeIndex, { fade, loop: true });
         }
       } else {
@@ -312,30 +375,35 @@ export class ViewerEngine {
       return;
     }
 
-    if (this._autoCycle) this._advanceAuto(fade);
+    if (this._autoNeutral) this._playNextNeutral(fade);
   }
 
-  _advanceAuto(fade) {
-    if (this.actions.length < 2) return;
-    const a = this.settings.animation ?? {};
+  private _playNextNeutral(fade: number) {
+    if (this._neutralIndices.length === 0) return;
 
-    let next;
-    if (a.mode === "random") {
-      do {
-        next = Math.floor(Math.random() * this.actions.length);
-      } while (next === this.activeIndex);
-    } else {
-      next = (this.activeIndex + 1) % this.actions.length;
+    // A lone idle loops. With multiple choices, pick randomly and avoid an
+    // immediate repeat so ambient motion remains varied.
+    if (this._neutralIndices.length === 1) {
+      this._activate(this._neutralIndices[0], { fade, loop: true });
+      return;
     }
+
+    let next: number;
+    do {
+      next = this._neutralIndices[
+        Math.floor(Math.random() * this._neutralIndices.length)
+      ];
+    } while (next === this.activeIndex);
     this._activate(next, { fade, loop: false });
   }
 
-  _resolveIndex(target) {
+  private _resolveIndex(target: AnimationTarget) {
     if (typeof target === "number") {
       return target >= 0 && target < this.actions.length ? target : -1;
     }
     if (typeof target === "string") {
-      if (this._indexByName.has(target)) return this._indexByName.get(target);
+      const exactIndex = this._indexByName.get(target);
+      if (exactIndex !== undefined) return exactIndex;
       // Fall back to a loose match on the clip path.
       for (const [name, i] of this._indexByName) {
         if (name.includes(target)) return i;
@@ -349,28 +417,34 @@ export class ViewerEngine {
   /**
    * Cross-fade to an animation now, interrupting the current one. `target` is an
    * index, a full path, or a basename like "wave". This takes over from the
-   * automatic sequence until you call resumeAuto().
+   * automatic neutral idle until you call resumeAuto().
    *   avatar.play("wave", { fade: 0.3, loop: true })
    */
-  play(target, { fade = 0.4, loop = true } = {}) {
+  play(target: AnimationTarget, { fade = 0.4, loop = true }: ActivateOptions = {}) {
     const i = this._resolveIndex(target);
     if (i < 0) {
       console.warn(`play(): no animation matching "${target}"`);
       return null;
     }
-    this._autoCycle = false;
+    this._autoNeutral = false;
     this._returnTo = null;
     return this._activate(i, { fade, loop });
   }
 
   /**
    * Play an animation once, then flow back. By default it returns to the
-   * automatic sequence ("auto"); pass a specific target to settle on that clip.
+   * automatic neutral idle ("auto"); pass a target to settle on that clip.
    * Ideal for gestures that interrupt an idle:
    *   avatar.playOnce("wave")                     // wave, then resume idling
    *   avatar.playOnce("point", { returnTo: "idle" })
    */
-  playOnce(target, { fade = 0.3, returnTo = "auto" } = {}) {
+  playOnce(
+    target: AnimationTarget,
+    { fade = 0.3, returnTo = "auto" }: {
+      fade?: number;
+      returnTo?: AnimationReturnTarget;
+    } = {},
+  ) {
     const i = this._resolveIndex(target);
     if (i < 0) {
       console.warn(`playOnce(): no animation matching "${target}"`);
@@ -378,23 +452,22 @@ export class ViewerEngine {
     }
     // Remember what we were doing so we can flow back to it afterwards.
     this._resumeIndex = this.activeIndex;
-    this._autoCycle = false;
+    this._autoNeutral = false;
     this._returnTo = returnTo;
     return this._activate(i, { fade, loop: false });
   }
 
-  /** Resume automatic sequence/random cycling from the current clip. */
-  resumeAuto({ fade = 0.4 } = {}) {
-    const a = this.settings.animation ?? {};
+  /** Return control to random playback from the configured neutral group. */
+  resumeAuto({ fade = 0.4 }: { fade?: number } = {}) {
     this._returnTo = null;
-    this._autoCycle = this.actions.length > 1 && a.mode !== "single";
-    if (this._autoCycle) this._advanceAuto(fade);
+    this._autoNeutral = this._neutralIndices.length > 0;
+    if (this._autoNeutral) this._playNextNeutral(fade);
     return this;
   }
 
   /** Fade the avatar to a rest (no animation playing). */
-  stop({ fade = 0.4 } = {}) {
-    this._autoCycle = false;
+  stop({ fade = 0.4 }: { fade?: number } = {}) {
+    this._autoNeutral = false;
     this._returnTo = null;
     if (this.activeAction) {
       this.activeAction.fadeOut(fade);
@@ -405,7 +478,7 @@ export class ViewerEngine {
   }
 
   /** Global playback speed for the active animation (1 = normal). */
-  setSpeed(scale) {
+  setSpeed(scale: number) {
     this._timeScale = scale;
     this.activeAction?.setEffectiveTimeScale(scale);
     return this;
@@ -425,7 +498,7 @@ export class ViewerEngine {
   // expression the current animation might touch, until you clear it.
 
   /** Enable/disable the automatic ambient blink. Turn off to drive eyes yourself. */
-  setAutoBlink(enabled) {
+  setAutoBlink(enabled: boolean) {
     this._autoBlink = !!enabled;
     if (!enabled) this._blinkWeight = 0;
     return this;
@@ -439,23 +512,23 @@ export class ViewerEngine {
   }
 
   /** Set one expression weight (0..1), re-applied every frame until cleared. */
-  setExpression(name, weight) {
+  setExpression(name: string, weight: number) {
     this._overrides.set(name, _clamp01(weight));
     this._managed.add(name);
     return this;
   }
 
   /** Set several expressions at once, e.g. { happy: 1, aa: 0.3 }. */
-  setExpressions(map) {
+  setExpressions(map: Record<string, number>) {
     for (const [name, weight] of Object.entries(map)) this.setExpression(name, weight);
     return this;
   }
 
   /** Stop driving an expression; its weight is released back to 0. */
-  clearExpression(name) {
+  clearExpression(name: string) {
     this._overrides.delete(name);
     // Kept in _managed for one more frame so it gets zeroed, then dropped.
-    this._releaseNext ??= new Set();
+    this._releaseNext ??= new Set<string>();
     this._releaseNext.add(name);
     return this;
   }
@@ -464,7 +537,7 @@ export class ViewerEngine {
    * Open the mouth by `amount` (0..1). Maps to the "aa" viseme — good enough for
    * amplitude-based lip sync: feed it your audio's normalized volume per frame.
    */
-  setMouthOpen(amount) {
+  setMouthOpen(amount: number) {
     return this.setExpression("aa", amount);
   }
 
@@ -472,7 +545,7 @@ export class ViewerEngine {
    * Set a specific mouth shape. `vowel` is one of aa|ih|ou|ee|oh. Clears the
    * other vowel visemes so shapes don't stack.
    */
-  setViseme(vowel, weight = 1) {
+  setViseme(vowel: "aa" | "ih" | "ou" | "ee" | "oh", weight = 1) {
     for (const v of ["aa", "ih", "ou", "ee", "oh"]) {
       if (v === vowel) this.setExpression(v, weight);
       else this.clearExpression(v);
@@ -486,7 +559,7 @@ export class ViewerEngine {
     return this;
   }
 
-  _applyFace(delta) {
+  private _applyFace(delta: number) {
     const em = this.vrm?.expressionManager;
     if (!em) return;
 
@@ -494,7 +567,7 @@ export class ViewerEngine {
 
     for (const name of this._managed) {
       let weight = 0;
-      if (this._overrides.has(name)) weight = this._overrides.get(name);
+      if (this._overrides.has(name)) weight = this._overrides.get(name) ?? 0;
       else if (name === "blink" && this._autoBlink) weight = this._blinkWeight;
       // setValue is a no-op for expressions the model doesn't define.
       if (em.getExpression(name)) em.setValue(name, weight);
@@ -509,7 +582,7 @@ export class ViewerEngine {
     }
   }
 
-  _updateBlink(delta) {
+  private _updateBlink(delta: number) {
     const b = this._blink;
 
     // If auto-blink is off and no manual blink is mid-flight, hold eyes open.
@@ -588,7 +661,7 @@ export class ViewerEngine {
 
   dispose() {
     this._disposed = true;
-    cancelAnimationFrame(this._raf);
+    if (this._raf !== null) cancelAnimationFrame(this._raf);
     window.removeEventListener("resize", this._onResize);
     this.mixer?.stopAllAction();
     if (this.vrm) VRMUtils.deepDispose(this.vrm.scene);
