@@ -8,6 +8,7 @@ import {
   VRMAnimationLoaderPlugin,
   createVRMAnimationClip,
 } from "@pixiv/three-vrm-animation";
+import { ProceduralIdle, type IdleSettings } from "./ProceduralIdle";
 
 const DEG2RAD = Math.PI / 180;
 
@@ -33,6 +34,7 @@ export interface ViewerSettings {
   debug?: boolean;
   model: string;
   animations?: string[] | Record<string, string[]>;
+  idle?: IdleSettings;
   animation?: {
     crossFadeDuration?: number;
   };
@@ -78,6 +80,9 @@ const _clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 // Randomized idle time between blinks, in seconds.
 const _randomBlinkDelay = () => 2.5 + Math.random() * 3.5;
 
+// Randomized procedural-idle time before an ambient neutral clip, in seconds.
+const _randomNeutralDelay = () => 15 + Math.random() * 15;
+
 // "/models/wave.vrma" -> "wave"
 const _basename = (path: string) =>
   path.split("/").pop()?.replace(/\.[^.]+$/, "") ?? path;
@@ -85,8 +90,8 @@ const _basename = (path: string) =>
 /**
  * Renders a single VRM avatar as an ambient, non-interactive background.
  * Everything is driven by the settings object (loaded from /settings.json).
- * There are no user controls — the camera is fixed and the avatar idles using
- * random animations from the neutral group until the host app takes over.
+ * There are no user controls — the camera is fixed and the avatar alternates
+ * between procedural idling and occasional neutral animations.
  */
 export class ViewerEngine {
   private readonly container: HTMLDivElement;
@@ -102,9 +107,11 @@ export class ViewerEngine {
   private activeIndex = -1;
   private readonly _indexByName = new Map<string, number>();
   private readonly _neutralIndices: number[] = [];
-  private _autoNeutral = false;
+  private proceduralIdle: ProceduralIdle | null = null;
+  private _ambientEnabled = true;
+  private _ambientTimer = _randomNeutralDelay();
+  private _lastNeutralIndex = -1;
   private _returnTo: AnimationReturnTarget | null = null;
-  private _resumeIndex = -1;
   private _timeScale = 1;
   private _raf: number | null = null;
   private _disposed = false;
@@ -295,6 +302,7 @@ export class ViewerEngine {
     this._applyTransform(vrm.scene, this.settings.transform);
     this.scene.add(vrm.scene);
     this.vrm = vrm;
+    this.proceduralIdle = new ProceduralIdle(vrm, this.settings.idle);
 
     // --- animations ---
     this.mixer = new THREE.AnimationMixer(vrm.scene);
@@ -326,8 +334,6 @@ export class ViewerEngine {
       }
     }
 
-    // Only neutral animations participate in ambient playback. Every other
-    // group is loaded for explicit play()/playOnce() calls from the host app.
     const neutralPaths = Array.isArray(configuredAnimations)
       ? configuredAnimations
       : configuredAnimations.neutral ?? [];
@@ -338,7 +344,6 @@ export class ViewerEngine {
       }
     }
 
-    this._startPlayback();
     return this;
   }
 
@@ -389,12 +394,6 @@ export class ViewerEngine {
 
   /* -------------------------------------------------------------- animation */
 
-  _startPlayback() {
-    if (this._neutralIndices.length === 0) return;
-    this._autoNeutral = true;
-    this._playNextNeutral(0);
-  }
-
   /**
    * Core blend. Cross-fades from the current action to `index`, interrupting
    * whatever is playing. `loop` repeats the clip; otherwise it plays once.
@@ -408,14 +407,17 @@ export class ViewerEngine {
     const next = this.actions[index];
     if (!next) return null;
 
+    // Fade the procedural pose out over the same interval that the mixer fades
+    // the clip in, so neither side snaps or wins the transition too early.
+    this.proceduralIdle?.setBasePose(false, fade);
     const prev = this.activeAction;
     next.setLoop(loop ? THREE.LoopRepeat : THREE.LoopOnce, loop ? Infinity : 1);
     next.clampWhenFinished = clamp;
     next.reset().setEffectiveTimeScale(this._timeScale).setEffectiveWeight(1);
 
-    if (fade > 0 && prev && prev !== next) {
+    if (fade > 0 && prev !== next) {
       next.fadeIn(fade).play();
-      prev.fadeOut(fade);
+      prev?.fadeOut(fade);
     } else {
       if (prev && prev !== next) prev.stop();
       next.play();
@@ -438,40 +440,49 @@ export class ViewerEngine {
       const target = this._returnTo;
       this._returnTo = null;
       if (target === "auto") {
-        if (this._neutralIndices.length > 0) {
-          this._autoNeutral = true;
-          this._playNextNeutral(fade);
-        } else if (this._resumeIndex >= 0) {
-          // No neutral idle is configured — flow back to the interrupted clip.
-          this._activate(this._resumeIndex, { fade, loop: true });
-        }
+        this._resumeIdle(fade);
       } else {
+        this._ambientEnabled = false;
         const i = this._resolveIndex(target);
         if (i >= 0) this._activate(i, { fade, loop: true });
       }
       return;
     }
-
-    if (this._autoNeutral) this._playNextNeutral(fade);
   }
 
-  private _playNextNeutral(fade: number) {
-    if (this._neutralIndices.length === 0) return;
+  private _resumeIdle(fade: number) {
+    this.activeAction?.fadeOut(fade);
+    this.activeAction = null;
+    this.activeIndex = -1;
+    this.proceduralIdle?.setBasePose(true, fade);
+    this._ambientTimer = _randomNeutralDelay();
+  }
 
-    // A lone idle loops. With multiple choices, pick randomly and avoid an
-    // immediate repeat so ambient motion remains varied.
-    if (this._neutralIndices.length === 1) {
-      this._activate(this._neutralIndices[0], { fade, loop: true });
+  private _updateAmbient(delta: number) {
+    if (
+      !this._ambientEnabled ||
+      this.activeAction ||
+      this._neutralIndices.length === 0
+    ) {
       return;
     }
 
-    let next: number;
-    do {
-      next = this._neutralIndices[
-        Math.floor(Math.random() * this._neutralIndices.length)
-      ];
-    } while (next === this.activeIndex);
-    this._activate(next, { fade, loop: false });
+    this._ambientTimer -= delta;
+    if (this._ambientTimer > 0) return;
+
+    let index = this._neutralIndices[0];
+    if (this._neutralIndices.length > 1) {
+      do {
+        index = this._neutralIndices[
+          Math.floor(Math.random() * this._neutralIndices.length)
+        ];
+      } while (index === this._lastNeutralIndex);
+    }
+
+    this._lastNeutralIndex = index;
+    this._returnTo = "auto";
+    const fade = this.settings.animation?.crossFadeDuration ?? 0.4;
+    this._activate(index, { fade, loop: false });
   }
 
   private _resolveIndex(target: AnimationTarget) {
@@ -494,7 +505,7 @@ export class ViewerEngine {
   /**
    * Cross-fade to an animation now, interrupting the current one. `target` is an
    * index, a full path, or a basename like "wave". This takes over from the
-   * automatic neutral idle until you call resumeAuto().
+   * procedural idle until you call resumeAuto().
    *   avatar.play("wave", { fade: 0.3, loop: true })
    */
   play(target: AnimationTarget, { fade = 0.4, loop = true }: ActivateOptions = {}) {
@@ -503,14 +514,14 @@ export class ViewerEngine {
       console.warn(`play(): no animation matching "${target}"`);
       return null;
     }
-    this._autoNeutral = false;
+    this._ambientEnabled = false;
     this._returnTo = null;
     return this._activate(i, { fade, loop });
   }
 
   /**
    * Play an animation once, then flow back. By default it returns to the
-   * automatic neutral idle ("auto"); pass a target to settle on that clip.
+   * procedural idle ("auto"); pass a target to settle on that clip.
    * Ideal for gestures that interrupt an idle:
    *   avatar.playOnce("wave")                     // wave, then resume idling
    *   avatar.playOnce("point", { returnTo: "idle" })
@@ -527,30 +538,29 @@ export class ViewerEngine {
       console.warn(`playOnce(): no animation matching "${target}"`);
       return null;
     }
-    // Remember what we were doing so we can flow back to it afterwards.
-    this._resumeIndex = this.activeIndex;
-    this._autoNeutral = false;
+    this._ambientEnabled = returnTo === "auto";
     this._returnTo = returnTo;
     return this._activate(i, { fade, loop: false });
   }
 
-  /** Return control to random playback from the configured neutral group. */
+  /** Return control to the procedural-idle/ambient-neutral cycle. */
   resumeAuto({ fade = 0.4 }: { fade?: number } = {}) {
+    this._ambientEnabled = true;
     this._returnTo = null;
-    this._autoNeutral = this._neutralIndices.length > 0;
-    if (this._autoNeutral) this._playNextNeutral(fade);
+    this._resumeIdle(fade);
     return this;
   }
 
   /** Fade the avatar to a rest (no animation playing). */
   stop({ fade = 0.4 }: { fade?: number } = {}) {
-    this._autoNeutral = false;
+    this._ambientEnabled = false;
     this._returnTo = null;
     if (this.activeAction) {
       this.activeAction.fadeOut(fade);
       this.activeAction = null;
       this.activeIndex = -1;
     }
+    this.proceduralIdle?.setBasePose(true, fade);
     return this;
   }
 
@@ -708,7 +718,10 @@ export class ViewerEngine {
       this._raf = requestAnimationFrame(tick);
 
       const delta = this.clock.getDelta();
+      this._updateAmbient(delta);
+      this.vrm?.humanoid.resetNormalizedPose();
       this.mixer?.update(delta);
+      this.proceduralIdle?.update(delta);
       // Apply blinking + expression overrides after the animation mixer (so
       // manual control wins) and before vrm.update (which pushes weights to the
       // mesh, and also drives spring bones, look-at and expression morphs).

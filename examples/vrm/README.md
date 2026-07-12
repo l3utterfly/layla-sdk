@@ -1,9 +1,10 @@
 # VRM Avatar Background
 
 A React + Vite app that renders a single VRM avatar as a non-interactive
-background layer. No controls, no UI — the camera is fixed and the avatar plays
-random animations from the `neutral` group until the host app triggers another
-animation. Everything is configured from one `settings.json` file, so you can
+background layer. No controls, no UI — the camera is fixed and the avatar uses
+a procedural idle, occasionally playing a random animation from the `neutral`
+group before returning to idle. Everything is configured from one
+`settings.json` file, so you can
 re-frame the character or swap animations without touching code.
 
 ## Setup
@@ -20,19 +21,19 @@ Then open the URL Vite prints (usually http://localhost:5173).
 Each `.vrma` becomes a standard Three.js `AnimationClip` on one `AnimationMixer`,
 so transitions are just weighted cross-fades — one clip fades out while the next
 fades in, and starting a fade at any moment interrupts what's playing. Beyond the
-automatic neutral idle, you can drive this from `window.avatar`:
+procedural idle, you can drive this from `window.avatar`:
 
 ```js
 avatar.getAnimations();                 // list loaded clips (paths) to target
 
 // Interrupt and cross-fade to a clip, then hold it (loops by default)
-avatar.play("idle", { fade: 0.4 });
+avatar.play("Relax", { fade: 0.4 });
 
-// Play a gesture once, then flow back to what it interrupted
-avatar.playOnce("wave");                // returns to a random neutral idle
-avatar.playOnce("point", { returnTo: "idle", fade: 0.25 });
+// Play a gesture once, then flow back to the procedural idle
+avatar.playOnce("wave");                // returns to the procedural idle
+avatar.playOnce("point", { returnTo: "Relax", fade: 0.25 });
 
-avatar.resumeAuto();                     // hand control back to neutral idling
+avatar.resumeAuto();                     // resume idle + occasional neutral clips
 avatar.stop({ fade: 0.5 });             // ease to rest
 avatar.setSpeed(1.5);                    // speed up the current clip
 ```
@@ -104,7 +105,8 @@ refresh the page.
 | --- | --- |
 | `debug` | Show an in-viewer panel with live camera, model, and GLB background sliders. Changes last until refresh; copy chosen values into this file to keep them. |
 | `model` | Path to the `.vrm` file (required). |
-| `animations` | Emotion-to-path arrays. Only `neutral` plays automatically; other groups are app-triggered. A legacy array is treated as neutral. |
+| `animations` | Emotion-to-path arrays. A random `neutral` animation plays every 5–10 seconds while automatic idling is active; other groups are app-triggered. A legacy array is treated as the neutral group. |
+| `idle` | Procedural rest-pose, breathing, sway, and head-drift settings. Set `enabled` to `false` to disable procedural motion. |
 | `animation.crossFadeDuration` | Seconds to blend between animations. |
 | `camera.position` | `[x, y, z]` camera location. +Z is in front of the avatar. |
 | `camera.target` | `[x, y, z]` point the camera looks at (e.g. the face/chest). |
@@ -195,3 +197,7 @@ own content, either run it as-is and put your content behind it, or lift
 - `@pixiv/three-vrm` — VRM model loading
 - `@pixiv/three-vrm-animation` — VRMA animation loading + retargeting
 - `react` + `vite` — app shell and dev server
+
+## Attributions
+
+1. Low-poly forest: https://sketchfab.com/3d-models/low-poly-forest-74e0a8f713bb4998a678bffe0e40a455
