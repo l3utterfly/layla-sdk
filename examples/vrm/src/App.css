@@ -17,6 +17,89 @@
   display: block;
 }
 
+.debug-panel {
+  position: absolute;
+  z-index: 10;
+  top: 16px;
+  left: 16px;
+  width: min(360px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  color: #f2f0ff;
+  background: rgba(14, 13, 24, 0.88);
+  border: 1px solid rgba(185, 174, 255, 0.3);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(12px);
+  font: 12px/1.35 ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+
+.debug-panel > summary {
+  position: sticky;
+  top: 0;
+  padding: 11px 14px;
+  cursor: pointer;
+  background: rgba(27, 24, 45, 0.96);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  user-select: none;
+}
+
+.debug-panel__content {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.debug-group {
+  min-width: 0;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid rgba(185, 174, 255, 0.2);
+  border-radius: 8px;
+}
+
+.debug-group legend {
+  padding: 0 6px;
+  color: #c9c0ff;
+  font-weight: 700;
+}
+
+.debug-control + .debug-control {
+  margin-top: 10px;
+}
+
+.debug-control__name {
+  display: block;
+  margin-bottom: 4px;
+  color: rgba(242, 240, 255, 0.68);
+  text-transform: capitalize;
+}
+
+.debug-slider {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) 48px;
+  align-items: center;
+  gap: 7px;
+  min-height: 24px;
+}
+
+.debug-slider > span {
+  color: #9d8cff;
+  text-transform: uppercase;
+}
+
+.debug-slider input {
+  width: 100%;
+  accent-color: #9d8cff;
+}
+
+.debug-slider output {
+  color: #fff;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Overlays sit above the canvas but never block it once we're ready. */
 .overlay {
   position: absolute;

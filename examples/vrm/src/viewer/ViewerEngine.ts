@@ -16,7 +16,21 @@ type AnimationTarget = number | string;
 type AnimationReturnTarget = AnimationTarget | "auto";
 type BlinkPhase = "idle" | "closing" | "opening";
 
+export interface EntityTransform {
+  position?: Vector3Tuple;
+  rotation?: Vector3Tuple;
+  scale?: number;
+}
+
+export interface CameraTransform {
+  position: Vector3Tuple;
+  target: Vector3Tuple;
+  fov: number;
+  zoom: number;
+}
+
 export interface ViewerSettings {
+  debug?: boolean;
   model: string;
   animations?: string[] | Record<string, string[]>;
   animation?: {
@@ -28,12 +42,10 @@ export interface ViewerSettings {
     fov?: number;
   };
   zoom?: number;
-  transform?: {
-    position?: Vector3Tuple;
-    rotation?: Vector3Tuple;
-    scale?: number;
-  };
+  transform?: EntityTransform;
   background?: string | null;
+  backgroundTransform?: EntityTransform;
+  skybox?: string | null;
   lighting?: {
     environment?: boolean;
     ambientIntensity?: number;
@@ -56,7 +68,10 @@ interface BlinkState {
 }
 
 const _isImagePath = (v: unknown): v is string =>
-  typeof v === "string" && /\.(png|jpe?g|webp)$/i.test(v);
+  typeof v === "string" && /\.(png|jpe?g|webp)(?:[?#].*)?$/i.test(v);
+
+const _isGlbPath = (v: unknown): v is string =>
+  typeof v === "string" && /\.glb(?:[?#].*)?$/i.test(v);
 
 const _clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 
@@ -106,6 +121,8 @@ export class ViewerEngine {
   private _releaseNext: Set<string> | null = null;
   private _envTex?: THREE.Texture;
   private _bgTex?: THREE.Texture;
+  private _skyboxTex?: THREE.Texture;
+  private _backgroundModel?: THREE.Object3D;
   private _cameraTarget?: THREE.Vector3;
 
   constructor(container: HTMLDivElement, settings: ViewerSettings) {
@@ -128,9 +145,16 @@ export class ViewerEngine {
 
   _initRenderer() {
     const bg = this.settings.background ?? "transparent";
-    const transparent = bg === "transparent" || bg === null;
+    const hasSkybox =
+      typeof this.settings.skybox === "string" &&
+      this.settings.skybox.trim().length > 0;
+    const transparent = !hasSkybox && (bg === "transparent" || bg === null);
     // A solid color = any string that isn't a keyword or an image path.
-    const isColor = !transparent && bg !== "environment" && !_isImagePath(bg);
+    const isColor =
+      !transparent &&
+      bg !== "environment" &&
+      !_isImagePath(bg) &&
+      !_isGlbPath(bg);
 
     this.renderer = new THREE.WebGLRenderer({
       antialias: true,
@@ -145,8 +169,9 @@ export class ViewerEngine {
     } else if (isColor) {
       this.renderer.setClearColor(new THREE.Color(bg), 1);
     } else {
-      // "environment" or an image: the visible backdrop is set as
-      // scene.background in _initScene(); clear to black underneath.
+      // "environment", an image, or a GLB scene: clear to black underneath.
+      // Image/environment backdrops are assigned in _initScene(), while a GLB
+      // is added as scene geometry in load().
       this.renderer.setClearColor(0x000000, 1);
     }
 
@@ -157,8 +182,11 @@ export class ViewerEngine {
     this.scene = new THREE.Scene();
 
     const bg = this.settings.background ?? "transparent";
+    const hasSkybox =
+      typeof this.settings.skybox === "string" &&
+      this.settings.skybox.trim().length > 0;
     const wantEnvLighting = this.settings.lighting?.environment !== false;
-    const wantEnvBackground = bg === "environment";
+    const wantEnvBackground = !hasSkybox && bg === "environment";
 
     // RoomEnvironment feeds scene.environment (image-based lighting), and can
     // optionally be shown as the visible backdrop via scene.background.
@@ -172,7 +200,7 @@ export class ViewerEngine {
     }
 
     // An image path is drawn as the backdrop (stretched to fill the viewport).
-    if (_isImagePath(bg)) {
+    if (!hasSkybox && _isImagePath(bg)) {
       const tex = new THREE.TextureLoader().load(bg);
       tex.colorSpace = THREE.SRGBColorSpace;
       this.scene.background = tex;
@@ -194,17 +222,13 @@ export class ViewerEngine {
 
   _applyCamera() {
     const cam = this.settings.camera ?? {};
-    const target = new THREE.Vector3(...(cam.target ?? [0, 1.1, 0]));
-    const position = new THREE.Vector3(...(cam.position ?? [0, 1.25, 2.6]));
-
-    // "zoom" dollies the camera along the view direction.
-    // zoom = 1 -> configured position; > 1 -> closer; < 1 -> further away.
-    const zoom = this.settings.zoom && this.settings.zoom > 0 ? this.settings.zoom : 1;
-    const dir = position.clone().sub(target).divideScalar(zoom);
-
-    this.camera.position.copy(target.clone().add(dir));
-    this.camera.lookAt(target);
-    this._cameraTarget = target;
+    this.setCameraTransform({
+      position: cam.position ?? [0, 1.25, 2.6],
+      target: cam.target ?? [0, 1.1, 0],
+      fov: cam.fov ?? 30,
+      zoom:
+        this.settings.zoom && this.settings.zoom > 0 ? this.settings.zoom : 1,
+    });
   }
 
   _initLighting() {
@@ -227,6 +251,26 @@ export class ViewerEngine {
   /* ----------------------------------------------------------------- loading */
 
   async load() {
+    const skybox = this.settings.skybox;
+    if (typeof skybox === "string" && skybox.trim().length > 0) {
+      const tex = await new THREE.TextureLoader().loadAsync(skybox);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.mapping = THREE.EquirectangularReflectionMapping;
+      this.scene.background = tex;
+      this._skyboxTex = tex;
+    }
+
+    const background = this.settings.background;
+    if (_isGlbPath(background)) {
+      const backgroundGltf = await new GLTFLoader().loadAsync(background);
+      this._backgroundModel = backgroundGltf.scene;
+      this._applyTransform(
+        this._backgroundModel,
+        this.settings.backgroundTransform,
+      );
+      this.scene.add(this._backgroundModel);
+    }
+
     const loader = new GLTFLoader();
     loader.register((parser) => new VRMLoaderPlugin(parser));
     loader.register((parser) => new VRMAnimationLoaderPlugin(parser));
@@ -248,7 +292,7 @@ export class ViewerEngine {
     // Frustum culling can clip spring-bone-driven meshes; disable to be safe.
     vrm.scene.traverse((obj) => (obj.frustumCulled = false));
 
-    this._applyTransform(vrm.scene);
+    this._applyTransform(vrm.scene, this.settings.transform);
     this.scene.add(vrm.scene);
     this.vrm = vrm;
 
@@ -298,8 +342,10 @@ export class ViewerEngine {
     return this;
   }
 
-  private _applyTransform(root: THREE.Object3D) {
-    const t = this.settings.transform ?? {};
+  private _applyTransform(
+    root: THREE.Object3D,
+    t: EntityTransform = {},
+  ) {
     const [px, py, pz] = t.position ?? [0, 0, 0];
     const [rx, ry, rz] = t.rotation ?? [0, 0, 0];
     const scale = t.scale ?? 1;
@@ -308,6 +354,37 @@ export class ViewerEngine {
     // rotation is authored in degrees for readability in settings.json
     root.rotation.set(rx * DEG2RAD, ry * DEG2RAD, rz * DEG2RAD);
     root.scale.setScalar(scale);
+  }
+
+  /** Apply a model transform immediately without restarting the viewer. */
+  setModelTransform(transform: EntityTransform) {
+    if (this.vrm) this._applyTransform(this.vrm.scene, transform);
+    return this;
+  }
+
+  /** Apply a GLB background transform immediately without restarting. */
+  setBackgroundTransform(transform: EntityTransform) {
+    if (this._backgroundModel) {
+      this._applyTransform(this._backgroundModel, transform);
+    }
+    return this;
+  }
+
+  /** Update the camera framing immediately without restarting the viewer. */
+  setCameraTransform(transform: CameraTransform) {
+    const target = new THREE.Vector3(...transform.target);
+    const position = new THREE.Vector3(...transform.position);
+    const zoom = transform.zoom > 0 ? transform.zoom : 1;
+
+    // Zoom dollies along the position-to-target direction. The target is the
+    // camera's practical rotation control because lookAt() owns its rotation.
+    const dir = position.clone().sub(target).divideScalar(zoom);
+    this.camera.position.copy(target.clone().add(dir));
+    this.camera.lookAt(target);
+    this.camera.fov = Math.min(179, Math.max(1, transform.fov));
+    this.camera.updateProjectionMatrix();
+    this._cameraTarget = target;
+    return this;
   }
 
   /* -------------------------------------------------------------- animation */
@@ -665,8 +742,10 @@ export class ViewerEngine {
     window.removeEventListener("resize", this._onResize);
     this.mixer?.stopAllAction();
     if (this.vrm) VRMUtils.deepDispose(this.vrm.scene);
+    if (this._backgroundModel) VRMUtils.deepDispose(this._backgroundModel);
     this._envTex?.dispose?.();
     this._bgTex?.dispose?.();
+    this._skyboxTex?.dispose?.();
     this.renderer?.dispose();
     if (this.renderer?.domElement?.parentNode === this.container) {
       this.container.removeChild(this.renderer.domElement);

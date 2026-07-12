@@ -102,6 +102,7 @@ refresh the page.
 
 | Key | Description |
 | --- | --- |
+| `debug` | Show an in-viewer panel with live camera, model, and GLB background sliders. Changes last until refresh; copy chosen values into this file to keep them. |
 | `model` | Path to the `.vrm` file (required). |
 | `animations` | Emotion-to-path arrays. Only `neutral` plays automatically; other groups are app-triggered. A legacy array is treated as neutral. |
 | `animation.crossFadeDuration` | Seconds to blend between animations. |
@@ -113,6 +114,10 @@ refresh the page.
 | `transform.rotation` | `[x, y, z]` rotation in **degrees**. |
 | `transform.scale` | Uniform scale of the avatar. |
 | `background` | See below. |
+| `backgroundTransform.position` | `[x, y, z]` to move a GLB background. |
+| `backgroundTransform.rotation` | `[x, y, z]` rotation of a GLB background in **degrees**. |
+| `backgroundTransform.scale` | Uniform scale of a GLB background. |
+| `skybox` | Path to an equirectangular texture that surrounds the scene, or `null` to disable it. |
 | `lighting.environment` | `true` for soft image-based lighting (nicer PBR). |
 | `lighting.ambientIntensity` | Flat fill light. |
 | `lighting.directionalIntensity` | Key light strength. |
@@ -130,9 +135,44 @@ drawn as scenery. What you see behind the character is controlled by
 | `"#101018"` (any CSS color) | Solid color fill. |
 | `"environment"` | Renders the studio room as a soft, blurry backdrop. |
 | `"/bg.jpg"` (a `.png`/`.jpg`/`.webp` path under `public/`) | Uses that image as the backdrop, stretched to fill. |
+| `"scenes/room.glb"` (a relative `.glb` path under `public/`) | Loads the GLB's scene as 3D background geometry alongside the avatar. Its authored coordinates, scale, materials, and lighting response are preserved. |
 
 If you want a *photographic* room rather than the soft studio gradient, drop an
 equirectangular image into `public/` and point `background` at it.
+
+For a 3D room or environment, put its `.glb` file (and any external assets it
+references) under `public/` and use a relative path such as
+`"background": "scenes/room.glb"`. The model is added to the same scene as the
+avatar. Use `backgroundTransform` to position, rotate, and scale it without
+editing the source asset:
+
+```json
+"background": "scenes/room.glb",
+"backgroundTransform": {
+  "position": [0, -0.5, 1],
+  "rotation": [0, 180, 0],
+  "scale": 1.25
+}
+```
+
+All fields are optional and default to `[0, 0, 0]` for position and rotation,
+and `1` for scale, preserving the GLB's authored transform. GLB animation clips
+are not played automatically.
+
+### Skybox
+
+Set `skybox` to a texture path under `public/` to render an equirectangular
+panorama around the scene:
+
+```json
+"skybox": "skyboxes/sunset.png"
+```
+
+PNG, JPEG, WebP, and other texture formats supported by the browser can be
+used. Set it to `null` to disable the skybox. When set, the skybox is the
+visible backdrop instead of a background color, image, or `"environment"`;
+background GLB geometry is still loaded in front of it. The skybox is visual
+only, while `lighting.environment` continues to control image-based lighting.
 
 ### Framing tips
 
