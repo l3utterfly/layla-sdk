@@ -68,8 +68,8 @@ export default function App() {
           <p className="overlay__title">Couldn't start the viewer</p>
           <p className="overlay__detail">{message}</p>
           <p className="overlay__hint">
-            Check the paths in <code>public/settings.json</code> and make sure your
-            files exist under <code>public/models/</code>.
+            Check the paths in <code>settings.json</code> and make sure your
+            files exist.
           </p>
         </div>
       )}
