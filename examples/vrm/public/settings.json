@@ -1,6 +1,6 @@
 {
-  "debug": false,
-  "model": "linnea.vrm",
+  "debug": true,
+  "model": "yoru.vrm",
 
   "animations": {
     "admiration": ["animations/Clapping.vrma"],
@@ -67,31 +67,31 @@
   },
 
   "camera": {
-    "position": [0.43, -1.39, -0.29],
-    "target": [-1.48, -1.82, -1.67],
+    "position": [-5.45, 3.75, -2.86],
+    "target": [-1.96, 2.97, -4.6],
     "fov": 30
   },
 
-  "zoom": 0.6,
+  "zoom": 0.27,
 
   "transform": {
-    "position": [-1.10, -2.68, -1.39],
-    "rotation": [0, -126, 0],
-    "scale": 1.04
+    "position": [5.02, -5.41, -8.04],
+    "rotation": [0, 115, 0],
+    "scale": 6.44
   },
 
-  "background": "bg/low_poly_forest.glb",
+  "background": "bg/anime_class_room.glb",
   "backgroundTransform": {
-    "position": [0, -8.1, -10],
-    "rotation": [0, -25, 0],
-    "scale": 10.0
+    "position": [0, -2.9, 1],
+    "rotation": [0, 106, 0],
+    "scale": 2.64
   },
-  "skybox": "bg/sky.png",
+  "skybox": null,
 
   "lighting": {
     "environment": true,
     "ambientIntensity": 1.2,
     "directionalIntensity": 1.6,
-    "directionalPosition": [1, 1.5, 1]
+    "directionalPosition": [-1.96, 2.97, -4.6]
   }
 }

@@ -1,0 +1,97 @@
+{
+  "debug": false,
+  "model": "linnea.vrm",
+
+  "animations": {
+    "admiration": ["animations/Clapping.vrma"],
+    "amusement": ["animations/Spin.vrma", "animations/Squat.vrma"],
+    "anger": ["animations/Angry.vrma", "animations/Shoot.vrma"],
+    "annoyance": ["animations/Angry.vrma"],
+    "approval": ["animations/Clapping.vrma", "animations/Peace.vrma"],
+    "caring": ["animations/Greeting.vrma"],
+    "confusion": ["animations/Thinking.vrma"],
+    "curiosity": ["animations/LookAround.vrma", "animations/Thinking.vrma"],
+    "desire": ["animations/Blush.vrma"],
+    "disappointment": ["animations/Sad.vrma"],
+    "disapproval": ["animations/Angry.vrma"],
+    "disgust": ["animations/Angry.vrma"],
+    "embarrassment": ["animations/Blush.vrma"],
+    "excitement": ["animations/Jump.vrma", "animations/Spin.vrma"],
+    "fear": ["animations/Surprised.vrma", "animations/LookAround.vrma"],
+    "gratitude": ["animations/Greeting.vrma", "animations/Clapping.vrma"],
+    "grief": ["animations/Sad.vrma"],
+    "joy": [
+      "animations/Jump.vrma",
+      "animations/Peace.vrma",
+      "animations/Spin.vrma"
+    ],
+    "love": ["animations/Blush.vrma", "animations/Peace.vrma"],
+    "nervousness": ["animations/LookAround.vrma"],
+    "optimism": ["animations/Peace.vrma", "animations/Pose.vrma"],
+    "pride": ["animations/Pose.vrma", "animations/FullBody.vrma"],
+    "realization": ["animations/Surprised.vrma", "animations/Thinking.vrma"],
+    "relief": ["animations/Relax.vrma"],
+    "remorse": ["animations/Sad.vrma"],
+    "sadness": [
+      "animations/Sad.vrma",
+      "animations/Goodbye.vrma",
+      "animations/Sleepy.vrma"
+    ],
+    "surprise": ["animations/Surprised.vrma"],
+    "neutral": [
+      "animations/FullBody.vrma",
+      "animations/Relax.vrma",
+      "animations/Sleepy.vrma",
+      "animations/LookAround.vrma",
+      "animations/Pose.vrma",
+      "animations/Thinking.vrma",
+      "animations/Greeting.vrma"
+    ]
+  },
+
+  "idle": {
+    "basePose": true,
+    "armDrop": 72,
+    "armForward": 7,
+    "elbow": 10,
+    "handCurl": 0.35,
+    "breath": { "period": 4.2, "amount": 1 },
+    "sway": { "period": 9.7, "amount": 1 },
+    "drift": { "amount": 1 },
+    "plantFeet": true,
+    "crouch": 0.006
+  },
+
+  "animation": {
+    "crossFadeDuration": 1.0
+  },
+
+  "camera": {
+    "position": [0.43, -1.39, -0.29],
+    "target": [-1.48, -1.82, -1.67],
+    "fov": 30
+  },
+
+  "zoom": 0.6,
+
+  "transform": {
+    "position": [-1.10, -2.68, -1.39],
+    "rotation": [0, -126, 0],
+    "scale": 1.04
+  },
+
+  "background": "bg/low_poly_forest.glb",
+  "backgroundTransform": {
+    "position": [0, -8.1, -10],
+    "rotation": [0, -25, 0],
+    "scale": 10.0
+  },
+  "skybox": "bg/sky.png",
+
+  "lighting": {
+    "environment": true,
+    "ambientIntensity": 1.2,
+    "directionalIntensity": 1.6,
+    "directionalPosition": [1, 1.5, 1]
+  }
+}

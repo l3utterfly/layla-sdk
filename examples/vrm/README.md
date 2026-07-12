@@ -201,3 +201,5 @@ own content, either run it as-is and put your content behind it, or lift
 ## Attributions
 
 1. Low-poly forest: https://sketchfab.com/3d-models/low-poly-forest-74e0a8f713bb4998a678bffe0e40a455
+2. Pool in the mountains: https://sketchfab.com/3d-models/pool-in-the-mountains-baked-96537a370338456680c8327ec811733f
+3. Anime classroom: https://sketchfab.com/3d-models/anime-class-room-4faa1d57304d446995bc3a01af763239
