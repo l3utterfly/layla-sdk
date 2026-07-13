@@ -69,6 +69,16 @@ interface BlinkState {
   next: number;
 }
 
+interface ExpressionOverrideState {
+  current: number;
+  from: number;
+  target: number;
+  elapsed: number;
+  age: number;
+  expiring: boolean;
+  releaseWhenZero: boolean;
+}
+
 const _isImagePath = (v: unknown): v is string =>
   typeof v === "string" && /\.(png|jpe?g|webp)(?:[?#].*)?$/i.test(v);
 
@@ -76,6 +86,11 @@ const _isGlbPath = (v: unknown): v is string =>
   typeof v === "string" && /\.glb(?:[?#].*)?$/i.test(v);
 
 const _clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
+
+// Manual expressions cross-fade and are fully released after five seconds so
+// a stale sentiment can never remain stuck on the avatar's face.
+const EXPRESSION_FADE_DURATION = 0.35;
+const EXPRESSION_MAX_DURATION = 5;
 
 // Randomized idle time between blinks, in seconds.
 const _randomBlinkDelay = () => 2.5 + Math.random() * 3.5;
@@ -123,7 +138,7 @@ export class ViewerEngine {
     t: 0,
     next: _randomBlinkDelay(),
   };
-  private readonly _overrides = new Map<string, number>();
+  private readonly _overrides = new Map<string, ExpressionOverrideState>();
   private readonly _managed = new Set<string>(["blink"]);
   private _releaseNext: Set<string> | null = null;
   private _envTex?: THREE.Texture;
@@ -138,7 +153,8 @@ export class ViewerEngine {
 
     // --- procedural face state (blinking + expression overrides) ---
     // Auto-blink is on by default so the avatar feels alive. Any expression you
-    // drive via setExpression() takes precedence and is re-applied every frame.
+    // drive via setExpression() takes precedence, cross-fades from the current
+    // weight, and is re-applied every frame for at most five seconds.
     this._initRenderer();
     this._initScene();
     this._initCamera();
@@ -581,8 +597,8 @@ export class ViewerEngine {
   // names, so they work across VRM 0.x and 1.0 models: eyes use "blink" (or
   // "blinkLeft" / "blinkRight"); the mouth/visemes use "aa", "ih", "ou", "ee",
   // "oh"; emotions use "happy", "angry", "sad", "relaxed", "surprised". Weights
-  // are 0..1. Whatever you set here is re-applied every frame and overrides any
-  // expression the current animation might touch, until you clear it.
+  // are 0..1. Whatever you set here is cross-faded and overrides any expression
+  // the current animation might touch for at most five seconds.
 
   /** Enable/disable the automatic ambient blink. Turn off to drive eyes yourself. */
   setAutoBlink(enabled: boolean) {
@@ -598,10 +614,22 @@ export class ViewerEngine {
     return this;
   }
 
-  /** Set one expression weight (0..1), re-applied every frame until cleared. */
+  /** Cross-fade one expression to a weight (0..1) for at most five seconds. */
   setExpression(name: string, weight: number) {
-    this._overrides.set(name, _clamp01(weight));
+    const previous = this._overrides.get(name);
+    const current = previous?.current ?? this._getExpressionWeight(name);
+
+    this._overrides.set(name, {
+      current,
+      from: current,
+      target: _clamp01(weight),
+      elapsed: 0,
+      age: 0,
+      expiring: false,
+      releaseWhenZero: false,
+    });
     this._managed.add(name);
+    this._releaseNext?.delete(name);
     return this;
   }
 
@@ -611,12 +639,22 @@ export class ViewerEngine {
     return this;
   }
 
-  /** Stop driving an expression; its weight is released back to 0. */
+  /** Fade an expression out, then stop driving it. */
   clearExpression(name: string) {
-    this._overrides.delete(name);
-    // Kept in _managed for one more frame so it gets zeroed, then dropped.
-    this._releaseNext ??= new Set<string>();
-    this._releaseNext.add(name);
+    const previous = this._overrides.get(name);
+    const current = previous?.current ?? this._getExpressionWeight(name);
+
+    this._overrides.set(name, {
+      current,
+      from: current,
+      target: 0,
+      elapsed: 0,
+      age: 0,
+      expiring: false,
+      releaseWhenZero: true,
+    });
+    this._managed.add(name);
+    this._releaseNext?.delete(name);
     return this;
   }
 
@@ -651,11 +689,15 @@ export class ViewerEngine {
     if (!em) return;
 
     this._updateBlink(delta);
+    this._updateExpressionOverrides(delta);
 
     for (const name of this._managed) {
       let weight = 0;
-      if (this._overrides.has(name)) weight = this._overrides.get(name) ?? 0;
-      else if (name === "blink" && this._autoBlink) weight = this._blinkWeight;
+      if (this._overrides.has(name)) {
+        weight = this._overrides.get(name)?.current ?? 0;
+      } else if (name === "blink" && this._autoBlink) {
+        weight = this._blinkWeight;
+      }
       // setValue is a no-op for expressions the model doesn't define.
       if (em.getExpression(name)) em.setValue(name, weight);
     }
@@ -666,6 +708,70 @@ export class ViewerEngine {
         if (name !== "blink") this._managed.delete(name);
       }
       this._releaseNext = null;
+    }
+  }
+
+  private _getExpressionWeight(name: string) {
+    const value = this.vrm?.expressionManager?.getValue(name);
+    return _clamp01(typeof value === "number" ? value : 0);
+  }
+
+  private _advanceExpressionTransition(
+    state: ExpressionOverrideState,
+    delta: number,
+  ) {
+    state.elapsed = Math.min(
+      state.elapsed + Math.max(delta, 0),
+      EXPRESSION_FADE_DURATION,
+    );
+    const progress = _clamp01(state.elapsed / EXPRESSION_FADE_DURATION);
+    // Smoothstep avoids a visible speed change at either end of the fade.
+    const eased = progress * progress * (3 - 2 * progress);
+    state.current = THREE.MathUtils.lerp(state.from, state.target, eased);
+  }
+
+  private _updateExpressionOverrides(delta: number) {
+    const fadeStart = EXPRESSION_MAX_DURATION - EXPRESSION_FADE_DURATION;
+
+    for (const [name, state] of this._overrides) {
+      const previousAge = state.age;
+      const nextAge = previousAge + Math.max(delta, 0);
+
+      if (
+        !state.releaseWhenZero &&
+        !state.expiring &&
+        nextAge >= fadeStart
+      ) {
+        // Advance to the exact start of the expiry fade, then spend the rest
+        // of this frame fading out. This remains correct even after a long
+        // frame or when the tab has briefly been suspended.
+        const beforeFade = Math.max(fadeStart - previousAge, 0);
+        this._advanceExpressionTransition(state, beforeFade);
+        state.from = state.current;
+        state.target = 0;
+        state.elapsed = 0;
+        state.expiring = true;
+        this._advanceExpressionTransition(state, nextAge - fadeStart);
+      } else {
+        this._advanceExpressionTransition(state, delta);
+      }
+
+      state.age = nextAge;
+      const expired =
+        !state.releaseWhenZero && state.age >= EXPRESSION_MAX_DURATION;
+      const cleared =
+        state.releaseWhenZero &&
+        state.target === 0 &&
+        state.elapsed >= EXPRESSION_FADE_DURATION;
+
+      if (expired || cleared) {
+        state.current = 0;
+        this._overrides.delete(name);
+        // Keep it managed for this frame so the zero is applied before the
+        // underlying animation or procedural expression regains control.
+        this._releaseNext ??= new Set<string>();
+        this._releaseNext.add(name);
+      }
     }
   }
 

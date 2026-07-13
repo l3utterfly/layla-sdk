@@ -73,13 +73,30 @@ avatar.setExpression("surprised", 1);
 
 For simple lip sync, feed `setMouthOpen()` your audio's normalized volume once
 per frame (e.g. from a Web Audio `AnalyserNode`). For phoneme-accurate talking,
-call `setViseme()` with the vowel for each sound. Anything you set here is
-re-applied every frame and overrides the current animation until you clear it.
+call `setViseme()` with the vowel for each sound. Expression changes cross-fade
+from their currently rendered weights. A set expression is automatically faded
+out and fully released after five seconds; updating it refreshes that lifetime,
+and `clearExpression()` fades it out immediately.
 
 Available presets depend on the model, but the standard ones are: `blink`,
 `blinkLeft`, `blinkRight`, the visemes `aa` / `ih` / `ou` / `ee` / `oh`, and the
 emotions `happy` / `angry` / `sad` / `relaxed` / `surprised` / `neutral`.
 Setting a preset the model doesn't define is a safe no-op.
+
+### Mapping Layla sentiments to expressions
+
+`mapLaylaSentimentsToVrmExpressions()` converts the 28 fine-grained scores from
+`layla.classifier.getSentiment()` into the six standard VRM 1.0 emotion
+weights. The strongest sentiment drives one mutually exclusive expression;
+every other expression is returned at zero so the previous emotional state is
+cleared. The winning weight is capped at `0.3` to keep it subtle.
+
+```ts
+import { mapLaylaSentimentsToVrmExpressions } from "./viewer/LaylaSentimentExpressions";
+
+const sentiments = await layla.classifier.getSentiment(message.content);
+avatar.setExpressions(mapLaylaSentimentsToVrmExpressions(sentiments));
+```
 
 ## Add your files
 

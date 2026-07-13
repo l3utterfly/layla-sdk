@@ -1,14 +1,25 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  LaylaAbortError,
+  LaylaSDK,
+  type ChatContextNewMessageListener,
+} from "../../../src";
+import {
   ViewerEngine,
   type CameraTransform,
   type EntityTransform,
   type ViewerSettings,
 } from "./viewer/ViewerEngine";
+import {
+  mapLaylaSentimentsToVrmExpressions,
+  type VrmEmotionExpressionWeights,
+} from "./viewer/LaylaSentimentExpressions";
 import "./App.css";
 
 type TransformValue = Required<EntityTransform>;
 type VectorKey = "position" | "rotation";
+
+const layla = new LaylaSDK();
 
 const normalizeTransform = (transform?: EntityTransform): TransformValue => ({
   position: [...(transform?.position ?? [0, 0, 0])],
@@ -227,6 +238,31 @@ export default function App() {
   useEffect(() => {
     let engine: ViewerEngine | null = null;
     let cancelled = false;
+    let sentimentRequest: AbortController | null = null;
+    let pendingExpressionWeights: VrmEmotionExpressionWeights | null = null;
+
+    const onNewMessage: ChatContextNewMessageListener = ({ message }) => {
+      const text = message.content?.trim();
+      if (!text) return;
+
+      sentimentRequest?.abort();
+      const request = new AbortController();
+      sentimentRequest = request;
+
+      void layla.classifier
+        .getSentiment(text, { signal: request.signal })
+        .then((sentiments) => {
+          if (cancelled || request.signal.aborted) return;
+
+          const weights = mapLaylaSentimentsToVrmExpressions(sentiments);
+          pendingExpressionWeights = weights;
+          engine?.setExpressions(weights);
+        })
+        .catch((err: unknown) => {
+          if (err instanceof LaylaAbortError) return;
+          console.error("Could not analyze chat message sentiment:", err);
+        });
+    };
 
     async function boot() {
       try {
@@ -248,6 +284,9 @@ export default function App() {
 
         engine.start();
         engineRef.current = engine;
+        if (pendingExpressionWeights) {
+          engine.setExpressions(pendingExpressionWeights);
+        }
         // Exposed for programmatic control, e.g. from the console or your own
         // code: avatar.blink(), avatar.setMouthOpen(0.6), avatar.setViseme("oh"),
         // avatar.setAutoBlink(false), avatar.setExpression("happy", 1).
@@ -262,10 +301,13 @@ export default function App() {
       }
     }
 
+    layla.contextual.on("chatContextNewMessage", onNewMessage);
     boot();
 
     return () => {
       cancelled = true;
+      sentimentRequest?.abort();
+      layla.contextual.off("chatContextNewMessage", onNewMessage);
       if (window.avatar === engine) delete window.avatar;
       if (engineRef.current === engine) engineRef.current = null;
       engine?.dispose();
