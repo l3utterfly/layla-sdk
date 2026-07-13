@@ -15,7 +15,12 @@ export type VrmEmotionExpressionWeights = Record<VrmEmotionExpression, number>;
 
 export const MAX_VRM_EXPRESSION_WEIGHT = 0.7;
 
-type LaylaSentiment = keyof SentimentValues;
+export type LaylaSentiment = keyof SentimentValues;
+
+export interface StrongestLaylaSentiment {
+  sentiment: LaylaSentiment;
+  score: number;
+}
 
 /**
  * Groups Layla's fine-grained sentiment labels into VRM 1.0's standard
@@ -55,6 +60,24 @@ export const LAYLA_SENTIMENT_TO_VRM_EXPRESSION = {
 const clampSentimentScore = (value: number) =>
   Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
 
+/** Returns the single strongest valid Layla sentiment, or null for all-zero scores. */
+export function getStrongestLaylaSentiment(
+  sentiments: SentimentValues,
+): StrongestLaylaSentiment | null {
+  let strongest: StrongestLaylaSentiment | null = null;
+
+  for (const sentiment of Object.keys(
+    LAYLA_SENTIMENT_TO_VRM_EXPRESSION,
+  ) as LaylaSentiment[]) {
+    const score = clampSentimentScore(sentiments[sentiment]);
+    if (!strongest || score > strongest.score) {
+      strongest = { sentiment, score };
+    }
+  }
+
+  return strongest && strongest.score > 0 ? strongest : null;
+}
+
 /**
  * Converts the strongest Layla sentiment into one VRM 1.0 emotion preset,
  * capped at `MAX_VRM_EXPRESSION_WEIGHT` to keep the expression subtle.
@@ -75,25 +98,14 @@ export function mapLaylaSentimentsToVrmExpressions(
     neutral: 0,
   };
 
-  let strongestSentiment: LaylaSentiment | null = null;
-  let strongestScore = 0;
+  const strongest = getStrongestLaylaSentiment(sentiments);
 
-  for (const sentiment of Object.keys(
-    LAYLA_SENTIMENT_TO_VRM_EXPRESSION,
-  ) as LaylaSentiment[]) {
-    const score = clampSentimentScore(sentiments[sentiment]);
-    if (score > strongestScore) {
-      strongestSentiment = sentiment;
-      strongestScore = score;
-    }
-  }
-
-  if (strongestSentiment) {
+  if (strongest) {
     const expression =
-      LAYLA_SENTIMENT_TO_VRM_EXPRESSION[strongestSentiment];
+      LAYLA_SENTIMENT_TO_VRM_EXPRESSION[strongest.sentiment];
     weights[expression] = Math.min(
       MAX_VRM_EXPRESSION_WEIGHT,
-      strongestScore,
+      strongest.score,
     );
   }
 

@@ -11,7 +11,9 @@ import {
   type ViewerSettings,
 } from "./viewer/ViewerEngine";
 import {
+  getStrongestLaylaSentiment,
   mapLaylaSentimentsToVrmExpressions,
+  type LaylaSentiment,
   type VrmEmotionExpressionWeights,
 } from "./viewer/LaylaSentimentExpressions";
 import "./App.css";
@@ -240,6 +242,7 @@ export default function App() {
     let cancelled = false;
     let sentimentRequest: AbortController | null = null;
     let pendingExpressionWeights: VrmEmotionExpressionWeights | null = null;
+    let pendingAnimationSentiment: LaylaSentiment | null = null;
 
     const onNewMessage: ChatContextNewMessageListener = ({ message }) => {
       const text = message.content?.trim();
@@ -254,9 +257,14 @@ export default function App() {
         .then((sentiments) => {
           if (cancelled || request.signal.aborted) return;
 
+          const strongest = getStrongestLaylaSentiment(sentiments);
           const weights = mapLaylaSentimentsToVrmExpressions(sentiments);
           pendingExpressionWeights = weights;
+          pendingAnimationSentiment = strongest?.sentiment ?? null;
           engine?.setExpressions(weights);
+          if (engine && strongest) {
+            engine.playRandomFromGroup(strongest.sentiment);
+          }
         })
         .catch((err: unknown) => {
           if (err instanceof LaylaAbortError) return;
@@ -286,6 +294,9 @@ export default function App() {
         engineRef.current = engine;
         if (pendingExpressionWeights) {
           engine.setExpressions(pendingExpressionWeights);
+        }
+        if (pendingAnimationSentiment) {
+          engine.playRandomFromGroup(pendingAnimationSentiment);
         }
         // Exposed for programmatic control, e.g. from the console or your own
         // code: avatar.blink(), avatar.setMouthOpen(0.6), avatar.setViseme("oh"),

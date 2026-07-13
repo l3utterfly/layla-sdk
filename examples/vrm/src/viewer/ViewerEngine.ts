@@ -559,6 +559,31 @@ export class ViewerEngine {
     return this._activate(i, { fade, loop: false });
   }
 
+  /** Pick and play one random animation from a configured settings group. */
+  playRandomFromGroup(
+    group: string,
+    { fade = 0.3, returnTo = "auto" }: {
+      fade?: number;
+      returnTo?: AnimationReturnTarget;
+    } = {},
+  ) {
+    const configuredAnimations = this.settings.animations;
+    const targets =
+      configuredAnimations && !Array.isArray(configuredAnimations)
+        ? configuredAnimations[group]
+        : undefined;
+
+    if (!targets?.length) {
+      console.warn(
+        `playRandomFromGroup(): no animations configured for "${group}"`,
+      );
+      return null;
+    }
+
+    const target = targets[Math.floor(Math.random() * targets.length)];
+    return this.playOnce(target, { fade, returnTo });
+  }
+
   /** Return control to the procedural-idle/ambient-neutral cycle. */
   resumeAuto({ fade = 0.4 }: { fade?: number } = {}) {
     this._ambientEnabled = true;
