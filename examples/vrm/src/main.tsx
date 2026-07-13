@@ -2,7 +2,21 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";
-import { installLaylaMock } from "../../../src/mock";
+import { installLaylaMock, makeMockCharacter } from "../../../src/mock";
+
+const MOCK_SESSION_ID = "mock-vrm-session-1";
+const MOCK_MESSAGES = [
+  { role: "assistant", content: "I'm so happy to see you! This just made my whole day." },
+  { role: "assistant", content: "I'm furious right now. I can't believe they treated you like that." },
+  { role: "assistant", content: "Being this close to you is making my heart race. I really want you." },
+  { role: "assistant", content: "I feel so sad and lonely tonight. I wish you were here." },
+  { role: "assistant", content: "I admire your courage so much. You're genuinely incredible." },
+  { role: "assistant", content: "That was hilarious! I can't stop laughing about it." },
+  { role: "assistant", content: "I'm scared something might go wrong. Can you stay with me?" },
+  { role: "assistant", content: "I'm curious now—tell me everything about what happened." },
+  { role: "assistant", content: "I care about you deeply, and I want to make sure you're okay." },
+  { role: "assistant", content: "Ugh, that's disgusting. I don't even want to think about it." },
+] as const;
 
 const root = document.getElementById("root");
 
@@ -11,31 +25,31 @@ if (!root) {
 }
 
 if (import.meta.env.DEV) {
-  const names = ["Mira", "Theo", "Juno", "Sage", "Nova", "Remy"];
-  let n = 0;
-
-  installLaylaMock({
-    respond: () => {
-      const name = names[n % names.length];
-      n += 1;
-      return `<think>
-I am choosing a compact dating profile with a clear visual prompt.
-The JSON should stay machine-readable after the reasoning block is removed.
-</think>
-${JSON.stringify({
-        name,
-        age: 27 + (n % 7),
-        tagline: "Makes ordinary afternoons feel slightly cinematic",
-        description:
-          "A warm, fictional city wanderer with a specific sense of style and a habit of finding the best tucked-away tables.",
-        tags: ["Curious", "Warm", "Playful"],
-        likes: ["ramen", "photography", "quiet nights in"],
-        dislikes: ["clubbing"],
-        imagePrompt: `${name}, stylish fictional young adult, soft natural light, city cafe window seat, warm smile, contemporary outfit, shallow depth of field`,
-      })}`;
+  const character = makeMockCharacter("Aria", {
+    personality: "expressive, affectionate, and emotionally open",
+  });
+  const mock = installLaylaMock({
+    characters: [character],
+    executionContext: {
+      character,
+      session_id: MOCK_SESSION_ID,
     },
-    latencyMs: 220,
-    tokenDelayMs: 12,
+  });
+
+  const messageTimer = window.setInterval(() => {
+    const message = MOCK_MESSAGES[Math.floor(Math.random() * MOCK_MESSAGES.length)];
+
+    mock.emitChatContextNewMessage({
+      message,
+      character_id: character.id,
+      session_id: MOCK_SESSION_ID,
+      timestamp: Date.now(),
+    });
+  }, 10_000);
+
+  import.meta.hot?.dispose(() => {
+    window.clearInterval(messageTimer);
+    mock.uninstall();
   });
 }
 
