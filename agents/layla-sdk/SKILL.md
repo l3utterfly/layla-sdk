@@ -48,7 +48,6 @@ import LaylaSDK, {
   type LaylaPersona,
   type LaylaTTSVoice,
   type LaylaExecutionContext,
-  type ChatContextNewMessage,
   type ChatContextNewMessageListener,
   type SentimentValues,
   type TavernCardV2,
@@ -103,42 +102,21 @@ Read `references/sdk-api.md` before using a method signature that is not shown h
 
 ## Contextual Mini-Apps
 
-Use `layla.contextual.getExecutionContext(options?)` to determine whether the
-host launched the mini-app inside a character chat. It returns the current
-character and session ID, or `null` when the mini-app is running standalone.
-The character and session fields may also individually be `null`.
+Use `layla.contextual.getExecutionContext(options?)` to get the current character
+and session, or `null` when standalone. Subscribe to `chatContextNewMessage` for new messages in the surrounding character chat.
 
 ```ts
-const context: LaylaExecutionContext | null =
-  await layla.contextual.getExecutionContext();
-
-if (context) {
-  console.log(context.character?.data.data.name, context.session_id);
-}
-```
-
-Use the `chatContextNewMessage` event when the mini-app should react to new
-messages added to its surrounding character chat. Keep the listener reference
-and remove it when the UI is disposed.
-
-```ts
-const onNewMessage: ChatContextNewMessageListener = ({
-  message,
-  character_id,
-  session_id,
-  timestamp,
-}) => {
+const context: LaylaExecutionContext | null = await layla.contextual.getExecutionContext();
+const onNewMessage: ChatContextNewMessageListener = ({ message }) => {
   console.log(message.role, message.content);
-  console.log(character_id, session_id, timestamp);
 };
-
 layla.contextual.on('chatContextNewMessage', onNewMessage);
 layla.contextual.off('chatContextNewMessage', onNewMessage);
 ```
 
-For local browser development, configure `executionContext` on
-`installLaylaMock(...)`. The returned mock handle exposes
-`emitChatContextNewMessage(...)` so tests can drive the pushed event.
+For local testing, set `executionContext` in `installLaylaMock(...)` and drive
+events with the returned handle's `emitChatContextNewMessage(...)`. Read
+`references/sdk-api.md` for full payloads, mock examples, and abort handling.
 
 ## Chat
 
