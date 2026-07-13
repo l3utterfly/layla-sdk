@@ -1,6 +1,6 @@
 {
-  "debug": true,
-  "model": "yoru.vrm",
+  "debug": false,
+  "model": "lilith.vrm",
 
   "animations": {
     "admiration": ["animations/Clapping.vrma"],
@@ -67,24 +67,24 @@
   },
 
   "camera": {
-    "position": [-5.45, 3.75, -2.86],
-    "target": [-1.96, 2.97, -4.6],
+    "position": [1.74, 1.58, -8.12],
+    "target": [-2.63, 0.48, -6.03],
     "fov": 30
   },
 
-  "zoom": 0.27,
+  "zoom": 0.43,
 
   "transform": {
-    "position": [5.02, -5.41, -8.04],
-    "rotation": [0, 115, 0],
-    "scale": 6.44
+    "position": [-1.56, -2.72, -6.56],
+    "rotation": [0, -66, 0],
+    "scale": 2.81
   },
 
-  "background": "bg/anime_class_room.glb",
+  "background": "bg/pool_in_the_mountains_baked.glb",
   "backgroundTransform": {
     "position": [0, -2.9, 1],
     "rotation": [0, 106, 0],
-    "scale": 2.64
+    "scale": 3.84
   },
   "skybox": null,
 
@@ -92,6 +92,6 @@
     "environment": true,
     "ambientIntensity": 1.2,
     "directionalIntensity": 1.6,
-    "directionalPosition": [-1.96, 2.97, -4.6]
+    "directionalPosition": [-2.63, 0.48, -6.03]
   }
 }

@@ -51,7 +51,7 @@
 
   "idle": {
     "basePose": true,
-    "armDrop": 72,
+    "armDrop": 80,
     "armForward": 7,
     "elbow": 10,
     "handCurl": 0.35,

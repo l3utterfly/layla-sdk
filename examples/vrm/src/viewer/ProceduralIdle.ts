@@ -3,6 +3,11 @@ import type { VRM, VRMHumanBoneName } from "@pixiv/three-vrm";
 
 const DEG2RAD = Math.PI / 180;
 
+const AMBIENT_EXPRESSIONS = ["happy", "joy"] as const;
+const EXPRESSION_FADE = 0.45;
+const _randomExpressionDelay = () => 15 + Math.random() * 15;
+const _randomExpressionDuration = () => 2.5 + Math.random() * 2.5;
+
 export interface IdleSettings {
   enabled?: boolean;
   /** Relaxed standing pose (arms down, fingers curled). */
@@ -134,6 +139,12 @@ export class ProceduralIdle {
   private _baseWeight = 0;
   private _baseTarget = 0;
 
+  private readonly _ambientExpressions: string[] = [];
+  private _expressionTimer = _randomExpressionDelay();
+  private _activeExpression: string | null = null;
+  private _expressionElapsed = 0;
+  private _expressionDuration = 0;
+
   constructor(vrm: VRM, settings: IdleSettings = {}) {
     this.vrm = vrm;
     this._enabled = settings.enabled !== false;
@@ -151,6 +162,15 @@ export class ProceduralIdle {
     };
     this._drift = { amount: settings.drift?.amount ?? 1 };
     this._crouch = settings.crouch ?? 0.006;
+
+    const expressionManager = this.vrm.expressionManager;
+    if (expressionManager) {
+      for (const name of AMBIENT_EXPRESSIONS) {
+        if (expressionManager.getExpression(name)) {
+          this._ambientExpressions.push(name);
+        }
+      }
+    }
 
     this._deriveBasis();
 
@@ -602,6 +622,11 @@ export class ProceduralIdle {
     if (!this._enabled) return;
     this._t += delta;
 
+    // This timer is deliberately owned by the procedural idle rather than the
+    // ambient animation cycle. It keeps advancing while a neutral clip plays,
+    // so facial expressions and body animations can overlap naturally.
+    this._updateExpression(delta);
+
     // --- base pose -----------------------------------------------------------
     const step = this._fadeDuration > 0 ? delta / this._fadeDuration : 1;
     this._baseWeight += THREE.MathUtils.clamp(
@@ -689,6 +714,45 @@ export class ProceduralIdle {
     // Must come last: it needs the hips' final transform for this frame. Faded
     // out with the base pose so a clip's leg animation is never fought.
     if (this._baseWeight > 0.001) this._solveLegs(this._baseWeight);
+  }
+
+  private _updateExpression(delta: number) {
+    const expressionManager = this.vrm.expressionManager;
+    if (!expressionManager || this._ambientExpressions.length === 0) return;
+
+    if (!this._activeExpression) {
+      this._expressionTimer -= delta;
+      if (this._expressionTimer > 0) return;
+
+      this._activeExpression =
+        this._ambientExpressions[
+          Math.floor(Math.random() * this._ambientExpressions.length)
+        ];
+      this._expressionElapsed = 0;
+      this._expressionDuration = _randomExpressionDuration();
+    }
+
+    this._expressionElapsed += delta;
+    const fadeIn = THREE.MathUtils.clamp(
+      this._expressionElapsed / EXPRESSION_FADE,
+      0,
+      0.5,
+    );
+    const fadeOut = THREE.MathUtils.clamp(
+      (this._expressionDuration - this._expressionElapsed) / EXPRESSION_FADE,
+      0,
+      0.5,
+    );
+    expressionManager.setValue(
+      this._activeExpression,
+      Math.min(fadeIn, fadeOut),
+    );
+
+    if (this._expressionElapsed >= this._expressionDuration) {
+      expressionManager.setValue(this._activeExpression, 0);
+      this._activeExpression = null;
+      this._expressionTimer = _randomExpressionDelay();
+    }
   }
 
   /** Nudge the hips along a model-relative axis, scaled to the model's height. */
