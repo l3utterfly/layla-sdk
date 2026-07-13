@@ -21,6 +21,7 @@ export type {
   LaylaMemory,
   LaylaPersona,
   LaylaTTSVoice,
+  LaylaExecutionContext,
   LaylaCharacter,
   TavernCardV2,
   TavernCharacterBook,
@@ -50,6 +51,7 @@ export type {
   LaylaApiStopSpeaking,
   LaylaApiGetInferenceEngines,
   LaylaApiSetInferenceEngine,
+  LaylaApiGetExecutionContext,
   LaylaApiCancel,
   LaylaApiRequest,
 
@@ -80,6 +82,8 @@ export type {
   LaylaApiEvent_onGetInferenceEnginesResponse,
   LaylaApiEvent_onSetInferenceEngineResponse,
   LaylaApiEvent_onFinishedSpeaking,
+  LaylaApiEvent_onGetExecutionContextResponse,
+  LaylaApiEvent_onChatContextNewMessage,
 } from './protocol';
 export { SENTIMENT_THRESHOLDS } from './protocol';
 
@@ -119,6 +123,13 @@ export { Personas } from './resources/personas';
 
 // Text-to-speech resource surface.
 export { TTS } from './resources/tts';
+
+// Contextual mini-app surface.
+export { Contextual } from './resources/contextual';
+export type {
+  ChatContextNewMessage,
+  ChatContextNewMessageListener,
+} from './resources/contextual';
 
 // Client.
 export { LaylaSDK, Layla } from './client';

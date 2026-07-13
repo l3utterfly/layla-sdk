@@ -22,6 +22,9 @@ import LaylaSDK, {
   type LaylaMemory,
   type LaylaPersona,
   type LaylaTTSVoice,
+  type LaylaExecutionContext,
+  type ChatContextNewMessage,
+  type ChatContextNewMessageListener,
   type LaylaApiSaveChatMessage,
   type LaylaApiScheduledChatMessage,
   type LaylaApiGetScheduledChatMessages,
@@ -37,6 +40,7 @@ import LaylaSDK, {
   type LaylaApiStopSpeaking,
   type LaylaApiGetInferenceEngines,
   type LaylaApiSetInferenceEngine,
+  type LaylaApiGetExecutionContext,
   type LaylaApiEvent_onGetChatSessionsResponse,
   type LaylaApiEvent_onSaveChatMessageResponse,
   type LaylaApiEvent_onScheduledChatMessage,
@@ -49,6 +53,8 @@ import LaylaSDK, {
   type LaylaApiEvent_onGetTTSVoicesResponse,
   type LaylaApiEvent_onGetInferenceEnginesResponse,
   type LaylaApiEvent_onSetInferenceEngineResponse,
+  type LaylaApiEvent_onGetExecutionContextResponse,
+  type LaylaApiEvent_onChatContextNewMessage,
   type LaylaApiEvent_onFinishedSpeaking,
   type LaylaApiEvent_onSaveFileResponse,
   type LaylaApiEvent_onReadFileResponse,
@@ -88,6 +94,56 @@ const layla = new LaylaSDK({
 ```
 
 `model` is reserved for compatibility and future use. The Layla host chooses the actual model.
+
+## `layla.contextual.getExecutionContext(options?)`
+
+Returns the context in which the host launched the mini-app. A contextual
+mini-app receives the current character and chat session. A standalone
+top-level mini-app receives `null`.
+
+```ts
+const context = await layla.contextual.getExecutionContext();
+
+if (context) {
+  console.log(context.character?.data.data.name);
+  console.log(context.session_id);
+}
+```
+
+The character and session fields may each be `null` when that part of the
+context is not active. Pass an abort signal as the first argument:
+
+```ts
+const context = await layla.contextual.getExecutionContext({
+  signal: controller.signal,
+});
+```
+
+## `layla.contextual.on('chatContextNewMessage', listener)`
+
+Listens for messages that the host adds to the surrounding character chat.
+This pushed event is available only when the mini-app is running in a character
+chat context. Its payload includes the message, character ID, session ID, and
+timestamp.
+
+```ts
+import type { ChatContextNewMessageListener } from '@layla-network/sdk';
+
+const onNewMessage: ChatContextNewMessageListener = ({
+  message,
+  character_id,
+  session_id,
+  timestamp,
+}) => {
+  console.log(message.role, message.content);
+  console.log(character_id, session_id, timestamp);
+};
+
+layla.contextual.on('chatContextNewMessage', onNewMessage);
+
+// Remove the exact listener when the UI is disposed.
+layla.contextual.off('chatContextNewMessage', onNewMessage);
+```
 
 ## `layla.chat.completions.create(...)`
 
@@ -922,6 +978,36 @@ The mock accepts names in `inferenceEngines` and `null`. An unknown name returns
 `success: false`, resets the mock to its default engine, and reports
 `engineName: null`.
 
+Customize and exercise the contextual surface:
+
+```ts
+const character = makeMockCharacter('Aria');
+const mock = installLaylaMock({
+  characters: [character],
+  executionContext: {
+    character,
+    session_id: 'mock-aria-session-1',
+  },
+});
+
+const context = await layla.contextual.getExecutionContext();
+
+layla.contextual.on('chatContextNewMessage', ({ message }) => {
+  console.log(message.content);
+});
+
+mock.emitChatContextNewMessage({
+  message: { role: 'user', content: 'Hello from the surrounding chat.' },
+  character_id: character.id,
+  session_id: context?.session_id ?? 'mock-aria-session-1',
+  timestamp: Date.now(),
+});
+```
+
+When `executionContext` is omitted or set to `null`, the mock represents a
+standalone top-level mini-app. `emitChatContextNewMessage(...)` lets local tests
+drive the same pushed event that the Layla host emits.
+
 Customize mock session history with static transcript data:
 
 ```ts
@@ -1104,6 +1190,9 @@ Useful exported types include:
 - `LaylaMemory`
 - `LaylaPersona`
 - `LaylaTTSVoice`
+- `LaylaExecutionContext`
+- `ChatContextNewMessage`
+- `ChatContextNewMessageListener`
 - `MemoryListOptions`
 - `LaylaApiEvent_onGetChatSessionsResponse`
 - `LaylaApiSaveChatMessage`
@@ -1123,6 +1212,7 @@ Useful exported types include:
 - `LaylaApiStopSpeaking`
 - `LaylaApiGetInferenceEngines`
 - `LaylaApiSetInferenceEngine`
+- `LaylaApiGetExecutionContext`
 - `LaylaApiEvent_onGetMemoriesResponse`
 - `LaylaApiEvent_onGetTopMemoriesResponse`
 - `LaylaApiEvent_onCreateOrUpdateMemoriesResponse`
@@ -1130,6 +1220,8 @@ Useful exported types include:
 - `LaylaApiEvent_onGetTTSVoicesResponse`
 - `LaylaApiEvent_onGetInferenceEnginesResponse`
 - `LaylaApiEvent_onSetInferenceEngineResponse`
+- `LaylaApiEvent_onGetExecutionContextResponse`
+- `LaylaApiEvent_onChatContextNewMessage`
 - `LaylaApiEvent_onFinishedSpeaking`
 - `LaylaApiSaveFile`
 - `LaylaApiEvent_onSaveFileResponse`
@@ -1163,6 +1255,7 @@ The TypeScript source is the source of truth for current signatures:
 - `src/resources/memories.ts`
 - `src/resources/personas.ts`
 - `src/resources/tts.ts`
+- `src/resources/contextual.ts`
 - `src/resources/utils.ts`
 - `src/protocol.ts`
 - `src/errors.ts`

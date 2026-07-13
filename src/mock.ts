@@ -21,6 +21,7 @@
 
 import type {
   LaylaApiEvent,
+  LaylaApiEvent_onChatContextNewMessage,
   LaylaApiEvent_onGetChatSessionsResponse,
   LaylaApiRequest,
   LaylaCharacter,
@@ -30,6 +31,7 @@ import type {
   LaylaPersona,
   LaylaScheduledChatMessage,
   LaylaTTSVoice,
+  LaylaExecutionContext,
   TavernCardV2,
 } from './protocol';
 import { makeMockChatHistory } from './mock-data/chat-history';
@@ -97,6 +99,11 @@ export interface LaylaMockOptions {
    * Defaults to three sample engines.
    */
   inferenceEngines?: string[];
+  /**
+   * Context returned by `contextual.getExecutionContext()`.
+   * Defaults to `null`, matching a standalone top-level mini-app.
+   */
+  executionContext?: LaylaExecutionContext | null;
   /** TTS voices returned by `tts.getVoices()`. Defaults to two sample voices. */
   ttsVoices?: LaylaTTSVoice[];
   /** Delay before the first event of a response (simulated latency). Default 150ms. */
@@ -110,6 +117,10 @@ export interface LaylaMockOptions {
 }
 
 export interface LaylaMockHandle {
+  /** Emit a host-pushed message event for contextual listener testing. */
+  emitChatContextNewMessage(
+    data: LaylaApiEvent_onChatContextNewMessage['data'],
+  ): void;
   /** Remove the fake bridge and restore whatever was there before. */
   uninstall(): void;
 }
@@ -409,6 +420,7 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     'mock-fast',
     'mock-quality',
   ];
+  const executionContext = options.executionContext ?? null;
   let selectedInferenceEngine: string | null = null;
   try {
     for (const [filename, contentBase64] of Object.entries(options.files ?? {})) {
@@ -954,6 +966,19 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     });
   }
 
+  async function handleGetExecutionContext(): Promise<void> {
+    await delay(latencyMs);
+    if (shouldError()) {
+      emitError('Simulated execution context error');
+      return;
+    }
+
+    emit({
+      event: 'on_get_execution_context_response',
+      data: executionContext,
+    });
+  }
+
   async function handleGenerateVoice(data: {
     ttsVoiceId: string | null;
     text: string;
@@ -1071,6 +1096,9 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
         case 'set_inference_engine':
           void handleSetInferenceEngine(msg.data);
           break;
+        case 'get_execution_context':
+          void handleGetExecutionContext();
+          break;
         default:
           break;
       }
@@ -1086,6 +1114,10 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
 
   let installed = true;
   return {
+    emitChatContextNewMessage(data) {
+      if (!installed) return;
+      emit({ event: 'on_chat_context_new_message', data });
+    },
     uninstall() {
       if (!installed) return;
       installed = false;

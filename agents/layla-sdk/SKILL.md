@@ -1,6 +1,6 @@
 ---
 name: layla-sdk
-description: Use the @layla-network/sdk package in third-party Layla mini-apps and WebView apps. Covers the public API surface for creating a Layla client, OpenAI-shaped chat completions and streams including reasoning deltas, inference engine selection, paginated character listing, chat sessions, session history, message saves, scheduled chat messages, memories, personas, TTS voices and playback, character images, sentiment analysis, image generation progress/results, file saving, abort handling, SDK errors, exported TypeScript types, and runtime expectations inside the Layla WebView.
+description: Use the @layla-network/sdk package in third-party Layla mini-apps and WebView apps. Covers the public API surface for creating a Layla client, contextual character-chat execution state and events, OpenAI-shaped chat completions and streams including reasoning deltas, inference engine selection, paginated character listing, chat sessions, session history, message saves, scheduled chat messages, memories, personas, TTS voices and playback, character images, sentiment analysis, image generation progress/results, file saving, abort handling, SDK errors, exported TypeScript types, and runtime expectations inside the Layla WebView.
 ---
 
 # Layla SDK
@@ -47,6 +47,9 @@ import LaylaSDK, {
   type LaylaMemory,
   type LaylaPersona,
   type LaylaTTSVoice,
+  type LaylaExecutionContext,
+  type ChatContextNewMessage,
+  type ChatContextNewMessageListener,
   type SentimentValues,
   type TavernCardV2,
 } from '@layla-network/sdk';
@@ -76,6 +79,7 @@ await layla.characters.getImage(characterId);
 await layla.characters.update(character);
 await layla.classifier.getSentiment('This is a happy message.');
 await layla.images.generateImage(prompt, onProgress);
+await layla.contextual.getExecutionContext();
 await layla.chat.completions.create({ messages });
 await layla.chat.getInferenceEngines();
 await layla.chat.setInferenceEngine(engineName);
@@ -96,6 +100,45 @@ await layla.utils.saveFile(filename, contentBase64, share);
 ```
 
 Read `references/sdk-api.md` before using a method signature that is not shown here.
+
+## Contextual Mini-Apps
+
+Use `layla.contextual.getExecutionContext(options?)` to determine whether the
+host launched the mini-app inside a character chat. It returns the current
+character and session ID, or `null` when the mini-app is running standalone.
+The character and session fields may also individually be `null`.
+
+```ts
+const context: LaylaExecutionContext | null =
+  await layla.contextual.getExecutionContext();
+
+if (context) {
+  console.log(context.character?.data.data.name, context.session_id);
+}
+```
+
+Use the `chatContextNewMessage` event when the mini-app should react to new
+messages added to its surrounding character chat. Keep the listener reference
+and remove it when the UI is disposed.
+
+```ts
+const onNewMessage: ChatContextNewMessageListener = ({
+  message,
+  character_id,
+  session_id,
+  timestamp,
+}) => {
+  console.log(message.role, message.content);
+  console.log(character_id, session_id, timestamp);
+};
+
+layla.contextual.on('chatContextNewMessage', onNewMessage);
+layla.contextual.off('chatContextNewMessage', onNewMessage);
+```
+
+For local browser development, configure `executionContext` on
+`installLaylaMock(...)`. The returned mock handle exposes
+`emitChatContextNewMessage(...)` so tests can drive the pushed event.
 
 ## Chat
 

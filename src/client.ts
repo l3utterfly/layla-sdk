@@ -13,6 +13,7 @@ import { Utils } from './resources/utils';
 import { Memories } from './resources/memories';
 import { Personas } from './resources/personas';
 import { TTS } from './resources/tts';
+import { Contextual } from './resources/contextual';
 
 export interface LaylaSDKOptions {
   /** Reserved for future use (e.g. default model). */
@@ -28,6 +29,7 @@ export class LaylaSDK {
   readonly memories = new Memories();
   readonly personas = new Personas();
   readonly tts = new TTS();
+  readonly contextual = new Contextual();
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   constructor(_options: LaylaSDKOptions = {}) {}

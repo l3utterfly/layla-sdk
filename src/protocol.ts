@@ -199,6 +199,11 @@ export interface TavernCharacterBook {
   }>;
 }
 
+export interface LaylaExecutionContext {
+  character: LaylaCharacter | null; // the current character context, or null if no character is selected
+  session_id: string | null; // the current session ID, or null if no session is active
+}
+
 /* ---- Web -> RN commands ---------------------------------------------------- */
 
 /** Send a conversation for completion (a streaming request). */
@@ -478,6 +483,17 @@ export interface LaylaApiSetInferenceEngine {
 }
 
 /**
+ * Ask the host for the current execution context.
+ * The execution context can include information about the current state of the host, such as current character, session, or other relevant data.
+ * The execution context can also be null, which means the mini-app is running standalone as a top-level mini-app, without any character or session context.
+ * The host should respond with an `on_get_execution_context_response` event containing the current execution context.
+ */
+export interface LaylaApiGetExecutionContext {
+  cmd: 'get_execution_context';
+  data: null; // no additional data is needed for this request
+}
+
+/**
  * A request command (anything that opens a job and expects events back).
  * Add new one-shot commands here. `cancel` is not a request — it's a control
  * signal for an already-open job — so it lives outside this union.
@@ -506,7 +522,8 @@ export type LaylaApiRequest =
   | LaylaApiGenerateVoice
   | LaylaApiStopSpeaking
   | LaylaApiGetInferenceEngines
-  | LaylaApiSetInferenceEngine;
+  | LaylaApiSetInferenceEngine
+  | LaylaApiGetExecutionContext;
 
 /* ---- RN -> Web events ------------------------------------------------------ */
 
@@ -772,6 +789,31 @@ export interface LaylaApiEvent_onSetInferenceEngineResponse {
   };
 }
 
+/**
+ * The response for a `get_execution_context` request, containing the current execution context of the mini-app.
+ * The execution context can include information about the current state of the host, such as current character, session, or other relevant data.
+ * If the mini-app is running standalone as a top-level mini-app without any character or session context, the `data` field will be null.
+ */
+export interface LaylaApiEvent_onGetExecutionContextResponse {
+  event: 'on_get_execution_context_response';
+  data: LaylaExecutionContext | null; // the current execution context, or null if the mini-app is running standalone as a top-level mini-app without any character or session context
+}
+
+/**
+ * The contextual event emitted by the host when a new chat message is added to the chat context (e.g., when a user sends a message or when the assistant generates a response).
+ * This event is only emitted by the host when the mini-app is running in a character chat context.
+ * It provides the new chat message along with the associated character ID, session ID, and timestamp.
+ */
+export interface LaylaApiEvent_onChatContextNewMessage {
+  event: 'on_chat_context_new_message';
+  data: {
+    message: LaylaChatMessage;
+    character_id: string;
+    session_id: string;
+    timestamp: number;
+  };
+}
+
 export type LaylaApiEvent =
   | LaylaApiEvent_onMsg
   | LaylaApiEvent_onMsgEnd
@@ -797,4 +839,6 @@ export type LaylaApiEvent =
   | LaylaApiEvent_onGetTTSVoicesResponse
   | LaylaApiEvent_onGetInferenceEnginesResponse
   | LaylaApiEvent_onSetInferenceEngineResponse
-  | LaylaApiEvent_onFinishedSpeaking;
+  | LaylaApiEvent_onFinishedSpeaking
+  | LaylaApiEvent_onGetExecutionContextResponse
+  | LaylaApiEvent_onChatContextNewMessage;
