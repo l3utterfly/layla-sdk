@@ -19,6 +19,7 @@ import {
 } from "./viewer/LaylaSentimentExpressions";
 import {
   buildVrmExportArchive,
+  captureViewerArtwork,
   downloadArchive,
   type ExportAsset,
 } from "./exportArchive";
@@ -527,6 +528,7 @@ function DebugPanel({
     setExportError("");
 
     try {
+      const artwork = await captureViewerArtwork(engine.captureFrame());
       const archive = await buildVrmExportArchive({
         settings,
         model: modelAsset,
@@ -536,6 +538,7 @@ function DebugPanel({
         modelTransform: model,
         backgroundTransform: background,
         camera,
+        artwork,
       });
       downloadArchive(archive, modelAsset.name);
     } catch (err: unknown) {

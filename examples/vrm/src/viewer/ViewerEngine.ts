@@ -1025,6 +1025,23 @@ export class ViewerEngine {
     tick();
   }
 
+  /** Copy the currently rendered Three.js frame without any surrounding UI. */
+  captureFrame() {
+    if (this._disposed) throw new Error("Cannot capture a disposed viewer.");
+
+    // Render immediately so the copy does not depend on WebGL's drawing buffer
+    // still being available from the previous animation frame.
+    this.renderer.render(this.scene, this.camera);
+    const source = this.renderer.domElement;
+    const frame = document.createElement("canvas");
+    frame.width = source.width;
+    frame.height = source.height;
+    const context = frame.getContext("2d");
+    if (!context) throw new Error("Could not create the screenshot canvas.");
+    context.drawImage(source, 0, 0);
+    return frame;
+  }
+
   /* ---------------------------------------------------------------- helpers */
 
   _width() {

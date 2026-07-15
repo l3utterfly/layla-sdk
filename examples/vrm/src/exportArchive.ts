@@ -10,6 +10,11 @@ export interface ExportAsset {
   source: File | string;
 }
 
+export interface ExportArtwork {
+  icon: Blob;
+  cover: Blob;
+}
+
 export interface VrmExportOptions {
   settings: ViewerSettings;
   model: ExportAsset;
@@ -19,6 +24,7 @@ export interface VrmExportOptions {
   modelTransform: Required<EntityTransform>;
   backgroundTransform: Required<EntityTransform>;
   camera: CameraTransform;
+  artwork: ExportArtwork;
 }
 
 const fetchFile = async (path: string) => {
@@ -130,6 +136,56 @@ const buildAppMetadata = (source: ArrayBuffer, modelName: string) => {
   };
 };
 
+const canvasToJpeg = (canvas: HTMLCanvasElement, quality = 0.9) =>
+  new Promise<Blob>((resolve, reject) => {
+    try {
+      canvas.toBlob(
+        (blob) => {
+          if (blob) resolve(blob);
+          else reject(new Error("The rendered image could not be encoded."));
+        },
+        "image/jpeg",
+        quality,
+      );
+    } catch (err) {
+      reject(err);
+    }
+  });
+
+export async function captureViewerArtwork(frame: HTMLCanvasElement) {
+  if (!frame.width || !frame.height) {
+    throw new Error("The rendered view is empty and cannot be captured.");
+  }
+
+  const icon = document.createElement("canvas");
+  icon.width = 512;
+  icon.height = 512;
+  const context = icon.getContext("2d");
+  if (!context) throw new Error("Could not create the app icon canvas.");
+
+  const topRegionHeight = frame.height / 2;
+  const cropSize = Math.min(frame.width, topRegionHeight);
+  const cropX = (frame.width - cropSize) / 2;
+  const cropY = (topRegionHeight - cropSize) / 2;
+  context.drawImage(
+    frame,
+    cropX,
+    cropY,
+    cropSize,
+    cropSize,
+    0,
+    0,
+    icon.width,
+    icon.height,
+  );
+
+  const [iconBlob, coverBlob] = await Promise.all([
+    canvasToJpeg(icon, 0.92),
+    canvasToJpeg(frame, 0.9),
+  ]);
+  return { icon: iconBlob, cover: coverBlob } satisfies ExportArtwork;
+}
+
 export async function buildVrmExportArchive({
   settings,
   model,
@@ -139,6 +195,7 @@ export async function buildVrmExportArchive({
   modelTransform,
   backgroundTransform,
   camera,
+  artwork,
 }: VrmExportOptions) {
   const zip = new JSZip();
 
@@ -157,8 +214,8 @@ export async function buildVrmExportArchive({
       skybox ? addAsset(zip, "skybox", skybox) : null,
       addAnimations(zip, settings.animations),
       fetchMetadata(),
-      fetchFile("/icon.jpg"),
-      fetchFile("/bg.jpg"),
+      artwork.icon.arrayBuffer(),
+      artwork.cover.arrayBuffer(),
     ]);
 
   const exportedSettings: ViewerSettings = {
