@@ -53,6 +53,70 @@ const normalizeCamera = (settings: ViewerSettings): CameraTransform => ({
   zoom: settings.zoom && settings.zoom > 0 ? settings.zoom : 1,
 });
 
+function DebugNumberInput({
+  label,
+  value,
+  min,
+  max,
+  step,
+  precision,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  precision: number;
+  onChange: (value: number) => void;
+}) {
+  const [draft, setDraft] = useState(() => value.toFixed(precision));
+  const [editing, setEditing] = useState(false);
+
+  useEffect(() => {
+    if (!editing) setDraft(value.toFixed(precision));
+  }, [editing, precision, value]);
+
+  const commit = () => {
+    const parsed = Number(draft);
+    if (!Number.isFinite(parsed)) {
+      setDraft(value.toFixed(precision));
+      return;
+    }
+
+    const next = Math.min(max, Math.max(min, parsed));
+    onChange(next);
+    setDraft(next.toFixed(precision));
+  };
+
+  return (
+    <input
+      className="debug-slider__number"
+      type="number"
+      aria-label={`${label} value`}
+      min={min}
+      max={max}
+      step={step}
+      value={draft}
+      onFocus={() => setEditing(true)}
+      onChange={(event) => {
+        setDraft(event.target.value);
+        const next = event.target.valueAsNumber;
+        if (Number.isFinite(next) && next >= min && next <= max) {
+          onChange(next);
+        }
+      }}
+      onBlur={() => {
+        commit();
+        setEditing(false);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") event.currentTarget.blur();
+      }}
+    />
+  );
+}
+
 function CameraControls({
   value,
   onChange,
@@ -78,7 +142,7 @@ function CameraControls({
         <div className="debug-control" key={key}>
           <span className="debug-control__name">{key}</span>
           {(["x", "y", "z"] as const).map((axis, index) => (
-            <label className="debug-slider" key={axis}>
+            <div className="debug-slider" key={axis}>
               <span>{axis}</span>
               <input
                 type="range"
@@ -91,8 +155,16 @@ function CameraControls({
                   updateVector(key, index, Number(event.target.value))
                 }
               />
-              <output>{value[key][index].toFixed(2)}</output>
-            </label>
+              <DebugNumberInput
+                label={`Camera ${key} ${axis}`}
+                min={-10}
+                max={10}
+                step={0.01}
+                precision={2}
+                value={value[key][index]}
+                onChange={(next) => updateVector(key, index, next)}
+              />
+            </div>
           ))}
         </div>
       ))}
@@ -103,7 +175,7 @@ function CameraControls({
       ] as const).map(([key, label, min, max, step]) => (
         <div className="debug-control" key={key}>
           <span className="debug-control__name">{label}</span>
-          <label className="debug-slider">
+          <div className="debug-slider">
             <span>{key === "fov" ? "°" : "×"}</span>
             <input
               type="range"
@@ -116,8 +188,16 @@ function CameraControls({
                 onChange({ ...value, [key]: Number(event.target.value) })
               }
             />
-            <output>{value[key].toFixed(key === "fov" ? 0 : 2)}</output>
-          </label>
+            <DebugNumberInput
+              label={`Camera ${label}`}
+              min={min}
+              max={max}
+              step={step}
+              precision={key === "fov" ? 0 : 2}
+              value={value[key]}
+              onChange={(next) => onChange({ ...value, [key]: next })}
+            />
+          </div>
         </div>
       ))}
     </fieldset>
@@ -153,7 +233,7 @@ function TransformControls({
           <div className="debug-control" key={key}>
             <span className="debug-control__name">{key}</span>
             {(["x", "y", "z"] as const).map((axis, index) => (
-              <label className="debug-slider" key={axis}>
+              <div className="debug-slider" key={axis}>
                 <span>{axis}</span>
                 <input
                   type="range"
@@ -166,8 +246,16 @@ function TransformControls({
                     updateVector(key, index, Number(event.target.value))
                   }
                 />
-                <output>{value[key][index].toFixed(key === "rotation" ? 0 : 2)}</output>
-              </label>
+                <DebugNumberInput
+                  label={`${title} ${key} ${axis}`}
+                  min={range[0]}
+                  max={range[1]}
+                  step={range[2]}
+                  precision={key === "rotation" ? 0 : 2}
+                  value={value[key][index]}
+                  onChange={(next) => updateVector(key, index, next)}
+                />
+              </div>
             ))}
           </div>
         );
@@ -175,7 +263,7 @@ function TransformControls({
 
       <div className="debug-control">
         <span className="debug-control__name">scale</span>
-        <label className="debug-slider">
+        <div className="debug-slider">
           <span>s</span>
           <input
             type="range"
@@ -188,8 +276,16 @@ function TransformControls({
               onChange({ ...value, scale: Number(event.target.value) })
             }
           />
-          <output>{value.scale.toFixed(2)}</output>
-        </label>
+          <DebugNumberInput
+            label={`${title} scale`}
+            min={scaleRange[0]}
+            max={scaleRange[1]}
+            step={scaleRange[2]}
+            precision={2}
+            value={value.scale}
+            onChange={(next) => onChange({ ...value, scale: next })}
+          />
+        </div>
       </div>
     </fieldset>
   );

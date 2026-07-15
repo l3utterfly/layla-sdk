@@ -163,7 +163,7 @@
 
 .debug-slider {
   display: grid;
-  grid-template-columns: 10px minmax(0, 1fr) 48px;
+  grid-template-columns: 10px minmax(0, 1fr) 66px;
   align-items: center;
   gap: 7px;
   min-height: 24px;
@@ -174,15 +174,28 @@
   text-transform: uppercase;
 }
 
-.debug-slider input {
+.debug-slider input[type="range"] {
   width: 100%;
   accent-color: #9d8cff;
 }
 
-.debug-slider output {
+.debug-slider__number {
+  box-sizing: border-box;
+  width: 66px;
+  min-width: 0;
+  padding: 3px 4px;
   color: #fff;
-  text-align: right;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(185, 174, 255, 0.28);
+  border-radius: 4px;
+  font: inherit;
   font-variant-numeric: tabular-nums;
+}
+
+.debug-slider__number:focus {
+  border-color: #9d8cff;
+  outline: 2px solid rgba(157, 140, 255, 0.28);
+  outline-offset: 1px;
 }
 
 /* Overlays sit above the canvas but never block it once we're ready. */
