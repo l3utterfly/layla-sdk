@@ -1,0 +1,7 @@
+{
+  "title": "VRM Background Creator",
+  "tagline": "Use a VRM model to set as your character's background in Layla.",
+  "description": "Select a VRM model and VRMA animations. Combine them to create a unique animated background for your character in Layla.\n\nFeatures:\n- Select custom VRM models\n- Attach VRMA animations\n- export as a custom mini-app to use in Layla",
+  "iconUri": "icon.jpg",
+  "backgroundImgUri": "bg.jpg"
+}

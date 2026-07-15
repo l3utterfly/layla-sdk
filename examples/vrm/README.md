@@ -121,11 +121,11 @@ Any `.vrma` retargets automatically onto your model via its humanoid bones.
 
 This file is served from the site root as `/settings.json`. It's read at
 runtime, so after `npm run build` you can still edit it inside `dist/` and just
-refresh the page.
+refresh the page. The transform debug panel appears automatically when the app
+is running standalone (the Layla execution context is `null`).
 
 | Key | Description |
 | --- | --- |
-| `debug` | Show an in-viewer panel with live camera, model, and GLB background sliders. Changes last until refresh; copy chosen values into this file to keep them. |
 | `model` | Path to the `.vrm` file (required). |
 | `animations` | Emotion-to-path arrays. A random `neutral` animation plays every 5–10 seconds while automatic idling is active; other groups are app-triggered. A legacy array is treated as the neutral group. |
 | `idle` | Procedural rest-pose, breathing, sway, and head-drift settings. Set `enabled` to `false` to disable procedural motion. |

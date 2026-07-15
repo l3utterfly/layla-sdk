@@ -31,7 +31,6 @@ export interface CameraTransform {
 }
 
 export interface ViewerSettings {
-  debug?: boolean;
   model: string;
   animations?: string[] | Record<string, string[]>;
   idle?: IdleSettings;

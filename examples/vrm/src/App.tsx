@@ -236,6 +236,7 @@ export default function App() {
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [message, setMessage] = useState("");
   const [settings, setSettings] = useState<ViewerSettings | null>(null);
+  const [isStandalone, setIsStandalone] = useState(false);
 
   useEffect(() => {
     let engine: ViewerEngine | null = null;
@@ -276,10 +277,14 @@ export default function App() {
       try {
         // settings.json is served from the site root (public/settings.json).
         // cache: no-store so edits show up on refresh without a hard reload.
-        const res = await fetch("/settings.json", { cache: "no-store" });
+        const [res, executionContext] = await Promise.all([
+          fetch("/settings.json", { cache: "no-store" }),
+          layla.contextual.getExecutionContext(),
+        ]);
         if (!res.ok) throw new Error(`Could not load settings.json (${res.status})`);
         const settings = (await res.json()) as ViewerSettings;
         setSettings(settings);
+        setIsStandalone(executionContext === null);
 
         if (cancelled || !containerRef.current) return;
 
@@ -347,7 +352,7 @@ export default function App() {
         </div>
       )}
 
-      {status === "ready" && settings?.debug && engineRef.current && (
+      {status === "ready" && isStandalone && settings && engineRef.current && (
         <DebugPanel engine={engineRef.current} settings={settings} />
       )}
     </div>

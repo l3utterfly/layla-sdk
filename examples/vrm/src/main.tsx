@@ -30,10 +30,15 @@ if (import.meta.env.DEV) {
   });
   const mock = installLaylaMock({
     characters: [character],
-    executionContext: {
-      character,
-      session_id: MOCK_SESSION_ID,
-    },
+    
+    // to test execution under no context
+    executionContext: null,
+
+    // to test execution under chat
+    // executionContext: {
+    //   character,
+    //   session_id: MOCK_SESSION_ID,
+    // },
   });
 
   const messageTimer = window.setInterval(() => {
