@@ -39,6 +39,7 @@ export interface CameraTransform {
 export interface ViewerSettings {
   model: string;
   animations?: string[] | Record<string, string[]>;
+  thinking?: string[];
   idle?: IdleSettings;
   talking?: TalkingSettings;
   animation?: {
@@ -459,9 +460,15 @@ export class ViewerEngine {
     const neutralIndices: number[] = [];
 
     const configuredAnimations = this.settings.animations ?? [];
-    const animPaths = Array.isArray(configuredAnimations)
+    const configuredAnimationPaths = Array.isArray(configuredAnimations)
       ? configuredAnimations
-      : [...new Set(Object.values(configuredAnimations).flat())];
+      : Object.values(configuredAnimations).flat();
+    const animPaths = [
+      ...new Set([
+        ...configuredAnimationPaths,
+        ...(this.settings.thinking ?? []),
+      ]),
+    ];
     for (const path of animPaths) {
       try {
         const animGltf = await loader.loadAsync(path);
@@ -749,6 +756,23 @@ export class ViewerEngine {
       console.warn(
         `playRandomFromGroup(): no animations configured for "${group}"`,
       );
+      return null;
+    }
+
+    const target = targets[Math.floor(Math.random() * targets.length)];
+    return this.playOnce(target, { fade, returnTo });
+  }
+
+  /** Pick and play one random animation from the thinking configuration. */
+  playRandomThinking(
+    { fade = 0.3, returnTo = "auto" }: {
+      fade?: number;
+      returnTo?: AnimationReturnTarget;
+    } = {},
+  ) {
+    const targets = this.settings.thinking;
+    if (!targets?.length) {
+      console.warn("playRandomThinking(): no thinking animations configured");
       return null;
     }
 

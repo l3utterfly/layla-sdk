@@ -61,6 +61,14 @@
     "crouch": 0.006
   },
 
+  "thinking": ["animations/LookAround.vrma", "animations/Thinking.vrma"],
+
+  "talking": {
+    "enabled": true,
+    "intensity": 1,
+    "speed": 1
+  },
+
   "animation": {
     "crossFadeDuration": 1.0
   },

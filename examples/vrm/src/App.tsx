@@ -4,6 +4,7 @@ import {
   type ChatContextFinishedSpeakingListener,
   type ChatContextSentimentUpdateListener,
   type ChatContextStartedSpeakingListener,
+  type ChatContextStartedThinkingListener,
 } from "../../../src";
 import {
   ViewerEngine,
@@ -632,7 +633,10 @@ export default function App() {
     let engine: ViewerEngine | null = null;
     let cancelled = false;
     let pendingExpressionWeights: VrmEmotionExpressionWeights | null = null;
-    let pendingAnimationSentiment: LaylaSentiment | null = null;
+    let pendingAnimation:
+      | { kind: "sentiment"; sentiment: LaylaSentiment }
+      | { kind: "thinking" }
+      | null = null;
     let isSpeaking = false;
 
     const onStartedSpeaking: ChatContextStartedSpeakingListener = () => {
@@ -654,9 +658,15 @@ export default function App() {
 
       const weights = mapLaylaSentimentToVrmExpressions(sentiment);
       pendingExpressionWeights = weights;
-      pendingAnimationSentiment = sentiment;
+      pendingAnimation = { kind: "sentiment", sentiment };
       engine?.setExpressions(weights);
       engine?.playRandomFromGroup(sentiment);
+    };
+
+    const onStartedThinking: ChatContextStartedThinkingListener = () => {
+      if (cancelled) return;
+      pendingAnimation = { kind: "thinking" };
+      engine?.playRandomThinking();
     };
 
     async function boot() {
@@ -687,8 +697,10 @@ export default function App() {
         if (pendingExpressionWeights) {
           engine.setExpressions(pendingExpressionWeights);
         }
-        if (pendingAnimationSentiment) {
-          engine.playRandomFromGroup(pendingAnimationSentiment);
+        if (pendingAnimation?.kind === "sentiment") {
+          engine.playRandomFromGroup(pendingAnimation.sentiment);
+        } else if (pendingAnimation?.kind === "thinking") {
+          engine.playRandomThinking();
         }
         // Exposed for programmatic control, e.g. from the console or your own
         // code: avatar.blink(), avatar.startTalking(), avatar.stopTalking(),
@@ -707,6 +719,7 @@ export default function App() {
     layla.contextual.on("chatContextSentimentUpdate", onSentimentUpdate);
     layla.contextual.on("chatContextStartedSpeaking", onStartedSpeaking);
     layla.contextual.on("chatContextFinishedSpeaking", onFinishedSpeaking);
+    layla.contextual.on("chatContextStartedThinking", onStartedThinking);
     boot();
 
     return () => {
@@ -714,6 +727,7 @@ export default function App() {
       layla.contextual.off("chatContextSentimentUpdate", onSentimentUpdate);
       layla.contextual.off("chatContextStartedSpeaking", onStartedSpeaking);
       layla.contextual.off("chatContextFinishedSpeaking", onFinishedSpeaking);
+      layla.contextual.off("chatContextStartedThinking", onStartedThinking);
       if (window.avatar === engine) delete window.avatar;
       if (engineRef.current === engine) engineRef.current = null;
       engine?.dispose();

@@ -115,6 +115,10 @@ The app also uses the selected sentiment's matching `settings.json` animation
 group. It chooses a random clip when the group contains multiple animations,
 plays it once, and then returns the avatar to automatic idling.
 
+When Layla emits `chatContextStartedThinking`, the app similarly chooses a
+random clip from the top-level `thinking` array, plays it once, and returns to
+automatic idling. Thinking animations are optional.
+
 ## Add your files
 
 Drop your avatar and animations into `public/models/`, then point
@@ -151,6 +155,7 @@ currently served `/index.html` is also included at the archive root.
 | --- | --- |
 | `model` | Path to the `.vrm` file (required). |
 | `animations` | Emotion-to-path arrays. A random `neutral` animation plays every 5–10 seconds while automatic idling is active; other groups are app-triggered. A legacy array is treated as the neutral group. |
+| `thinking` | Paths used for the thinking state. One is chosen randomly when Layla emits `chatContextStartedThinking`. |
 | `idle` | Procedural rest-pose, breathing, sway, and head-drift settings. Set `enabled` to `false` to disable procedural motion. |
 | `talking` | Procedural mouth settings. Supports `enabled`, `intensity`, and `speed`; all have natural defaults. |
 | `animation.crossFadeDuration` | Seconds to blend between animations. |

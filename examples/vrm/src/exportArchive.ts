@@ -86,13 +86,16 @@ const getUniqueFileName = (name: string, usedNames: Set<string>) => {
 const addAnimations = async (
   zip: JSZip,
   animations: ViewerSettings["animations"],
-): Promise<ViewerSettings["animations"]> => {
-  if (!animations) return undefined;
+  thinking: ViewerSettings["thinking"],
+) => {
+  if (!animations && !thinking) {
+    return { animations: undefined, thinking: undefined };
+  }
 
   const configuredPaths = Array.isArray(animations)
     ? animations
-    : Object.values(animations).flat();
-  const uniquePaths = [...new Set(configuredPaths)];
+    : Object.values(animations ?? {}).flat();
+  const uniquePaths = [...new Set([...configuredPaths, ...(thinking ?? [])])];
   const usedNames = new Set<string>();
   const archivePaths = new Map<string, string>();
 
@@ -116,10 +119,21 @@ const addAnimations = async (
   const rewrite = (paths: string[]) =>
     paths.map((path) => archivePaths.get(path) ?? path);
 
-  if (Array.isArray(animations)) return rewrite(animations);
-  return Object.fromEntries(
-    Object.entries(animations).map(([group, paths]) => [group, rewrite(paths)]),
-  );
+  const rewrittenAnimations = Array.isArray(animations)
+    ? rewrite(animations)
+    : animations
+      ? Object.fromEntries(
+          Object.entries(animations).map(([group, paths]) => [
+            group,
+            rewrite(paths),
+          ]),
+        )
+      : undefined;
+
+  return {
+    animations: rewrittenAnimations,
+    thinking: thinking ? rewrite(thinking) : undefined,
+  };
 };
 
 const buildAppMetadata = (source: ArrayBuffer, modelName: string) => {
@@ -203,7 +217,7 @@ export async function buildVrmExportArchive({
     modelPath,
     backgroundPath,
     skyboxPath,
-    animations,
+    animationSettings,
     metadataSource,
     indexHtml,
     icon,
@@ -213,7 +227,7 @@ export async function buildVrmExportArchive({
       addAsset(zip, "model", model),
       background ? addAsset(zip, "background", background) : null,
       skybox ? addAsset(zip, "skybox", skybox) : null,
-      addAnimations(zip, settings.animations),
+      addAnimations(zip, settings.animations, settings.thinking),
       fetchMetadata(),
       fetchFile("/index.html"),
       artwork.icon.arrayBuffer(),
@@ -223,7 +237,7 @@ export async function buildVrmExportArchive({
   const exportedSettings: ViewerSettings = {
     ...settings,
     model: modelPath,
-    animations,
+    ...animationSettings,
     camera: {
       ...settings.camera,
       position: [...camera.position],
