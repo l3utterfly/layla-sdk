@@ -16,6 +16,7 @@ type Vector3Tuple = [number, number, number];
 type AnimationTarget = number | string;
 type AnimationReturnTarget = AnimationTarget | "auto";
 type BlinkPhase = "idle" | "closing" | "opening";
+export type BackgroundAssetType = "image" | "glb";
 
 export interface EntityTransform {
   position?: Vector3Tuple;
@@ -115,6 +116,8 @@ export class ViewerEngine {
   private camera!: THREE.PerspectiveCamera;
   private readonly clock = new THREE.Clock();
   private vrm: VRM | null = null;
+  private _modelTransform: EntityTransform;
+  private _backgroundTransform: EntityTransform;
   private mixer: THREE.AnimationMixer | null = null;
   private readonly actions: THREE.AnimationAction[] = [];
   private activeAction: THREE.AnimationAction | null = null;
@@ -149,6 +152,8 @@ export class ViewerEngine {
   constructor(container: HTMLDivElement, settings: ViewerSettings) {
     this.container = container;
     this.settings = settings;
+    this._modelTransform = settings.transform ?? {};
+    this._backgroundTransform = settings.backgroundTransform ?? {};
 
     // --- procedural face state (blinking + expression overrides) ---
     // Auto-blink is on by default so the avatar feels alive. Any expression you
@@ -272,38 +277,135 @@ export class ViewerEngine {
 
   /* ----------------------------------------------------------------- loading */
 
+  private _createLoader() {
+    const loader = new GLTFLoader();
+    loader.register((parser) => new VRMLoaderPlugin(parser));
+    loader.register((parser) => new VRMAnimationLoaderPlugin(parser));
+    return loader;
+  }
+
   async load() {
     const skybox = this.settings.skybox;
     if (typeof skybox === "string" && skybox.trim().length > 0) {
-      const tex = await new THREE.TextureLoader().loadAsync(skybox);
-      tex.colorSpace = THREE.SRGBColorSpace;
-      tex.mapping = THREE.EquirectangularReflectionMapping;
-      this.scene.background = tex;
-      this._skyboxTex = tex;
+      await this.loadSkybox(skybox);
     }
 
     const background = this.settings.background;
     if (_isGlbPath(background)) {
-      const backgroundGltf = await new GLTFLoader().loadAsync(background);
-      this._backgroundModel = backgroundGltf.scene;
-      this._applyTransform(
-        this._backgroundModel,
-        this.settings.backgroundTransform,
-      );
-      this.scene.add(this._backgroundModel);
+      await this.loadBackground(background, "glb");
     }
 
-    const loader = new GLTFLoader();
-    loader.register((parser) => new VRMLoaderPlugin(parser));
-    loader.register((parser) => new VRMAnimationLoaderPlugin(parser));
+    await this.loadModel(this.settings.model);
+    return this;
+  }
 
-    // --- model ---
-    const modelUrl = this.settings.model;
+  /** Replace the equirectangular skybox while keeping any 3D background. */
+  async loadSkybox(imageUrl: string) {
+    const texture = await new THREE.TextureLoader().loadAsync(imageUrl);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.mapping = THREE.EquirectangularReflectionMapping;
+
+    this._bgTex?.dispose();
+    this._skyboxTex?.dispose();
+    this._bgTex = undefined;
+    this._skyboxTex = texture;
+    this.scene.background = texture;
+    this.renderer.setClearColor(0x000000, 1);
+    return this;
+  }
+
+  /** Remove the skybox without disturbing any 3D background geometry. */
+  removeSkybox() {
+    const skybox = this._skyboxTex;
+    this._skyboxTex = undefined;
+    if (this.scene.background === skybox) {
+      this.scene.background = this._bgTex ?? null;
+    }
+    skybox?.dispose();
+    return this;
+  }
+
+  /** Replace the flat-image or GLB background while preserving the avatar. */
+  async loadBackground(
+    assetUrl: string,
+    type: BackgroundAssetType,
+    transform: EntityTransform = this._backgroundTransform,
+  ) {
+    this._backgroundTransform = transform;
+
+    if (type === "image") {
+      const texture = await new THREE.TextureLoader().loadAsync(assetUrl);
+      texture.colorSpace = THREE.SRGBColorSpace;
+
+      const previousModel = this._backgroundModel;
+      this._backgroundModel = undefined;
+      if (previousModel) {
+        this.scene.remove(previousModel);
+        VRMUtils.deepDispose(previousModel);
+      }
+
+      this._bgTex?.dispose();
+      this._skyboxTex?.dispose();
+      this._bgTex = texture;
+      this._skyboxTex = undefined;
+      this.scene.background = texture;
+      this.renderer.setClearColor(0x000000, 1);
+      return this;
+    }
+
+    const gltf = await new GLTFLoader().loadAsync(assetUrl);
+    const backgroundModel = gltf.scene;
+    this._applyTransform(backgroundModel, this._backgroundTransform);
+
+    const previousModel = this._backgroundModel;
+    this._backgroundModel = backgroundModel;
+    this.scene.add(backgroundModel);
+    if (previousModel) {
+      this.scene.remove(previousModel);
+      VRMUtils.deepDispose(previousModel);
+    }
+
+    if (!this._skyboxTex) {
+      this._bgTex?.dispose();
+      this._bgTex = undefined;
+      this.scene.background = null;
+    }
+    this.renderer.setClearColor(0x000000, 1);
+    return this;
+  }
+
+  /** Remove the flat-image or GLB background without disturbing the skybox. */
+  removeBackground() {
+    const backgroundModel = this._backgroundModel;
+    this._backgroundModel = undefined;
+    if (backgroundModel) {
+      this.scene.remove(backgroundModel);
+      VRMUtils.deepDispose(backgroundModel);
+    }
+
+    const backgroundTexture = this._bgTex;
+    this._bgTex = undefined;
+    this.scene.background = this._skyboxTex ?? null;
+    backgroundTexture?.dispose();
+    if (!this._skyboxTex) this.renderer.setClearColor(0x000000, 0);
+    return this;
+  }
+
+  /** Replace the current avatar while preserving the rest of the scene. */
+  async loadModel(
+    modelUrl: string,
+    transform: EntityTransform = this._modelTransform,
+  ) {
     if (!modelUrl) throw new Error('settings.json is missing a "model" path.');
+    this._modelTransform = transform;
 
+    const loader = this._createLoader();
     const gltf = await loader.loadAsync(modelUrl);
     const vrm = gltf.userData.vrm as VRM | undefined;
-    if (!vrm) throw new Error(`No VRM data found in ${modelUrl}`);
+    if (!vrm) {
+      VRMUtils.deepDispose(gltf.scene);
+      throw new Error("The selected file does not contain VRM data.");
+    }
 
     // Optimizations (safe no-ops if not applicable)
     VRMUtils.removeUnnecessaryVertices(vrm.scene);
@@ -314,14 +416,12 @@ export class ViewerEngine {
     // Frustum culling can clip spring-bone-driven meshes; disable to be safe.
     vrm.scene.traverse((obj) => (obj.frustumCulled = false));
 
-    this._applyTransform(vrm.scene, this.settings.transform);
-    this.scene.add(vrm.scene);
-    this.vrm = vrm;
-    this.proceduralIdle = new ProceduralIdle(vrm, this.settings.idle);
-
     // --- animations ---
-    this.mixer = new THREE.AnimationMixer(vrm.scene);
-    this.mixer.addEventListener("finished", (e) => this._onActionFinished(e));
+    const mixer = new THREE.AnimationMixer(vrm.scene);
+    mixer.addEventListener("finished", (e) => this._onActionFinished(e));
+    const actions: THREE.AnimationAction[] = [];
+    const indexByName = new Map<string, number>();
+    const neutralIndices: number[] = [];
 
     const configuredAnimations = this.settings.animations ?? [];
     const animPaths = Array.isArray(configuredAnimations)
@@ -339,11 +439,11 @@ export class ViewerEngine {
         }
         const clip = createVRMAnimationClip(vrmAnim, vrm);
         clip.name = path;
-        const index = this.actions.push(this.mixer.clipAction(clip)) - 1;
+        const index = actions.push(mixer.clipAction(clip)) - 1;
         // Let callers reference clips by full path or just the basename
         // (e.g. "wave" for "/models/wave.vrma").
-        this._indexByName.set(path, index);
-        this._indexByName.set(_basename(path), index);
+        indexByName.set(path, index);
+        indexByName.set(_basename(path), index);
       } catch (err) {
         console.warn(`Failed to load animation ${path}:`, err);
       }
@@ -353,10 +453,44 @@ export class ViewerEngine {
       ? configuredAnimations
       : configuredAnimations.neutral ?? [];
     for (const path of neutralPaths) {
-      const index = this._indexByName.get(path);
-      if (index !== undefined && !this._neutralIndices.includes(index)) {
-        this._neutralIndices.push(index);
+      const index = indexByName.get(path);
+      if (index !== undefined && !neutralIndices.includes(index)) {
+        neutralIndices.push(index);
       }
+    }
+
+    const previousVrm = this.vrm;
+    const previousMixer = this.mixer;
+
+    previousMixer?.stopAllAction();
+    this.activeAction = null;
+    this.activeIndex = -1;
+    this._returnTo = null;
+    this._ambientEnabled = true;
+    this._ambientTimer = _randomNeutralDelay();
+    this._lastNeutralIndex = -1;
+
+    this.actions.splice(0, this.actions.length, ...actions);
+    this._indexByName.clear();
+    for (const [name, index] of indexByName) {
+      this._indexByName.set(name, index);
+    }
+    this._neutralIndices.splice(
+      0,
+      this._neutralIndices.length,
+      ...neutralIndices,
+    );
+
+    this._applyTransform(vrm.scene, this._modelTransform);
+    this.vrm = vrm;
+    this.mixer = mixer;
+    this.proceduralIdle = new ProceduralIdle(vrm, this.settings.idle);
+    this.scene.add(vrm.scene);
+
+    if (previousVrm) {
+      this.scene.remove(previousVrm.scene);
+      previousMixer?.uncacheRoot(previousVrm.scene);
+      VRMUtils.deepDispose(previousVrm.scene);
     }
 
     return this;
@@ -378,12 +512,14 @@ export class ViewerEngine {
 
   /** Apply a model transform immediately without restarting the viewer. */
   setModelTransform(transform: EntityTransform) {
+    this._modelTransform = transform;
     if (this.vrm) this._applyTransform(this.vrm.scene, transform);
     return this;
   }
 
   /** Apply a GLB background transform immediately without restarting. */
   setBackgroundTransform(transform: EntityTransform) {
+    this._backgroundTransform = transform;
     if (this._backgroundModel) {
       this._applyTransform(this._backgroundModel, transform);
     }

@@ -6,6 +6,7 @@ import {
 } from "../../../src";
 import {
   ViewerEngine,
+  type BackgroundAssetType,
   type CameraTransform,
   type EntityTransform,
   type ViewerSettings,
@@ -22,6 +23,22 @@ type TransformValue = Required<EntityTransform>;
 type VectorKey = "position" | "rotation";
 
 const layla = new LaylaSDK();
+
+const IMAGE_FILE_PATTERN = /\.(avif|bmp|gif|jpe?g|png|svg|webp)$/i;
+const isImageFile = (file: File) =>
+  file.type.startsWith("image/") || IMAGE_FILE_PATTERN.test(file.name);
+const getAssetName = (value?: string | null) =>
+  value?.split(/[\\/]/).pop() ?? "None";
+const getBackgroundAssetType = (
+  value?: string | null,
+): BackgroundAssetType | null => {
+  if (!value) return null;
+  if (/\.glb(?:[?#].*)?$/i.test(value)) return "glb";
+  if (/\.(avif|bmp|gif|jpe?g|png|svg|webp)(?:[?#].*)?$/i.test(value)) {
+    return "image";
+  }
+  return null;
+};
 
 const normalizeTransform = (transform?: EntityTransform): TransformValue => ({
   position: [...(transform?.position ?? [0, 0, 0])],
@@ -178,6 +195,67 @@ function TransformControls({
   );
 }
 
+function DebugFilePicker({
+  title,
+  prompt,
+  accept,
+  name,
+  loading,
+  disabled,
+  error,
+  onChange,
+  onRemove,
+}: {
+  title: string;
+  prompt: string;
+  accept: string;
+  name: string;
+  loading: boolean;
+  disabled: boolean;
+  error: string;
+  onChange: React.ChangeEventHandler<HTMLInputElement>;
+  onRemove?: () => void;
+}) {
+  return (
+    <fieldset className="debug-group">
+      <legend>{title}</legend>
+      <label
+        className={`debug-file-picker${
+          disabled ? " debug-file-picker--disabled" : ""
+        }${loading ? " debug-file-picker--loading" : ""}`}
+      >
+        <span>{loading ? "Loading…" : prompt}</span>
+        <input
+          type="file"
+          accept={accept}
+          disabled={disabled}
+          onChange={onChange}
+        />
+      </label>
+      <div className="debug-file-row">
+        <span className="debug-file-name" title={name}>
+          {name}
+        </span>
+        {onRemove && (
+          <button
+            className="debug-file-remove"
+            type="button"
+            disabled={disabled || name === "None"}
+            onClick={onRemove}
+          >
+            Remove
+          </button>
+        )}
+      </div>
+      {error && (
+        <p className="debug-file-error" role="alert">
+          {error}
+        </p>
+      )}
+    </fieldset>
+  );
+}
+
 function DebugPanel({
   engine,
   settings,
@@ -190,6 +268,24 @@ function DebugPanel({
     normalizeTransform(settings.backgroundTransform),
   );
   const [camera, setCamera] = useState(() => normalizeCamera(settings));
+  const [modelName, setModelName] = useState(() => getAssetName(settings.model));
+  const [modelLoading, setModelLoading] = useState(false);
+  const [modelError, setModelError] = useState("");
+  const [skyboxName, setSkyboxName] = useState(() =>
+    getAssetName(settings.skybox),
+  );
+  const [skyboxLoading, setSkyboxLoading] = useState(false);
+  const [skyboxError, setSkyboxError] = useState("");
+  const [backgroundName, setBackgroundName] = useState(() =>
+    getAssetName(settings.background),
+  );
+  const [backgroundType, setBackgroundType] =
+    useState<BackgroundAssetType | null>(() =>
+      getBackgroundAssetType(settings.background),
+    );
+  const [backgroundLoading, setBackgroundLoading] = useState(false);
+  const [backgroundError, setBackgroundError] = useState("");
+  const assetLoading = modelLoading || skyboxLoading || backgroundLoading;
 
   const updateModel = (value: TransformValue) => {
     setModel(value);
@@ -206,10 +302,143 @@ function DebugPanel({
     engine.setCameraTransform(value);
   };
 
+  const selectModel = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file) return;
+
+    const modelUrl = URL.createObjectURL(file);
+    setModelLoading(true);
+    setModelError("");
+
+    try {
+      await engine.loadModel(modelUrl, model);
+      setModelName(file.name);
+    } catch (err: unknown) {
+      console.error("Could not load the selected VRM model:", err);
+      setModelError(err instanceof Error ? err.message : String(err));
+    } finally {
+      URL.revokeObjectURL(modelUrl);
+      setModelLoading(false);
+    }
+  };
+
+  const selectSkybox = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file) return;
+    if (!isImageFile(file)) {
+      setSkyboxError("Choose an image file for the skybox.");
+      return;
+    }
+
+    const imageUrl = URL.createObjectURL(file);
+    setSkyboxLoading(true);
+    setSkyboxError("");
+
+    try {
+      await engine.loadSkybox(imageUrl);
+      setSkyboxName(file.name);
+      if (backgroundType === "image") {
+        setBackgroundName("None");
+        setBackgroundType(null);
+      }
+    } catch (err: unknown) {
+      console.error("Could not load the selected skybox:", err);
+      setSkyboxError(err instanceof Error ? err.message : String(err));
+    } finally {
+      URL.revokeObjectURL(imageUrl);
+      setSkyboxLoading(false);
+    }
+  };
+
+  const selectBackground = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file) return;
+
+    const type: BackgroundAssetType | null = /\.glb$/i.test(file.name)
+      ? "glb"
+      : isImageFile(file)
+        ? "image"
+        : null;
+    if (!type) {
+      setBackgroundError("Choose an image or .glb file for the background.");
+      return;
+    }
+
+    const assetUrl = URL.createObjectURL(file);
+    setBackgroundLoading(true);
+    setBackgroundError("");
+
+    try {
+      await engine.loadBackground(assetUrl, type, background);
+      setBackgroundName(file.name);
+      setBackgroundType(type);
+      if (type === "image") setSkyboxName("None");
+    } catch (err: unknown) {
+      console.error("Could not load the selected background:", err);
+      setBackgroundError(err instanceof Error ? err.message : String(err));
+    } finally {
+      URL.revokeObjectURL(assetUrl);
+      setBackgroundLoading(false);
+    }
+  };
+
+  const removeSkybox = () => {
+    engine.removeSkybox();
+    setSkyboxName("None");
+    setSkyboxError("");
+  };
+
+  const removeBackground = () => {
+    engine.removeBackground();
+    setBackgroundName("None");
+    setBackgroundType(null);
+    setBackgroundError("");
+  };
+
   return (
     <details className="debug-panel" open>
       <summary>Transform debug</summary>
       <div className="debug-panel__content">
+        <DebugFilePicker
+          title="VRM model"
+          prompt="Choose .vrm file"
+          accept=".vrm,model/gltf-binary"
+          name={modelName}
+          loading={modelLoading}
+          disabled={assetLoading}
+          error={modelError}
+          onChange={selectModel}
+        />
+        <DebugFilePicker
+          title="Skybox"
+          prompt="Choose image"
+          accept="image/*"
+          name={skyboxName}
+          loading={skyboxLoading}
+          disabled={assetLoading}
+          error={skyboxError}
+          onChange={selectSkybox}
+          onRemove={removeSkybox}
+        />
+        <DebugFilePicker
+          title="Background"
+          prompt="Choose image or .glb file"
+          accept="image/*,.glb,model/gltf-binary"
+          name={backgroundName}
+          loading={backgroundLoading}
+          disabled={assetLoading}
+          error={backgroundError}
+          onChange={selectBackground}
+          onRemove={removeBackground}
+        />
         <CameraControls value={camera} onChange={updateCamera} />
         <TransformControls
           title="Model"

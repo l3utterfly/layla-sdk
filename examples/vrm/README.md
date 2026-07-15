@@ -122,7 +122,10 @@ Any `.vrma` retargets automatically onto your model via its humanoid bones.
 This file is served from the site root as `/settings.json`. It's read at
 runtime, so after `npm run build` you can still edit it inside `dist/` and just
 refresh the page. The transform debug panel appears automatically when the app
-is running standalone (the Layla execution context is `null`).
+is running standalone (the Layla execution context is `null`). Its file pickers
+can load a local `.vrm`, image skybox, or image/GLB background into the current
+scene for quick testing. Skyboxes and backgrounds can also be removed from the
+scene; the VRM model always remains present.
 
 | Key | Description |
 | --- | --- |

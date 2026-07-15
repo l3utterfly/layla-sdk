@@ -65,6 +65,91 @@
   font-weight: 700;
 }
 
+.debug-file-picker {
+  display: block;
+  padding: 8px 10px;
+  color: #fff;
+  background: rgba(157, 140, 255, 0.18);
+  border: 1px solid rgba(185, 174, 255, 0.35);
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: center;
+}
+
+.debug-file-picker:hover {
+  background: rgba(157, 140, 255, 0.28);
+}
+
+.debug-file-picker:focus-within {
+  outline: 2px solid #9d8cff;
+  outline-offset: 2px;
+}
+
+.debug-file-picker--disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.debug-file-picker--loading {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.debug-file-picker input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.debug-file-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 7px;
+}
+
+.debug-file-name {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: rgba(242, 240, 255, 0.68);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.debug-file-remove {
+  padding: 2px 7px;
+  color: #ffccd2;
+  background: rgba(255, 118, 137, 0.1);
+  border: 1px solid rgba(255, 148, 162, 0.32);
+  border-radius: 4px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.debug-file-remove:hover:not(:disabled) {
+  background: rgba(255, 118, 137, 0.2);
+}
+
+.debug-file-remove:focus-visible {
+  outline: 2px solid #ff94a2;
+  outline-offset: 2px;
+}
+
+.debug-file-remove:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.debug-file-error {
+  margin: 7px 0 0;
+  color: #ffb8c0;
+}
+
 .debug-control + .debug-control {
   margin-top: 10px;
 }
