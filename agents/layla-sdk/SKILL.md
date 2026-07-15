@@ -48,7 +48,11 @@ import LaylaSDK, {
   type LaylaPersona,
   type LaylaTTSVoice,
   type LaylaExecutionContext,
+  type ChatContextFinishedSpeakingListener,
   type ChatContextNewMessageListener,
+  type ChatContextSentimentUpdateListener,
+  type ChatContextStartedSpeakingListener,
+  type ChatContextStartedThinkingListener,
   type SentimentValues,
   type TavernCardV2,
 } from '@layla-network/sdk';
@@ -103,20 +107,50 @@ Read `references/sdk-api.md` before using a method signature that is not shown h
 ## Contextual Mini-Apps
 
 Use `layla.contextual.getExecutionContext(options?)` to get the current character
-and session, or `null` when standalone. Subscribe to `chatContextNewMessage` for new messages in the surrounding character chat.
+and session, or `null` when standalone. Contextual mini-apps can subscribe to
+new messages, sentiment updates, and character speaking or thinking state in
+the surrounding chat.
 
 ```ts
 const context: LaylaExecutionContext | null = await layla.contextual.getExecutionContext();
 const onNewMessage: ChatContextNewMessageListener = ({ message }) => {
   console.log(message.role, message.content);
 };
+const onSentiment: ChatContextSentimentUpdateListener = ({ sentiment }) => {
+  console.log(sentiment);
+};
+const onStartedSpeaking: ChatContextStartedSpeakingListener = () => {
+  console.log('speaking');
+};
+const onFinishedSpeaking: ChatContextFinishedSpeakingListener = () => {
+  console.log('finished speaking');
+};
+const onStartedThinking: ChatContextStartedThinkingListener = () => {
+  console.log('thinking');
+};
+
 layla.contextual.on('chatContextNewMessage', onNewMessage);
+layla.contextual.on('chatContextSentimentUpdate', onSentiment);
+layla.contextual.on('chatContextStartedSpeaking', onStartedSpeaking);
+layla.contextual.on('chatContextFinishedSpeaking', onFinishedSpeaking);
+layla.contextual.on('chatContextStartedThinking', onStartedThinking);
+
 layla.contextual.off('chatContextNewMessage', onNewMessage);
+layla.contextual.off('chatContextSentimentUpdate', onSentiment);
+layla.contextual.off('chatContextStartedSpeaking', onStartedSpeaking);
+layla.contextual.off('chatContextFinishedSpeaking', onFinishedSpeaking);
+layla.contextual.off('chatContextStartedThinking', onStartedThinking);
 ```
 
+The host uses `on_finished_speaking` for both contextual speech completion and
+TTS playback completion, so treat `chatContextFinishedSpeaking` as a shared
+speech-finished signal rather than a source-specific event.
+
 For local testing, set `executionContext` in `installLaylaMock(...)` and drive
-events with the returned handle's `emitChatContextNewMessage(...)`. Read
-`references/sdk-api.md` for full payloads, mock examples, and abort handling.
+events with the returned handle's `emitChatContextNewMessage(...)`,
+`emitChatContextSentimentUpdate(...)`, `emitChatContextStartedSpeaking()`,
+`emitChatContextFinishedSpeaking()`, and `emitChatContextStartedThinking()`.
+Read `references/sdk-api.md` for full payloads, mock examples, and abort handling.
 
 ## Chat
 

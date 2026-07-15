@@ -23,8 +23,16 @@ import LaylaSDK, {
   type LaylaPersona,
   type LaylaTTSVoice,
   type LaylaExecutionContext,
+  type ChatContextFinishedSpeaking,
+  type ChatContextFinishedSpeakingListener,
   type ChatContextNewMessage,
   type ChatContextNewMessageListener,
+  type ChatContextSentimentUpdate,
+  type ChatContextSentimentUpdateListener,
+  type ChatContextStartedSpeaking,
+  type ChatContextStartedSpeakingListener,
+  type ChatContextStartedThinking,
+  type ChatContextStartedThinkingListener,
   type LaylaApiSaveChatMessage,
   type LaylaApiScheduledChatMessage,
   type LaylaApiGetScheduledChatMessages,
@@ -54,7 +62,11 @@ import LaylaSDK, {
   type LaylaApiEvent_onGetInferenceEnginesResponse,
   type LaylaApiEvent_onSetInferenceEngineResponse,
   type LaylaApiEvent_onGetExecutionContextResponse,
+  type LaylaApiEvent_onChatContextFinishedSpeaking,
   type LaylaApiEvent_onChatContextNewMessage,
+  type LaylaApiEvent_onChatContextSentimentUpdate,
+  type LaylaApiEvent_onChatContextStartedSpeaking,
+  type LaylaApiEvent_onChatContextStartedThinking,
   type LaylaApiEvent_onFinishedSpeaking,
   type LaylaApiEvent_onSaveFileResponse,
   type LaylaApiEvent_onReadFileResponse,
@@ -144,6 +156,52 @@ layla.contextual.on('chatContextNewMessage', onNewMessage);
 // Remove the exact listener when the UI is disposed.
 layla.contextual.off('chatContextNewMessage', onNewMessage);
 ```
+
+## Other contextual chat events
+
+Contextual mini-apps can also react to the surrounding character's sentiment,
+speech, and thinking state:
+
+```ts
+import type {
+  ChatContextFinishedSpeakingListener,
+  ChatContextSentimentUpdateListener,
+  ChatContextStartedSpeakingListener,
+  ChatContextStartedThinkingListener,
+} from '@layla-network/sdk';
+
+const onSentimentUpdate: ChatContextSentimentUpdateListener = ({ sentiment }) => {
+  setExpression(sentiment);
+};
+const onStartedSpeaking: ChatContextStartedSpeakingListener = () => {
+  setSpeaking(true);
+};
+const onFinishedSpeaking: ChatContextFinishedSpeakingListener = () => {
+  setSpeaking(false);
+};
+const onStartedThinking: ChatContextStartedThinkingListener = () => {
+  setThinking(true);
+};
+
+layla.contextual.on('chatContextSentimentUpdate', onSentimentUpdate);
+layla.contextual.on('chatContextStartedSpeaking', onStartedSpeaking);
+layla.contextual.on('chatContextFinishedSpeaking', onFinishedSpeaking);
+layla.contextual.on('chatContextStartedThinking', onStartedThinking);
+
+layla.contextual.off('chatContextSentimentUpdate', onSentimentUpdate);
+layla.contextual.off('chatContextStartedSpeaking', onStartedSpeaking);
+layla.contextual.off('chatContextFinishedSpeaking', onFinishedSpeaking);
+layla.contextual.off('chatContextStartedThinking', onStartedThinking);
+```
+
+`chatContextSentimentUpdate` receives `{ sentiment }`, where `sentiment` is a
+key of `SentimentValues`. The speaking and thinking lifecycle listeners receive
+`null`; listeners that do not need it can declare no parameters, as above.
+
+The host uses the shared wire event `on_finished_speaking` for both contextual
+speech completion and TTS playback completion. Consequently,
+`chatContextFinishedSpeaking` can also fire when a TTS request finishes; use the
+event as a speech-finished signal rather than as a uniquely identifiable source.
 
 ## `layla.chat.completions.create(...)`
 
@@ -995,6 +1053,18 @@ const context = await layla.contextual.getExecutionContext();
 layla.contextual.on('chatContextNewMessage', ({ message }) => {
   console.log(message.content);
 });
+layla.contextual.on('chatContextSentimentUpdate', ({ sentiment }) => {
+  console.log(sentiment);
+});
+layla.contextual.on('chatContextStartedSpeaking', () => {
+  console.log('The contextual character started speaking.');
+});
+layla.contextual.on('chatContextFinishedSpeaking', () => {
+  console.log('The contextual character finished speaking.');
+});
+layla.contextual.on('chatContextStartedThinking', () => {
+  console.log('The contextual character started thinking.');
+});
 
 mock.emitChatContextNewMessage({
   message: { role: 'user', content: 'Hello from the surrounding chat.' },
@@ -1002,11 +1072,15 @@ mock.emitChatContextNewMessage({
   session_id: context?.session_id ?? 'mock-aria-session-1',
   timestamp: Date.now(),
 });
+mock.emitChatContextSentimentUpdate({ sentiment: 'joy' });
+mock.emitChatContextStartedSpeaking();
+mock.emitChatContextFinishedSpeaking();
+mock.emitChatContextStartedThinking();
 ```
 
 When `executionContext` is omitted or set to `null`, the mock represents a
-standalone top-level mini-app. `emitChatContextNewMessage(...)` lets local tests
-drive the same pushed event that the Layla host emits.
+standalone top-level mini-app. The mock handle's `emitChatContext...` methods
+let local tests drive the same pushed events that the Layla host emits.
 
 Customize mock session history with static transcript data:
 
@@ -1191,8 +1265,16 @@ Useful exported types include:
 - `LaylaPersona`
 - `LaylaTTSVoice`
 - `LaylaExecutionContext`
+- `ChatContextFinishedSpeaking`
+- `ChatContextFinishedSpeakingListener`
 - `ChatContextNewMessage`
 - `ChatContextNewMessageListener`
+- `ChatContextSentimentUpdate`
+- `ChatContextSentimentUpdateListener`
+- `ChatContextStartedSpeaking`
+- `ChatContextStartedSpeakingListener`
+- `ChatContextStartedThinking`
+- `ChatContextStartedThinkingListener`
 - `MemoryListOptions`
 - `LaylaApiEvent_onGetChatSessionsResponse`
 - `LaylaApiSaveChatMessage`
@@ -1221,7 +1303,11 @@ Useful exported types include:
 - `LaylaApiEvent_onGetInferenceEnginesResponse`
 - `LaylaApiEvent_onSetInferenceEngineResponse`
 - `LaylaApiEvent_onGetExecutionContextResponse`
+- `LaylaApiEvent_onChatContextFinishedSpeaking`
 - `LaylaApiEvent_onChatContextNewMessage`
+- `LaylaApiEvent_onChatContextSentimentUpdate`
+- `LaylaApiEvent_onChatContextStartedSpeaking`
+- `LaylaApiEvent_onChatContextStartedThinking`
 - `LaylaApiEvent_onFinishedSpeaking`
 - `LaylaApiSaveFile`
 - `LaylaApiEvent_onSaveFileResponse`

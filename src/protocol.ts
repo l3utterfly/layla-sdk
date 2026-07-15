@@ -461,7 +461,7 @@ export interface LaylaApiStopSpeaking {
 
 /**
  * Ask the host for the list of available inference engines.
- * The host should respond with an `on_get_inference_engines_response` event containing an array of inference engine names.
+ * The host should respond with an `on_get_inference_engines_response` event containing an array of inference engines names.
  * These names can be used to set the inference engine before calling `send_message` to generate a response.
  */
 export interface LaylaApiGetInferenceEngines {
@@ -479,7 +479,7 @@ export interface LaylaApiSetInferenceEngine {
   cmd: 'set_inference_engine';
   data: {
     engineName: string | null; // the name of the inference engine to set, if null, the host should reset to the default inference engine
-  };
+  }
 }
 
 /**
@@ -523,7 +523,8 @@ export type LaylaApiRequest =
   | LaylaApiStopSpeaking
   | LaylaApiGetInferenceEngines
   | LaylaApiSetInferenceEngine
-  | LaylaApiGetExecutionContext;
+  | LaylaApiGetExecutionContext
+  ;
 
 /* ---- RN -> Web events ------------------------------------------------------ */
 
@@ -814,6 +815,45 @@ export interface LaylaApiEvent_onChatContextNewMessage {
   };
 }
 
+/**
+ * The contextual event emitted by the host when the active sentiment changes in the surrounding character chat.
+ * This event is only emitted by the host when the mini-app is running in a character chat context.
+ * It provides the sentiment category currently selected by the host.
+ */
+export interface LaylaApiEvent_onChatContextSentimentUpdate {
+  event: 'on_chat_context_sentiment_update';
+  data: {
+    sentiment: keyof SentimentValues;
+  };
+}
+
+/**
+ * The contextual event emitted by the host when the character starts speaking in the surrounding character chat.
+ * This event is only emitted by the host when the mini-app is running in a character chat context.
+ */
+export interface LaylaApiEvent_onChatContextStartedSpeaking {
+  event: 'on_chat_context_started_speaking';
+  data: null; // no additional data is needed for this event
+}
+
+/**
+ * The contextual event emitted by the host when the character finishes speaking in the surrounding character chat.
+ * This event uses the same `on_finished_speaking` event name as TTS playback completion and is included separately here to describe its character chat context.
+ */
+export interface LaylaApiEvent_onChatContextFinishedSpeaking {
+  event: 'on_finished_speaking';
+  data: null; // no additional data is needed for this event
+}
+
+/**
+ * The contextual event emitted by the host when the character starts thinking in the surrounding character chat.
+ * This event is only emitted by the host when the mini-app is running in a character chat context.
+ */
+export interface LaylaApiEvent_onChatContextStartedThinking {
+  event: 'on_chat_context_started_thinking';
+  data: null; // no additional data is needed for this event
+}
+
 export type LaylaApiEvent =
   | LaylaApiEvent_onMsg
   | LaylaApiEvent_onMsgEnd
@@ -841,4 +881,9 @@ export type LaylaApiEvent =
   | LaylaApiEvent_onSetInferenceEngineResponse
   | LaylaApiEvent_onFinishedSpeaking
   | LaylaApiEvent_onGetExecutionContextResponse
-  | LaylaApiEvent_onChatContextNewMessage;
+  | LaylaApiEvent_onChatContextNewMessage
+  | LaylaApiEvent_onChatContextSentimentUpdate
+  | LaylaApiEvent_onChatContextStartedSpeaking
+  | LaylaApiEvent_onChatContextFinishedSpeaking
+  | LaylaApiEvent_onChatContextStartedThinking
+  ;

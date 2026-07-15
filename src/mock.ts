@@ -21,7 +21,11 @@
 
 import type {
   LaylaApiEvent,
+  LaylaApiEvent_onChatContextFinishedSpeaking,
   LaylaApiEvent_onChatContextNewMessage,
+  LaylaApiEvent_onChatContextSentimentUpdate,
+  LaylaApiEvent_onChatContextStartedSpeaking,
+  LaylaApiEvent_onChatContextStartedThinking,
   LaylaApiEvent_onGetChatSessionsResponse,
   LaylaApiRequest,
   LaylaCharacter,
@@ -121,6 +125,16 @@ export interface LaylaMockHandle {
   emitChatContextNewMessage(
     data: LaylaApiEvent_onChatContextNewMessage['data'],
   ): void;
+  /** Emit a host-pushed sentiment update for contextual listener testing. */
+  emitChatContextSentimentUpdate(
+    data: LaylaApiEvent_onChatContextSentimentUpdate['data'],
+  ): void;
+  /** Emit a host-pushed speaking-start event for contextual listener testing. */
+  emitChatContextStartedSpeaking(): void;
+  /** Emit a host-pushed speaking-finished event for contextual listener testing. */
+  emitChatContextFinishedSpeaking(): void;
+  /** Emit a host-pushed thinking-start event for contextual listener testing. */
+  emitChatContextStartedThinking(): void;
   /** Remove the fake bridge and restore whatever was there before. */
   uninstall(): void;
 }
@@ -1117,6 +1131,34 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     emitChatContextNewMessage(data) {
       if (!installed) return;
       emit({ event: 'on_chat_context_new_message', data });
+    },
+    emitChatContextSentimentUpdate(data) {
+      if (!installed) return;
+      emit({ event: 'on_chat_context_sentiment_update', data });
+    },
+    emitChatContextStartedSpeaking() {
+      if (!installed) return;
+      const event: LaylaApiEvent_onChatContextStartedSpeaking = {
+        event: 'on_chat_context_started_speaking',
+        data: null,
+      };
+      emit(event);
+    },
+    emitChatContextFinishedSpeaking() {
+      if (!installed) return;
+      const event: LaylaApiEvent_onChatContextFinishedSpeaking = {
+        event: 'on_finished_speaking',
+        data: null,
+      };
+      emit(event);
+    },
+    emitChatContextStartedThinking() {
+      if (!installed) return;
+      const event: LaylaApiEvent_onChatContextStartedThinking = {
+        event: 'on_chat_context_started_thinking',
+        data: null,
+      };
+      emit(event);
     },
     uninstall() {
       if (!installed) return;

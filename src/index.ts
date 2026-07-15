@@ -84,6 +84,10 @@ export type {
   LaylaApiEvent_onFinishedSpeaking,
   LaylaApiEvent_onGetExecutionContextResponse,
   LaylaApiEvent_onChatContextNewMessage,
+  LaylaApiEvent_onChatContextSentimentUpdate,
+  LaylaApiEvent_onChatContextStartedSpeaking,
+  LaylaApiEvent_onChatContextFinishedSpeaking,
+  LaylaApiEvent_onChatContextStartedThinking,
 } from './protocol';
 export { SENTIMENT_THRESHOLDS } from './protocol';
 
@@ -127,8 +131,16 @@ export { TTS } from './resources/tts';
 // Contextual mini-app surface.
 export { Contextual } from './resources/contextual';
 export type {
+  ChatContextFinishedSpeaking,
+  ChatContextFinishedSpeakingListener,
   ChatContextNewMessage,
   ChatContextNewMessageListener,
+  ChatContextSentimentUpdate,
+  ChatContextSentimentUpdateListener,
+  ChatContextStartedSpeaking,
+  ChatContextStartedSpeakingListener,
+  ChatContextStartedThinking,
+  ChatContextStartedThinkingListener,
 } from './resources/contextual';
 
 // Client.

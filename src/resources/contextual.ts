@@ -6,7 +6,11 @@
 
 import type {
   LaylaApiEvent,
+  LaylaApiEvent_onChatContextFinishedSpeaking,
   LaylaApiEvent_onChatContextNewMessage,
+  LaylaApiEvent_onChatContextSentimentUpdate,
+  LaylaApiEvent_onChatContextStartedSpeaking,
+  LaylaApiEvent_onChatContextStartedThinking,
   LaylaApiEvent_onGetExecutionContextResponse,
   LaylaExecutionContext,
 } from '../protocol';
@@ -19,9 +23,59 @@ export type ChatContextNewMessageListener = (
   data: ChatContextNewMessage,
 ) => void;
 
+export type ChatContextSentimentUpdate =
+  LaylaApiEvent_onChatContextSentimentUpdate['data'];
+
+export type ChatContextSentimentUpdateListener = (
+  data: ChatContextSentimentUpdate,
+) => void;
+
+export type ChatContextStartedSpeaking =
+  LaylaApiEvent_onChatContextStartedSpeaking['data'];
+
+export type ChatContextStartedSpeakingListener = (
+  data: ChatContextStartedSpeaking,
+) => void;
+
+export type ChatContextFinishedSpeaking =
+  LaylaApiEvent_onChatContextFinishedSpeaking['data'];
+
+export type ChatContextFinishedSpeakingListener = (
+  data: ChatContextFinishedSpeaking,
+) => void;
+
+export type ChatContextStartedThinking =
+  LaylaApiEvent_onChatContextStartedThinking['data'];
+
+export type ChatContextStartedThinkingListener = (
+  data: ChatContextStartedThinking,
+) => void;
+
+type ChatContextEventName =
+  | 'chatContextNewMessage'
+  | 'chatContextSentimentUpdate'
+  | 'chatContextStartedSpeaking'
+  | 'chatContextFinishedSpeaking'
+  | 'chatContextStartedThinking';
+
+type ChatContextEventListener =
+  | ChatContextNewMessageListener
+  | ChatContextSentimentUpdateListener
+  | ChatContextStartedSpeakingListener
+  | ChatContextFinishedSpeakingListener
+  | ChatContextStartedThinkingListener;
+
 export class Contextual {
   private readonly chatContextNewMessageListeners =
     new Set<ChatContextNewMessageListener>();
+  private readonly chatContextSentimentUpdateListeners =
+    new Set<ChatContextSentimentUpdateListener>();
+  private readonly chatContextStartedSpeakingListeners =
+    new Set<ChatContextStartedSpeakingListener>();
+  private readonly chatContextFinishedSpeakingListeners =
+    new Set<ChatContextFinishedSpeakingListener>();
+  private readonly chatContextStartedThinkingListeners =
+    new Set<ChatContextStartedThinkingListener>();
   private listening = false;
 
   /**
@@ -40,26 +94,126 @@ export class Contextual {
     );
   }
 
-  /** Listen for new messages added to the surrounding character chat. */
+  /** Listen for activity in the surrounding character chat. */
   on(
     event: 'chatContextNewMessage',
     listener: ChatContextNewMessageListener,
+  ): this;
+  on(
+    event: 'chatContextSentimentUpdate',
+    listener: ChatContextSentimentUpdateListener,
+  ): this;
+  on(
+    event: 'chatContextStartedSpeaking',
+    listener: ChatContextStartedSpeakingListener,
+  ): this;
+  on(
+    event: 'chatContextFinishedSpeaking',
+    listener: ChatContextFinishedSpeakingListener,
+  ): this;
+  on(
+    event: 'chatContextStartedThinking',
+    listener: ChatContextStartedThinkingListener,
+  ): this;
+  on(
+    event: ChatContextEventName,
+    listener: ChatContextEventListener,
   ): this {
-    void event;
-    this.chatContextNewMessageListeners.add(listener);
+    switch (event) {
+      case 'chatContextNewMessage':
+        this.chatContextNewMessageListeners.add(
+          listener as ChatContextNewMessageListener,
+        );
+        break;
+      case 'chatContextSentimentUpdate':
+        this.chatContextSentimentUpdateListeners.add(
+          listener as ChatContextSentimentUpdateListener,
+        );
+        break;
+      case 'chatContextStartedSpeaking':
+        this.chatContextStartedSpeakingListeners.add(
+          listener as ChatContextStartedSpeakingListener,
+        );
+        break;
+      case 'chatContextFinishedSpeaking':
+        this.chatContextFinishedSpeakingListeners.add(
+          listener as ChatContextFinishedSpeakingListener,
+        );
+        break;
+      case 'chatContextStartedThinking':
+        this.chatContextStartedThinkingListeners.add(
+          listener as ChatContextStartedThinkingListener,
+        );
+        break;
+    }
     this.ensureListening();
     return this;
   }
 
-  /** Stop listening for new messages added to the surrounding character chat. */
+  /** Stop listening for activity in the surrounding character chat. */
   off(
     event: 'chatContextNewMessage',
     listener: ChatContextNewMessageListener,
+  ): this;
+  off(
+    event: 'chatContextSentimentUpdate',
+    listener: ChatContextSentimentUpdateListener,
+  ): this;
+  off(
+    event: 'chatContextStartedSpeaking',
+    listener: ChatContextStartedSpeakingListener,
+  ): this;
+  off(
+    event: 'chatContextFinishedSpeaking',
+    listener: ChatContextFinishedSpeakingListener,
+  ): this;
+  off(
+    event: 'chatContextStartedThinking',
+    listener: ChatContextStartedThinkingListener,
+  ): this;
+  off(
+    event: ChatContextEventName,
+    listener: ChatContextEventListener,
   ): this {
-    void event;
-    this.chatContextNewMessageListeners.delete(listener);
-    if (this.chatContextNewMessageListeners.size === 0) this.stopListening();
+    switch (event) {
+      case 'chatContextNewMessage':
+        this.chatContextNewMessageListeners.delete(
+          listener as ChatContextNewMessageListener,
+        );
+        break;
+      case 'chatContextSentimentUpdate':
+        this.chatContextSentimentUpdateListeners.delete(
+          listener as ChatContextSentimentUpdateListener,
+        );
+        break;
+      case 'chatContextStartedSpeaking':
+        this.chatContextStartedSpeakingListeners.delete(
+          listener as ChatContextStartedSpeakingListener,
+        );
+        break;
+      case 'chatContextFinishedSpeaking':
+        this.chatContextFinishedSpeakingListeners.delete(
+          listener as ChatContextFinishedSpeakingListener,
+        );
+        break;
+      case 'chatContextStartedThinking':
+        this.chatContextStartedThinkingListeners.delete(
+          listener as ChatContextStartedThinkingListener,
+        );
+        break;
+    }
+    if (!this.hasListeners()) this.stopListening();
     return this;
+  }
+
+  private hasListeners(): boolean {
+    return (
+      this.chatContextNewMessageListeners.size > 0 ||
+      this.chatContextSentimentUpdateListeners.size > 0 ||
+      this.chatContextStartedSpeakingListeners.size > 0 ||
+      this.chatContextFinishedSpeakingListeners.size > 0 ||
+      this.chatContextStartedThinkingListeners.size > 0
+    );
   }
 
   private ensureListening(): void {
@@ -84,15 +238,47 @@ export class Contextual {
       return;
     }
 
-    if (event.event !== 'on_chat_context_new_message') return;
-    const data = (event as LaylaApiEvent_onChatContextNewMessage).data;
+    switch (event.event) {
+      case 'on_chat_context_new_message':
+        this.emit(
+          this.chatContextNewMessageListeners,
+          (event as LaylaApiEvent_onChatContextNewMessage).data,
+        );
+        break;
+      case 'on_chat_context_sentiment_update':
+        this.emit(
+          this.chatContextSentimentUpdateListeners,
+          (event as LaylaApiEvent_onChatContextSentimentUpdate).data,
+        );
+        break;
+      case 'on_chat_context_started_speaking':
+        this.emit(
+          this.chatContextStartedSpeakingListeners,
+          (event as LaylaApiEvent_onChatContextStartedSpeaking).data,
+        );
+        break;
+      case 'on_finished_speaking':
+        this.emit(
+          this.chatContextFinishedSpeakingListeners,
+          (event as LaylaApiEvent_onChatContextFinishedSpeaking).data,
+        );
+        break;
+      case 'on_chat_context_started_thinking':
+        this.emit(
+          this.chatContextStartedThinkingListeners,
+          (event as LaylaApiEvent_onChatContextStartedThinking).data,
+        );
+        break;
+    }
+  };
 
-    for (const listener of [...this.chatContextNewMessageListeners]) {
+  private emit<T>(listeners: Set<(data: T) => void>, data: T): void {
+    for (const listener of [...listeners]) {
       try {
         listener(data);
       } catch {
         // A consumer listener must not prevent other listeners from running.
       }
     }
-  };
+  }
 }
