@@ -61,6 +61,12 @@
     "crouch": 0.006
   },
 
+  "talking": {
+    "enabled": true,
+    "intensity": 1,
+    "speed": 1
+  },
+
   "animation": {
     "crossFadeDuration": 1.0
   },

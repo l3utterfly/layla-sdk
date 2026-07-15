@@ -62,6 +62,8 @@ avatar.setExpression("blink", 1) // hold eyes closed
 avatar.clearExpression("blink"); // release
 
 // Mouth / talking
+avatar.startTalking();           // natural procedural mouth movement
+avatar.stopTalking();            // smoothly close the mouth
 avatar.setMouthOpen(0.6);        // amplitude-style lip sync (drives the "aa" viseme)
 avatar.setViseme("oh");          // a specific vowel shape: aa | ih | ou | ee | oh
 avatar.closeMouth();
@@ -71,8 +73,12 @@ avatar.setExpressions({ happy: 1, aa: 0.2 });
 avatar.setExpression("surprised", 1);
 ```
 
-For simple lip sync, feed `setMouthOpen()` your audio's normalized volume once
-per frame (e.g. from a Web Audio `AnalyserNode`). For phoneme-accurate talking,
+The app starts and stops procedural talking automatically from Layla's
+`chatContextStartedSpeaking` and `chatContextFinishedSpeaking` events. It does
+not inspect the audio: it cross-fades through the vowel shapes with varied
+syllable timing and short pauses. For simple lip sync, feed `setMouthOpen()`
+your audio's normalized volume once per frame (e.g. from a Web Audio
+`AnalyserNode`). For phoneme-accurate talking,
 call `setViseme()` with the vowel for each sound. Expression changes cross-fade
 from their currently rendered weights. A set expression is automatically faded
 out and fully released after five seconds; updating it refreshes that lifetime,
@@ -146,6 +152,7 @@ currently served `/index.html` is also included at the archive root.
 | `model` | Path to the `.vrm` file (required). |
 | `animations` | Emotion-to-path arrays. A random `neutral` animation plays every 5–10 seconds while automatic idling is active; other groups are app-triggered. A legacy array is treated as the neutral group. |
 | `idle` | Procedural rest-pose, breathing, sway, and head-drift settings. Set `enabled` to `false` to disable procedural motion. |
+| `talking` | Procedural mouth settings. Supports `enabled`, `intensity`, and `speed`; all have natural defaults. |
 | `animation.crossFadeDuration` | Seconds to blend between animations. |
 | `camera.position` | `[x, y, z]` camera location. +Z is in front of the avatar. |
 | `camera.target` | `[x, y, z]` point the camera looks at (e.g. the face/chest). |

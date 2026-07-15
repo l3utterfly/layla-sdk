@@ -9,8 +9,13 @@ import {
   createVRMAnimationClip,
 } from "@pixiv/three-vrm-animation";
 import { ProceduralIdle, type IdleSettings } from "./ProceduralIdle";
+import {
+  ProceduralTalking,
+  type TalkingSettings,
+} from "./ProceduralTalking";
 
 const DEG2RAD = Math.PI / 180;
+const MOUTH_VISEMES = ["aa", "ih", "ou", "ee", "oh"] as const;
 
 type Vector3Tuple = [number, number, number];
 type AnimationTarget = number | string;
@@ -35,6 +40,7 @@ export interface ViewerSettings {
   model: string;
   animations?: string[] | Record<string, string[]>;
   idle?: IdleSettings;
+  talking?: TalkingSettings;
   animation?: {
     crossFadeDuration?: number;
   };
@@ -125,6 +131,8 @@ export class ViewerEngine {
   private readonly _indexByName = new Map<string, number>();
   private readonly _neutralIndices: number[] = [];
   private proceduralIdle: ProceduralIdle | null = null;
+  private proceduralTalking: ProceduralTalking | null = null;
+  private _talking = false;
   private _ambientEnabled = true;
   private _ambientTimer = _randomNeutralDelay();
   private _lastNeutralIndex = -1;
@@ -512,6 +520,8 @@ export class ViewerEngine {
     this.vrm = vrm;
     this.mixer = mixer;
     this.proceduralIdle = new ProceduralIdle(vrm, this.settings.idle);
+    this.proceduralTalking = new ProceduralTalking(vrm, this.settings.talking);
+    if (this._talking) this.proceduralTalking.start();
     this.scene.add(vrm.scene);
 
     if (previousVrm) {
@@ -858,7 +868,7 @@ export class ViewerEngine {
    * other vowel visemes so shapes don't stack.
    */
   setViseme(vowel: "aa" | "ih" | "ou" | "ee" | "oh", weight = 1) {
-    for (const v of ["aa", "ih", "ou", "ee", "oh"]) {
+    for (const v of MOUTH_VISEMES) {
       if (v === vowel) this.setExpression(v, weight);
       else this.clearExpression(v);
     }
@@ -867,8 +877,27 @@ export class ViewerEngine {
 
   /** Close the mouth (clears all vowel visemes). */
   closeMouth() {
-    for (const v of ["aa", "ih", "ou", "ee", "oh"]) this.clearExpression(v);
+    for (const v of MOUTH_VISEMES) this.clearExpression(v);
     return this;
+  }
+
+  /** Start natural, audio-independent procedural mouth movement. */
+  startTalking() {
+    this._talking = true;
+    this.proceduralTalking?.start();
+    return this;
+  }
+
+  /** Smoothly close the mouth and stop procedural mouth movement. */
+  stopTalking() {
+    this._talking = false;
+    this.proceduralTalking?.stop();
+    return this;
+  }
+
+  /** Enable or disable procedural talking with a single state value. */
+  setTalking(talking: boolean) {
+    return talking ? this.startTalking() : this.stopTalking();
   }
 
   private _applyFace(delta: number) {
@@ -887,6 +916,16 @@ export class ViewerEngine {
       }
       // setValue is a no-op for expressions the model doesn't define.
       if (em.getExpression(name)) em.setValue(name, weight);
+    }
+
+    // A manual mouth value owns the whole mouth while it is active. Otherwise,
+    // setMouthOpen("aa") could stack on a procedural "oh" or "ee" shape.
+    if (MOUTH_VISEMES.some((name) => this._overrides.has(name))) {
+      for (const name of MOUTH_VISEMES) {
+        if (!this._overrides.has(name) && em.getExpression(name)) {
+          em.setValue(name, 0);
+        }
+      }
     }
 
     // Drop released expressions after they've been zeroed once this frame.
@@ -1015,6 +1054,7 @@ export class ViewerEngine {
       this.vrm?.humanoid.resetNormalizedPose();
       this.mixer?.update(delta);
       this.proceduralIdle?.update(delta);
+      this.proceduralTalking?.update(delta);
       // Apply blinking + expression overrides after the animation mixer (so
       // manual control wins) and before vrm.update (which pushes weights to the
       // mesh, and also drives spring bones, look-at and expression morphs).

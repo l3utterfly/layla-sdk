@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import {
   LaylaSDK,
+  type ChatContextFinishedSpeakingListener,
   type ChatContextSentimentUpdateListener,
+  type ChatContextStartedSpeakingListener,
 } from "../../../src";
 import {
   ViewerEngine,
@@ -631,6 +633,19 @@ export default function App() {
     let cancelled = false;
     let pendingExpressionWeights: VrmEmotionExpressionWeights | null = null;
     let pendingAnimationSentiment: LaylaSentiment | null = null;
+    let isSpeaking = false;
+
+    const onStartedSpeaking: ChatContextStartedSpeakingListener = () => {
+      if (cancelled) return;
+      isSpeaking = true;
+      engine?.startTalking();
+    };
+
+    const onFinishedSpeaking: ChatContextFinishedSpeakingListener = () => {
+      if (cancelled) return;
+      isSpeaking = false;
+      engine?.stopTalking();
+    };
 
     const onSentimentUpdate: ChatContextSentimentUpdateListener = ({
       sentiment,
@@ -667,6 +682,7 @@ export default function App() {
         }
 
         engine.start();
+        if (isSpeaking) engine.startTalking();
         engineRef.current = engine;
         if (pendingExpressionWeights) {
           engine.setExpressions(pendingExpressionWeights);
@@ -675,8 +691,8 @@ export default function App() {
           engine.playRandomFromGroup(pendingAnimationSentiment);
         }
         // Exposed for programmatic control, e.g. from the console or your own
-        // code: avatar.blink(), avatar.setMouthOpen(0.6), avatar.setViseme("oh"),
-        // avatar.setAutoBlink(false), avatar.setExpression("happy", 1).
+        // code: avatar.blink(), avatar.startTalking(), avatar.stopTalking(),
+        // avatar.setMouthOpen(0.6), avatar.setExpression("happy", 1).
         window.avatar = engine;
         setStatus("ready");
       } catch (err: unknown) {
@@ -689,11 +705,15 @@ export default function App() {
     }
 
     layla.contextual.on("chatContextSentimentUpdate", onSentimentUpdate);
+    layla.contextual.on("chatContextStartedSpeaking", onStartedSpeaking);
+    layla.contextual.on("chatContextFinishedSpeaking", onFinishedSpeaking);
     boot();
 
     return () => {
       cancelled = true;
       layla.contextual.off("chatContextSentimentUpdate", onSentimentUpdate);
+      layla.contextual.off("chatContextStartedSpeaking", onStartedSpeaking);
+      layla.contextual.off("chatContextFinishedSpeaking", onFinishedSpeaking);
       if (window.avatar === engine) delete window.avatar;
       if (engineRef.current === engine) engineRef.current = null;
       engine?.dispose();
