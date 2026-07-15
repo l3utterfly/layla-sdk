@@ -132,7 +132,8 @@ self-contained asset archive. Paths in the exported `settings.json` are
 relative to the archive root, and the exported `app.json` is named after the
 selected VRM model. The icon and cover are captured from the live Three.js view
 at export time: `bg.jpg` uses the full viewport and `icon.jpg` uses a centered
-square crop from the top half of the viewport to favor the avatar's face.
+square crop from the top half of the viewport to favor the avatar's face. The
+currently served `/index.html` is also included at the archive root.
 
 | Key | Description |
 | --- | --- |

@@ -205,6 +205,7 @@ export async function buildVrmExportArchive({
     skyboxPath,
     animations,
     metadataSource,
+    indexHtml,
     icon,
     cover,
   ] =
@@ -214,6 +215,7 @@ export async function buildVrmExportArchive({
       skybox ? addAsset(zip, "skybox", skybox) : null,
       addAnimations(zip, settings.animations),
       fetchMetadata(),
+      fetchFile("/index.html"),
       artwork.icon.arrayBuffer(),
       artwork.cover.arrayBuffer(),
     ]);
@@ -247,6 +249,7 @@ export async function buildVrmExportArchive({
 
   zip.file("settings.json", `${JSON.stringify(exportedSettings, null, 2)}\n`);
   zip.file("app.json", `${JSON.stringify(metadata, null, 2)}\n`);
+  zip.file("index.html", indexHtml);
   zip.file("icon.jpg", icon);
   zip.file("bg.jpg", cover);
 
