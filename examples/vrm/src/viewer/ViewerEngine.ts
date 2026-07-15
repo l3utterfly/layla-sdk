@@ -190,6 +190,8 @@ export class ViewerEngine {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(this._width(), this._height());
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     if (transparent) {
       this.renderer.setClearColor(0x000000, 0);
@@ -271,7 +273,22 @@ export class ViewerEngine {
       0xffffff,
       l.directionalIntensity ?? 1.6
     );
-    dir.position.set(...(l.directionalPosition ?? [1, 1.5, 1])).normalize();
+    // A directional light's distance does not affect its intensity, but moving
+    // it away from the origin gives its shadow camera room to cover the avatar.
+    dir.position
+      .set(...(l.directionalPosition ?? [1, 1.5, 1]))
+      .normalize()
+      .multiplyScalar(10);
+    dir.castShadow = true;
+    dir.shadow.mapSize.set(2048, 2048);
+    dir.shadow.bias = -0.0001;
+    dir.shadow.normalBias = 0.02;
+    dir.shadow.camera.near = 0.1;
+    dir.shadow.camera.far = 30;
+    dir.shadow.camera.left = -5;
+    dir.shadow.camera.right = 5;
+    dir.shadow.camera.top = 5;
+    dir.shadow.camera.bottom = -5;
     this.scene.add(dir);
   }
 
@@ -356,6 +373,12 @@ export class ViewerEngine {
     const gltf = await new GLTFLoader().loadAsync(assetUrl);
     const backgroundModel = gltf.scene;
     this._applyTransform(backgroundModel, this._backgroundTransform);
+    backgroundModel.traverse((obj) => {
+      if (obj instanceof THREE.Mesh) {
+        obj.castShadow = true;
+        obj.receiveShadow = true;
+      }
+    });
 
     const previousModel = this._backgroundModel;
     this._backgroundModel = backgroundModel;
@@ -414,7 +437,11 @@ export class ViewerEngine {
     VRMUtils.rotateVRM0(vrm);
 
     // Frustum culling can clip spring-bone-driven meshes; disable to be safe.
-    vrm.scene.traverse((obj) => (obj.frustumCulled = false));
+    // Every avatar mesh casts onto any GLB background geometry beneath it.
+    vrm.scene.traverse((obj) => {
+      obj.frustumCulled = false;
+      if (obj instanceof THREE.Mesh) obj.castShadow = true;
+    });
 
     // --- animations ---
     const mixer = new THREE.AnimationMixer(vrm.scene);
