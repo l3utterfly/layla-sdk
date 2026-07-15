@@ -17,6 +17,11 @@ import {
   type LaylaSentiment,
   type VrmEmotionExpressionWeights,
 } from "./viewer/LaylaSentimentExpressions";
+import {
+  buildVrmExportArchive,
+  downloadArchive,
+  type ExportAsset,
+} from "./exportArchive";
 import "./App.css";
 
 type TransformValue = Required<EntityTransform>;
@@ -28,7 +33,9 @@ const IMAGE_FILE_PATTERN = /\.(avif|bmp|gif|jpe?g|png|svg|webp)$/i;
 const isImageFile = (file: File) =>
   file.type.startsWith("image/") || IMAGE_FILE_PATTERN.test(file.name);
 const getAssetName = (value?: string | null) =>
-  value?.split(/[\\/]/).pop() ?? "None";
+  value?.split(/[\\/]/).pop()?.split(/[?#]/)[0] || "None";
+const getConfiguredAsset = (value?: string | null): ExportAsset | null =>
+  value ? { name: getAssetName(value), source: value } : null;
 const getBackgroundAssetType = (
   value?: string | null,
 ): BackgroundAssetType | null => {
@@ -364,23 +371,36 @@ function DebugPanel({
     normalizeTransform(settings.backgroundTransform),
   );
   const [camera, setCamera] = useState(() => normalizeCamera(settings));
-  const [modelName, setModelName] = useState(() => getAssetName(settings.model));
+  const [modelAsset, setModelAsset] = useState<ExportAsset>(() => ({
+    name: getAssetName(settings.model),
+    source: settings.model,
+  }));
   const [modelLoading, setModelLoading] = useState(false);
   const [modelError, setModelError] = useState("");
-  const [skyboxName, setSkyboxName] = useState(() =>
-    getAssetName(settings.skybox),
+  const [skyboxAsset, setSkyboxAsset] = useState<ExportAsset | null>(() =>
+    getConfiguredAsset(settings.skybox),
   );
   const [skyboxLoading, setSkyboxLoading] = useState(false);
   const [skyboxError, setSkyboxError] = useState("");
-  const [backgroundName, setBackgroundName] = useState(() =>
-    getAssetName(settings.background),
-  );
   const [backgroundType, setBackgroundType] =
     useState<BackgroundAssetType | null>(() =>
       getBackgroundAssetType(settings.background),
     );
+  const [backgroundAsset, setBackgroundAsset] =
+    useState<ExportAsset | null>(() =>
+      getBackgroundAssetType(settings.background)
+        ? getConfiguredAsset(settings.background)
+        : null,
+    );
+  const [backgroundValue, setBackgroundValue] = useState<string | null>(() =>
+    getBackgroundAssetType(settings.background)
+      ? null
+      : (settings.background ?? null),
+  );
   const [backgroundLoading, setBackgroundLoading] = useState(false);
   const [backgroundError, setBackgroundError] = useState("");
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
   const assetLoading = modelLoading || skyboxLoading || backgroundLoading;
 
   const updateModel = (value: TransformValue) => {
@@ -410,7 +430,7 @@ function DebugPanel({
 
     try {
       await engine.loadModel(modelUrl, model);
-      setModelName(file.name);
+      setModelAsset({ name: file.name, source: file });
     } catch (err: unknown) {
       console.error("Could not load the selected VRM model:", err);
       setModelError(err instanceof Error ? err.message : String(err));
@@ -436,9 +456,10 @@ function DebugPanel({
 
     try {
       await engine.loadSkybox(imageUrl);
-      setSkyboxName(file.name);
+      setSkyboxAsset({ name: file.name, source: file });
       if (backgroundType === "image") {
-        setBackgroundName("None");
+        setBackgroundAsset(null);
+        setBackgroundValue(null);
         setBackgroundType(null);
       }
     } catch (err: unknown) {
@@ -474,9 +495,10 @@ function DebugPanel({
 
     try {
       await engine.loadBackground(assetUrl, type, background);
-      setBackgroundName(file.name);
+      setBackgroundAsset({ name: file.name, source: file });
+      setBackgroundValue(null);
       setBackgroundType(type);
-      if (type === "image") setSkyboxName("None");
+      if (type === "image") setSkyboxAsset(null);
     } catch (err: unknown) {
       console.error("Could not load the selected background:", err);
       setBackgroundError(err instanceof Error ? err.message : String(err));
@@ -488,15 +510,40 @@ function DebugPanel({
 
   const removeSkybox = () => {
     engine.removeSkybox();
-    setSkyboxName("None");
+    setSkyboxAsset(null);
     setSkyboxError("");
   };
 
   const removeBackground = () => {
     engine.removeBackground();
-    setBackgroundName("None");
+    setBackgroundAsset(null);
+    setBackgroundValue(null);
     setBackgroundType(null);
     setBackgroundError("");
+  };
+
+  const exportArchive = async () => {
+    setExporting(true);
+    setExportError("");
+
+    try {
+      const archive = await buildVrmExportArchive({
+        settings,
+        model: modelAsset,
+        background: backgroundAsset,
+        backgroundValue,
+        skybox: skyboxAsset,
+        modelTransform: model,
+        backgroundTransform: background,
+        camera,
+      });
+      downloadArchive(archive, modelAsset.name);
+    } catch (err: unknown) {
+      console.error("Could not export the VRM package:", err);
+      setExportError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (
@@ -507,9 +554,9 @@ function DebugPanel({
           title="VRM model"
           prompt="Choose .vrm file"
           accept=".vrm,model/gltf-binary"
-          name={modelName}
+          name={modelAsset.name}
           loading={modelLoading}
-          disabled={assetLoading}
+          disabled={assetLoading || exporting}
           error={modelError}
           onChange={selectModel}
         />
@@ -517,9 +564,9 @@ function DebugPanel({
           title="Skybox"
           prompt="Choose image"
           accept="image/*"
-          name={skyboxName}
+          name={skyboxAsset?.name ?? "None"}
           loading={skyboxLoading}
-          disabled={assetLoading}
+          disabled={assetLoading || exporting}
           error={skyboxError}
           onChange={selectSkybox}
           onRemove={removeSkybox}
@@ -528,9 +575,9 @@ function DebugPanel({
           title="Background"
           prompt="Choose image or .glb file"
           accept="image/*,.glb,model/gltf-binary"
-          name={backgroundName}
+          name={backgroundAsset?.name ?? backgroundValue ?? "None"}
           loading={backgroundLoading}
-          disabled={assetLoading}
+          disabled={assetLoading || exporting}
           error={backgroundError}
           onChange={selectBackground}
           onRemove={removeBackground}
@@ -550,6 +597,21 @@ function DebugPanel({
           scaleRange={[0.01, 100, 0.01]}
           onChange={updateBackground}
         />
+        <div className="debug-export">
+          <button
+            className="debug-export__button"
+            type="button"
+            disabled={assetLoading || exporting}
+            onClick={() => void exportArchive()}
+          >
+            {exporting ? "Creating zip…" : "Export zip"}
+          </button>
+          {exportError && (
+            <p className="debug-file-error" role="alert">
+              {exportError}
+            </p>
+          )}
+        </div>
       </div>
     </details>
   );

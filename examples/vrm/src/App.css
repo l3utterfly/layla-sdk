@@ -198,6 +198,38 @@
   outline-offset: 1px;
 }
 
+.debug-export {
+  display: grid;
+  gap: 7px;
+}
+
+.debug-export__button {
+  width: 100%;
+  padding: 9px 12px;
+  color: #fff;
+  background: #7867e8;
+  border: 1px solid #afa4ff;
+  border-radius: 7px;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.debug-export__button:hover:not(:disabled) {
+  background: #8978f4;
+}
+
+.debug-export__button:focus-visible {
+  outline: 2px solid #d5cfff;
+  outline-offset: 2px;
+}
+
+.debug-export__button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
 /* Overlays sit above the canvas but never block it once we're ready. */
 .overlay {
   position: absolute;
