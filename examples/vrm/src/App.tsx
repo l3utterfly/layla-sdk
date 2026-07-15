@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  LaylaAbortError,
   LaylaSDK,
-  type ChatContextNewMessageListener,
+  type ChatContextSentimentUpdateListener,
 } from "../../../src";
 import {
   ViewerEngine,
@@ -12,8 +11,7 @@ import {
   type ViewerSettings,
 } from "./viewer/ViewerEngine";
 import {
-  getStrongestLaylaSentiment,
-  mapLaylaSentimentsToVrmExpressions,
+  mapLaylaSentimentToVrmExpressions,
   type LaylaSentiment,
   type VrmEmotionExpressionWeights,
 } from "./viewer/LaylaSentimentExpressions";
@@ -631,36 +629,19 @@ export default function App() {
   useEffect(() => {
     let engine: ViewerEngine | null = null;
     let cancelled = false;
-    let sentimentRequest: AbortController | null = null;
     let pendingExpressionWeights: VrmEmotionExpressionWeights | null = null;
     let pendingAnimationSentiment: LaylaSentiment | null = null;
 
-    const onNewMessage: ChatContextNewMessageListener = ({ message }) => {
-      const text = message.content?.trim();
-      if (!text) return;
+    const onSentimentUpdate: ChatContextSentimentUpdateListener = ({
+      sentiment,
+    }) => {
+      if (cancelled) return;
 
-      sentimentRequest?.abort();
-      const request = new AbortController();
-      sentimentRequest = request;
-
-      void layla.classifier
-        .getSentiment(text, { signal: request.signal })
-        .then((sentiments) => {
-          if (cancelled || request.signal.aborted) return;
-
-          const strongest = getStrongestLaylaSentiment(sentiments);
-          const weights = mapLaylaSentimentsToVrmExpressions(sentiments);
-          pendingExpressionWeights = weights;
-          pendingAnimationSentiment = strongest?.sentiment ?? null;
-          engine?.setExpressions(weights);
-          if (engine && strongest) {
-            engine.playRandomFromGroup(strongest.sentiment);
-          }
-        })
-        .catch((err: unknown) => {
-          if (err instanceof LaylaAbortError) return;
-          console.error("Could not analyze chat message sentiment:", err);
-        });
+      const weights = mapLaylaSentimentToVrmExpressions(sentiment);
+      pendingExpressionWeights = weights;
+      pendingAnimationSentiment = sentiment;
+      engine?.setExpressions(weights);
+      engine?.playRandomFromGroup(sentiment);
     };
 
     async function boot() {
@@ -707,13 +688,12 @@ export default function App() {
       }
     }
 
-    layla.contextual.on("chatContextNewMessage", onNewMessage);
+    layla.contextual.on("chatContextSentimentUpdate", onSentimentUpdate);
     boot();
 
     return () => {
       cancelled = true;
-      sentimentRequest?.abort();
-      layla.contextual.off("chatContextNewMessage", onNewMessage);
+      layla.contextual.off("chatContextSentimentUpdate", onSentimentUpdate);
       if (window.avatar === engine) delete window.avatar;
       if (engineRef.current === engine) engineRef.current = null;
       engine?.dispose();

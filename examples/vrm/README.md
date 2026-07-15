@@ -85,21 +85,27 @@ Setting a preset the model doesn't define is a safe no-op.
 
 ### Mapping Layla sentiments to expressions
 
-`mapLaylaSentimentsToVrmExpressions()` converts the 28 fine-grained scores from
-`layla.classifier.getSentiment()` into the six standard VRM 1.0 emotion
-weights. The strongest sentiment drives one mutually exclusive expression;
-every other expression is returned at zero so the previous emotional state is
-cleared. The winning weight is capped by `MAX_VRM_EXPRESSION_WEIGHT` to keep it
-subtle.
+The app listens directly for `chatContextSentimentUpdate` from Layla and uses
+`mapLaylaSentimentToVrmExpressions()` to convert the selected sentiment into
+the six standard VRM 1.0 emotion weights. The matching expression receives the
+`MAX_VRM_EXPRESSION_WEIGHT` value and every other expression is returned at
+zero, clearing the previous emotional state without making a separate
+classifier request.
 
 ```ts
-import { mapLaylaSentimentsToVrmExpressions } from "./viewer/LaylaSentimentExpressions";
+import { mapLaylaSentimentToVrmExpressions } from "./viewer/LaylaSentimentExpressions";
 
-const sentiments = await layla.classifier.getSentiment(message.content);
-avatar.setExpressions(mapLaylaSentimentsToVrmExpressions(sentiments));
+const onSentimentUpdate = ({ sentiment }) => {
+  avatar.setExpressions(mapLaylaSentimentToVrmExpressions(sentiment));
+};
+
+layla.contextual.on("chatContextSentimentUpdate", onSentimentUpdate);
+
+// During cleanup:
+layla.contextual.off("chatContextSentimentUpdate", onSentimentUpdate);
 ```
 
-The app also uses the strongest sentiment's matching `settings.json` animation
+The app also uses the selected sentiment's matching `settings.json` animation
 group. It chooses a random clip when the group contains multiple animations,
 plays it once, and then returns the avatar to automatic idling.
 
