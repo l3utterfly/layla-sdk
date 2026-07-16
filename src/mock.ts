@@ -663,10 +663,11 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
 
     try {
       const bytes = base64ToBytes(data.content_base64);
-      writeStoredFile(data.filename, data.content_base64);
 
       if (data.share) {
         downloadFile(data.filename, bytes);
+      } else {
+        writeStoredFile(data.filename, data.content_base64);
       }
 
       emit({
@@ -675,7 +676,7 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
           filename: data.filename,
           success: true,
           message: data.share
-            ? 'Saved to browser localStorage and downloaded by the browser mock; share sheets are not available in browsers.'
+            ? 'Downloaded by the browser mock; share sheets are not available in browsers.'
             : 'Saved to browser localStorage.',
         },
       });
