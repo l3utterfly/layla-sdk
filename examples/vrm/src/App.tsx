@@ -21,7 +21,7 @@ import {
 import {
   buildVrmExportArchive,
   captureViewerArtwork,
-  downloadArchive,
+  getVrmExportArchiveName,
   type ExportAsset,
 } from "./exportArchive";
 import "./App.css";
@@ -541,7 +541,11 @@ function DebugPanel({
         camera,
         artwork,
       });
-      downloadArchive(archive, modelAsset.name);
+      const filename = getVrmExportArchiveName(modelAsset.name);
+      const result = await layla.utils.saveFile(filename, archive, true);
+      if (!result.success) {
+        throw new Error(result.message ?? `Could not save ${filename}.`);
+      }
     } catch (err: unknown) {
       console.error("Could not export the VRM package:", err);
       setExportError(err instanceof Error ? err.message : String(err));

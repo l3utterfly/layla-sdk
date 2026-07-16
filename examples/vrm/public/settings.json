@@ -1,5 +1,5 @@
 {
-  "model": "lilith.vrm",
+  "model": "linnea.vrm",
 
   "animations": {
     "admiration": ["animations/Clapping.vrma"],
@@ -74,31 +74,31 @@
   },
 
   "camera": {
-    "position": [1.74, 1.58, -8.12],
-    "target": [-2.63, 0.48, -6.03],
+    "position": [0.43, -1.39, -0.29],
+    "target": [-1.48, -1.82, -1.67],
     "fov": 30
   },
 
-  "zoom": 0.43,
+  "zoom": 0.6,
 
   "transform": {
-    "position": [-1.56, -2.72, -6.56],
-    "rotation": [0, -66, 0],
-    "scale": 2.81
+    "position": [-1.10, -2.68, -1.39],
+    "rotation": [0, -126, 0],
+    "scale": 1.04
   },
 
-  "background": "bg/pool_in_the_mountains_baked.glb",
+  "background": "bg/low_poly_forest.glb",
   "backgroundTransform": {
-    "position": [0, -2.9, 1],
-    "rotation": [0, 106, 0],
-    "scale": 3.84
+    "position": [0, -8.1, -10],
+    "rotation": [0, -25, 0],
+    "scale": 10.0
   },
-  "skybox": null,
+  "skybox": "bg/sky.png",
 
   "lighting": {
     "environment": true,
     "ambientIntensity": 1.2,
     "directionalIntensity": 1.6,
-    "directionalPosition": [-2.63, 0.48, -6.03]
+    "directionalPosition": [1, 1.5, 1]
   }
 }

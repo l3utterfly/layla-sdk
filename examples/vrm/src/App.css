@@ -20,10 +20,10 @@
 .debug-panel {
   position: absolute;
   z-index: 10;
-  top: 16px;
+  bottom: 16px;
   left: 16px;
   width: min(360px, calc(100vw - 32px));
-  max-height: calc(100vh - 32px);
+  max-height: 50vh;
   overflow: auto;
   color: #f2f0ff;
   background: rgba(14, 13, 24, 0.88);

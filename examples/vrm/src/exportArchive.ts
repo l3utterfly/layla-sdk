@@ -269,17 +269,10 @@ export async function buildVrmExportArchive({
 
   // VRM, GLB, and image files are already compressed. STORE avoids an expensive
   // second compression pass and keeps large-model exports responsive.
-  return zip.generateAsync({ type: "blob", compression: "STORE" });
+  return zip.generateAsync({ type: "base64", compression: "STORE" });
 }
 
-export function downloadArchive(blob: Blob, modelName: string) {
+export function getVrmExportArchiveName(modelName: string) {
   const stem = safeFileName(modelName, "avatar").replace(/\.[^.]+$/, "");
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = `${stem || "avatar"}-vrm-export.zip`;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  return `${stem || "avatar"}-vrm-export.zip`;
 }
