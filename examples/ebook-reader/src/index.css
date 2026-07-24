@@ -1,0 +1,142 @@
+:root {
+  --primary: #47a6ff;
+  --primary-2: #1b6fb8;
+  --accent-purple: #8a5cff;
+  --background: #1c1c1c;
+  --secondary-background: #222;
+  --card: #2a2a2a;
+  --elevated: #333;
+  --border: #343434;
+  --border-strong: #505050;
+  --text: #fff;
+  --secondary-text: #d3d3d3;
+  --muted: #888;
+  --chip-background: #383838;
+  --danger-soft: #ff9aa9;
+  --success: #5ddb8e;
+
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 14px;
+  --radius-xxl: 16px;
+  --radius-pill: 999px;
+
+  --screen-gutter: 20px;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  color-scheme: dark;
+}
+
+@media (min-width: 720px) {
+  :root {
+    --screen-gutter: 28px;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: var(--background);
+}
+
+body {
+  font-family: var(--font);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+::selection {
+  background: rgb(71 166 255 / 30%);
+}
+
+/* Ambient atmosphere */
+.atmosphere {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.bloom {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+}
+
+.bloom.one {
+  top: -18%;
+  left: -12%;
+  width: 46vw;
+  height: 46vw;
+  background: var(--primary);
+  opacity: 0.28;
+  animation: drift-a 26s ease-in-out infinite;
+}
+
+.bloom.two {
+  top: -8%;
+  right: -14%;
+  width: 40vw;
+  height: 40vw;
+  background: var(--accent-purple);
+  opacity: 0.22;
+  animation: drift-b 32s ease-in-out infinite;
+}
+
+.bloom.three {
+  bottom: -24%;
+  left: 8%;
+  width: 44vw;
+  height: 44vw;
+  background: var(--primary-2);
+  opacity: 0.2;
+  animation: drift-c 38s ease-in-out infinite;
+}
+
+.vignette {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: radial-gradient(120% 90% at 50% 30%, transparent 40%, rgb(0 0 0 / 55%) 100%);
+}
+
+@keyframes drift-a {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(4%, 6%); }
+}
+@keyframes drift-b {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(-5%, 4%); }
+}
+@keyframes drift-c {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(3%, -5%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
