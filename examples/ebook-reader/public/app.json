@@ -1,0 +1,7 @@
+{
+  "title": "Layla Reader",
+  "tagline": "Listen to any book!",
+  "description": "Turn your books into audio with Layla Reader. Drop in a document and Layla extracts the text, splits it into passages, voices each one, and reads the whole thing aloud in order.\r\n\r\nFeatures:\r\n- Import your books: Drop in a TXT, PDF, or EPUB and Layla extracts the text right in the app.\r\n- Split into passages: The book is chunked into readable passages, each becoming its own audio clip.\r\n- Pre-generate narration: Every passage is voiced to a saved audio file up front using Layla's text-to-speech.\r\n- Listen straight through: Play the book as a queue with full transport controls — play, pause, skip, and jump to any passage.",
+  "iconUri": "icon.jpg",
+  "backgroundImgUri": "bg.jpg"
+}
