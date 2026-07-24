@@ -45,8 +45,7 @@ still reads as a smooth interruption rather than a hard cut.
 
 > Want a gesture *layered on top of* an idle (e.g. waving while still breathing)
 > rather than replacing it? That's additive blending
-> (`THREE.AnimationUtils.makeClipAdditive`), which the mixer also supports — ask
-> and I can wire it in.
+> (`THREE.AnimationUtils.makeClipAdditive`)
 
 ## Driving the face (blinking, talking, expressions)
 
