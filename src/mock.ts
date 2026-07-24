@@ -21,6 +21,9 @@
 
 import type {
   LaylaApiEvent,
+  LaylaApiEvent_onBackgroundAudioFinished,
+  LaylaApiEvent_onBackgroundAudioStatus,
+  LaylaApiEvent_onBackgroundAudioTrackChanged,
   LaylaApiEvent_onChatContextFinishedSpeaking,
   LaylaApiEvent_onChatContextNewMessage,
   LaylaApiEvent_onChatContextSentimentUpdate,
@@ -121,6 +124,16 @@ export interface LaylaMockOptions {
 }
 
 export interface LaylaMockHandle {
+  /** Emit a background-audio track change for listener testing. */
+  emitBackgroundAudioTrackChanged(
+    data: LaylaApiEvent_onBackgroundAudioTrackChanged['data'],
+  ): void;
+  /** Emit a background-audio status update for listener testing. */
+  emitBackgroundAudioStatus(
+    data: LaylaApiEvent_onBackgroundAudioStatus['data'],
+  ): void;
+  /** Emit background-audio completion for listener testing. */
+  emitBackgroundAudioFinished(): void;
   /** Emit a host-pushed message event for contextual listener testing. */
   emitChatContextNewMessage(
     data: LaylaApiEvent_onChatContextNewMessage['data'],
@@ -141,6 +154,9 @@ export interface LaylaMockHandle {
 
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const mockFileStoragePrefix = '@layla-network/sdk:mock:file:';
+const mockVoiceAudioDataUri =
+  'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
+const mockVoiceFilename = 'mock-voice.wav';
 
 const mockFileStorageKey = (filename: string): string =>
   `${mockFileStoragePrefix}${filename}`;
@@ -282,6 +298,11 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
   // The single in-flight generation, mirroring the SDK's one-active-job model.
   let current: { cancelled: boolean } | null = null;
   let currentSpeech: { cancelled: boolean } | null = null;
+  let backgroundAudio: {
+    queueAudioFiles: string[];
+    currentIndex: number;
+    playing: boolean;
+  } | null = null;
 
   const log = (...a: unknown[]) => {
     if (options.debug) console.log('[layla-mock]', ...a);
@@ -1018,6 +1039,63 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     }
   }
 
+  async function handleGenerateVoiceToFile(data: {
+    ttsVoiceId: string | null;
+    text: string;
+    save: boolean;
+  }): Promise<void> {
+    void data.ttsVoiceId;
+    void data.text;
+    await delay(latencyMs);
+
+    if (shouldError()) {
+      emit({
+        event: 'on_generate_voice_to_file_response',
+        data: {
+          success: false,
+          audio_data_base64: null,
+          filename: null,
+          message: 'Simulated TTS file generation error',
+        },
+      });
+      return;
+    }
+
+    if (data.save) {
+      try {
+        writeStoredFile(mockVoiceFilename, mockVoiceAudioDataUri);
+        emit({
+          event: 'on_generate_voice_to_file_response',
+          data: {
+            success: true,
+            audio_data_base64: null,
+            filename: mockVoiceFilename,
+          },
+        });
+      } catch (error) {
+        emit({
+          event: 'on_generate_voice_to_file_response',
+          data: {
+            success: false,
+            audio_data_base64: null,
+            filename: null,
+            message: storageErrorMessage(error),
+          },
+        });
+      }
+      return;
+    }
+
+    emit({
+      event: 'on_generate_voice_to_file_response',
+      data: {
+        success: true,
+        audio_data_base64: mockVoiceAudioDataUri,
+        filename: null,
+      },
+    });
+  }
+
   function handleStopSpeaking(): void {
     if (currentSpeech) currentSpeech.cancelled = true;
 
@@ -1027,6 +1105,82 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
         data: null,
       }),
     );
+  }
+
+  function emitBackgroundAudioStatus(): void {
+    if (!backgroundAudio) return;
+    emit({
+      event: 'on_background_audio_status',
+      data: {
+        playing: backgroundAudio.playing,
+        currentIndex: backgroundAudio.currentIndex,
+        currentTime: 0,
+        duration: 0,
+        isLoaded: true,
+      },
+    });
+  }
+
+  function handleStartBackgroundAudioPlayer(data: {
+    queueAudioFiles: string[];
+  }): void {
+    if (data.queueAudioFiles.length === 0) {
+      backgroundAudio = null;
+      return;
+    }
+
+    backgroundAudio = {
+      queueAudioFiles: [...data.queueAudioFiles],
+      currentIndex: 0,
+      playing: true,
+    };
+    queueMicrotask(emitBackgroundAudioStatus);
+  }
+
+  function handleStopBackgroundAudioPlayer(): void {
+    backgroundAudio = null;
+  }
+
+  function handlePauseBackgroundAudioPlayer(): void {
+    if (!backgroundAudio) return;
+    backgroundAudio.playing = false;
+    queueMicrotask(emitBackgroundAudioStatus);
+  }
+
+  function handleResumeBackgroundAudioPlayer(): void {
+    if (!backgroundAudio) return;
+    backgroundAudio.playing = true;
+    queueMicrotask(emitBackgroundAudioStatus);
+  }
+
+  function handleSkipBackgroundAudioTrack(data: { index?: number }): void {
+    if (!backgroundAudio) return;
+
+    const previousIndex = backgroundAudio.currentIndex;
+    const requestedIndex =
+      data.index === undefined ? previousIndex + 1 : Math.trunc(data.index);
+    if (
+      data.index === undefined &&
+      requestedIndex >= backgroundAudio.queueAudioFiles.length
+    ) {
+      return;
+    }
+    const currentIndex = Number.isFinite(requestedIndex)
+      ? Math.max(
+          0,
+          Math.min(backgroundAudio.queueAudioFiles.length - 1, requestedIndex),
+        )
+      : previousIndex;
+    if (currentIndex === previousIndex) return;
+
+    backgroundAudio.currentIndex = currentIndex;
+    queueMicrotask(() => {
+      emit({
+        event: 'on_background_audio_track_changed',
+        data: { currentIndex, previousIndex },
+      });
+      emitBackgroundAudioStatus();
+    });
   }
 
   const fakeBridge = {
@@ -1102,8 +1256,26 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
         case 'generate_voice':
           void handleGenerateVoice(msg.data);
           break;
+        case 'generate_voice_to_file':
+          void handleGenerateVoiceToFile(msg.data);
+          break;
         case 'stop_speaking':
           handleStopSpeaking();
+          break;
+        case 'start_background_audio_player':
+          handleStartBackgroundAudioPlayer(msg.data);
+          break;
+        case 'stop_background_audio_player':
+          handleStopBackgroundAudioPlayer();
+          break;
+        case 'pause_background_audio_player':
+          handlePauseBackgroundAudioPlayer();
+          break;
+        case 'resume_background_audio_player':
+          handleResumeBackgroundAudioPlayer();
+          break;
+        case 'skip_background_audio_track':
+          handleSkipBackgroundAudioTrack(msg.data);
           break;
         case 'get_inference_engines':
           void handleGetInferenceEngines();
@@ -1129,6 +1301,23 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
 
   let installed = true;
   return {
+    emitBackgroundAudioTrackChanged(data) {
+      if (!installed) return;
+      emit({ event: 'on_background_audio_track_changed', data });
+    },
+    emitBackgroundAudioStatus(data) {
+      if (!installed) return;
+      emit({ event: 'on_background_audio_status', data });
+    },
+    emitBackgroundAudioFinished() {
+      if (!installed) return;
+      backgroundAudio = null;
+      const event: LaylaApiEvent_onBackgroundAudioFinished = {
+        event: 'on_background_audio_finished',
+        data: null,
+      };
+      emit(event);
+    },
     emitChatContextNewMessage(data) {
       if (!installed) return;
       emit({ event: 'on_chat_context_new_message', data });
@@ -1166,6 +1355,7 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
       installed = false;
       if (current) current.cancelled = true;
       if (currentSpeech) currentSpeech.cancelled = true;
+      backgroundAudio = null;
       if (previous) window.ReactNativeWebView = previous;
       else delete window.ReactNativeWebView;
       log('uninstalled');

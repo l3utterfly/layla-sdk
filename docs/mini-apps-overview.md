@@ -116,7 +116,10 @@ The SDK exposes this as higher-level APIs such as:
 - `layla.personas.get(...)`
 - `layla.tts.getVoices(...)`
 - `layla.tts.generateVoice(...)`
+- `layla.tts.generateVoiceToFile(...)`
 - `layla.tts.stopSpeaking(...)`
+- `layla.backgroundAudio.start(...)`
+- `layla.backgroundAudio.pause()` / `resume()` / `skip()` / `stop()`
 - `layla.images.generateImage(...)`
 
 ## Runtime Expectations

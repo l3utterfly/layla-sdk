@@ -437,7 +437,7 @@ export interface LaylaApiGetTTSVoices {
 
 /**
  * Ask the host to generate voice audio for the provided text using the specified TTS voice.
- * The host will generate the audio and automatically play it on device. The host will respond with an `on_finished_speaking` event when the playback has finished.
+ * The host will generate the audio and automatically play it on device. The host will emit an `on_finished_speaking` event when the playback has finished.
  * Developer note:
  *   - the host handles queuing of multiple `generate_voice` requests WITH THE SAME `ttsVoiceId`, so the client does not need to manage queuing or waiting for playback to finish before sending the next request. The host will ensure that each request is processed in order and that the `on_finished_speaking` event is emitted after each playback completes.
  *   - if a different `ttsVoiceId` is used in a subsequent request, this incurs a small performance penalty as the host needs to swap TTS models. Additionally, currently queued voices will be cancelled and playback stopped.
@@ -451,8 +451,21 @@ export interface LaylaApiGenerateVoice {
 }
 
 /**
+ * Ask the host to generate voice audio for the provided text using the specified TTS voice and optionally save it to a file.
+ * The host will generate the audio and save it to a .wav or .mp3 file. The host will respond with `on_generate_voice_to_file_response` event containing the base64-encoded audio data (including the data URI prefix) if the generation was successful, or an error message if there was an error during the generation process.
+ */
+export interface LaylaApiGenerateVoiceToFile {
+  cmd: 'generate_voice_to_file';
+  data: {
+    ttsVoiceId: string | null; // if null, use the default global TTS voice
+    text: string;
+    save: boolean; // if true, the host will save the generated audio to a file and return the file name (with extension) in the response. If false, the host will return the base64-encoded audio data in the response.
+  }
+}
+
+/**
  * Ask the host to stop any in-progress voice audio playback.
- * The host will immediately stop the playback and respond with an `on_finished_speaking` event to indicate that the playback has been stopped.
+ * The host will immediately stop the playback and emit an `on_finished_speaking` event to indicate that the playback has been stopped.
  */
 export interface LaylaApiStopSpeaking {
   cmd: 'stop_speaking';
@@ -494,6 +507,63 @@ export interface LaylaApiGetExecutionContext {
 }
 
 /**
+ * Ask the host to start the background audio player and queue the provided audio files for playback.
+ * There is no response event for this request. The host should start the background audio player and queue the provided audio files for playback in the order they are provided.
+ * Starting the player while another queue is already playing replaces that queue entirely.
+ */
+export interface LaylaApiStartBackgroundAudioPlayer {
+  cmd: 'start_background_audio_player';
+  data: {
+    queueAudioFiles: string[]; // an array of audio file paths (local or remote) to queue for playback in the background audio player (local paths are resolved from the custom mini-app root, so a simple filename.ext is sufficient)
+    metadata?: { // optional track info shown on the lock screen and in the media notification
+      title?: string;
+      artist?: string;
+      albumTitle?: string;
+      artworkUrl?: string; // must be a remote https url
+    };
+  }
+}
+
+/**
+ * Ask the host to stop the background audio player, clear the queue and release the player.
+ * There is no response event for this request. Playback cannot be resumed after this; use pause_background_audio_player if playback should continue later.
+ */
+export interface LaylaApiStopBackgroundAudioPlayer {
+  cmd: 'stop_background_audio_player';
+  data: null;
+}
+
+/**
+ * Ask the host to pause the background audio player at its current position.
+ * There is no response event for this request. The queue and playback position are retained. Does nothing if no player is active.
+ */
+export interface LaylaApiPauseBackgroundAudioPlayer {
+  cmd: 'pause_background_audio_player';
+  data: null;
+}
+
+/**
+ * Ask the host to resume the background audio player from its current position.
+ * There is no response event for this request. Does nothing if no player is active.
+ */
+export interface LaylaApiResumeBackgroundAudioPlayer {
+  cmd: 'resume_background_audio_player';
+  data: null;
+}
+
+/**
+ * Ask the host to skip to another track in the background audio player queue.
+ * There is no response event for this request, but the host emits a background_audio_track_changed event once the track changes.
+ * If index is omitted the host advances to the next track; at the end of the queue this does nothing. Does nothing if no player is active.
+ */
+export interface LaylaApiSkipBackgroundAudioTrack {
+  cmd: 'skip_background_audio_track';
+  data: {
+    index?: number; // zero-based index of the track to skip to, clamped to the queue length, if null, skip to next
+  }
+}
+
+/**
  * A request command (anything that opens a job and expects events back).
  * Add new one-shot commands here. `cancel` is not a request — it's a control
  * signal for an already-open job — so it lives outside this union.
@@ -524,6 +594,12 @@ export type LaylaApiRequest =
   | LaylaApiGetInferenceEngines
   | LaylaApiSetInferenceEngine
   | LaylaApiGetExecutionContext
+  | LaylaApiGenerateVoiceToFile
+  | LaylaApiStartBackgroundAudioPlayer
+  | LaylaApiStopBackgroundAudioPlayer
+  | LaylaApiPauseBackgroundAudioPlayer
+  | LaylaApiResumeBackgroundAudioPlayer
+  | LaylaApiSkipBackgroundAudioTrack
   ;
 
 /* ---- RN -> Web events ------------------------------------------------------ */
@@ -767,6 +843,16 @@ export interface LaylaApiEvent_onFinishedSpeaking {
   data: null; // no additional data is needed for this event
 }
 
+export interface LaylaApiEvent_onGenerateVoiceToFileResponse {
+  event: 'on_generate_voice_to_file_response';
+  data: {
+    success: boolean; // indicates whether the voice audio was generated and saved to a file successfully
+    audio_data_base64: string | null; // the generated voice audio data encoded in base64 (including the data URI prefix) if successful, or null if there was an error during generation or save = true
+    filename: string | null; // the filename (with extension) of the saved audio file if successful, or null if there was an error during generation or save = false
+    message?: string; // optional message providing additional information about the generation operation (e.g., error details if success is false)
+  };
+}
+
 /**
  * The response for a `get_inference_engines` request, containing an array of all available inference engine names.
  * This event is emitted by the host after successfully retrieving the list of inference engines.
@@ -854,6 +940,42 @@ export interface LaylaApiEvent_onChatContextStartedThinking {
   data: null; // no additional data is needed for this event
 }
 
+/**
+ * The event emitted by the host when the background audio player moves to a different track,
+ * either because the previous track finished or because of a skip_background_audio_track request.
+ */
+export interface LaylaApiEvent_onBackgroundAudioTrackChanged {
+  event: 'on_background_audio_track_changed';
+  data: {
+    currentIndex: number; // zero-based index of the track now playing
+    previousIndex: number; // zero-based index of the track that was playing before
+  }
+}
+
+/**
+ * The event emitted by the host at a regular interval (roughly once per second) while the background audio player is active.
+ * Note that these updates are throttled or suspended entirely while the app is backgrounded, so they must not be used to drive queue logic.
+ */
+export interface LaylaApiEvent_onBackgroundAudioStatus {
+  event: 'on_background_audio_status';
+  data: {
+    playing: boolean;
+    currentIndex: number; // zero-based index of the current track
+    currentTime: number; // playback position within the current track, in seconds
+    duration: number; // duration of the current track in seconds, or 0 if not yet known
+    isLoaded: boolean; // whether the current track has finished loading
+  }
+}
+
+/**
+ * The event emitted by the host when the last track in the queue finishes playing.
+ * The player is released at this point, so playback must be restarted with start_background_audio_player.
+ */
+export interface LaylaApiEvent_onBackgroundAudioFinished {
+  event: 'on_background_audio_finished';
+  data: null; // no additional data is needed for this event
+}
+
 export type LaylaApiEvent =
   | LaylaApiEvent_onMsg
   | LaylaApiEvent_onMsgEnd
@@ -886,4 +1008,8 @@ export type LaylaApiEvent =
   | LaylaApiEvent_onChatContextStartedSpeaking
   | LaylaApiEvent_onChatContextFinishedSpeaking
   | LaylaApiEvent_onChatContextStartedThinking
+  | LaylaApiEvent_onGenerateVoiceToFileResponse
+  | LaylaApiEvent_onBackgroundAudioTrackChanged
+  | LaylaApiEvent_onBackgroundAudioStatus
+  | LaylaApiEvent_onBackgroundAudioFinished
   ;

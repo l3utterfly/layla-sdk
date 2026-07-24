@@ -1,6 +1,6 @@
 ---
 name: layla-sdk
-description: Use the @layla-network/sdk package in third-party Layla mini-apps and WebView apps. Covers the public API surface for creating a Layla client, contextual character-chat execution state and events, OpenAI-shaped chat completions and streams including reasoning deltas, inference engine selection, paginated character listing, chat sessions, session history, message saves, scheduled chat messages, memories, personas, TTS voices and playback, character images, sentiment analysis, image generation progress/results, file saving, abort handling, SDK errors, exported TypeScript types, and runtime expectations inside the Layla WebView.
+description: Use the @layla-network/sdk package in third-party Layla mini-apps and WebView apps. Covers the public API surface for creating a Layla client, contextual character-chat execution state and events, OpenAI-shaped chat completions and streams including reasoning deltas, inference engine selection, paginated character listing, chat sessions, session history, message saves, scheduled chat messages, memories, personas, TTS voices, playback and audio-file generation, background audio controls and events, character images, sentiment analysis, image generation progress/results, file saving, abort handling, SDK errors, exported TypeScript types, and runtime expectations inside the Layla WebView.
 ---
 
 # Layla SDK
@@ -47,6 +47,10 @@ import LaylaSDK, {
   type LaylaMemory,
   type LaylaPersona,
   type LaylaTTSVoice,
+  type GenerateVoiceToFileResult,
+  type BackgroundAudioStatusListener,
+  type BackgroundAudioTrackChangedListener,
+  type BackgroundAudioFinishedListener,
   type LaylaExecutionContext,
   type ChatContextFinishedSpeakingListener,
   type ChatContextNewMessageListener,
@@ -98,7 +102,13 @@ await layla.memories.createOrUpdate(memories);
 await layla.personas.get(characterId);
 await layla.tts.getVoices();
 await layla.tts.generateVoice(ttsVoiceId, text);
+await layla.tts.generateVoiceToFile(ttsVoiceId, text, save);
 await layla.tts.stopSpeaking();
+await layla.backgroundAudio.start(audioFiles, metadata);
+await layla.backgroundAudio.pause();
+await layla.backgroundAudio.resume();
+await layla.backgroundAudio.skip();
+await layla.backgroundAudio.stop();
 await layla.utils.saveFile(filename, contentBase64, share);
 ```
 
@@ -414,6 +424,83 @@ The promise resolves after the host emits `on_finished_speaking`.
 ```ts
 await layla.tts.stopSpeaking();
 ```
+
+Use `layla.tts.generateVoiceToFile(ttsVoiceId, text, save?, options?)` to
+generate audio without playing it. Pass `null` for the global default voice.
+When `save` is omitted or false, `audio_data_base64` contains a ready-to-use
+audio data URI. When `save` is true, the host saves the audio in the mini-app's
+private files and returns its `filename` instead.
+
+```ts
+const generated: GenerateVoiceToFileResult =
+  await layla.tts.generateVoiceToFile(
+    voice?.id ?? null,
+    'Generate this line without playing it.',
+  );
+
+if (generated.success && generated.audio_data_base64) {
+  audioElement.src = generated.audio_data_base64;
+}
+
+const saved = await layla.tts.generateVoiceToFile(
+  voice?.id ?? null,
+  'Save this generated line.',
+  true,
+);
+console.log(saved.filename);
+```
+
+## Background Audio
+
+Use the separate `layla.backgroundAudio` surface for background music,
+podcasts, and other queued audio. `start(audioFiles, metadata?)` replaces any
+existing queue. Local file paths resolve from the mini-app root. Metadata is
+optional; `artworkUrl`, when present, must be a remote HTTPS URL.
+
+```ts
+await layla.backgroundAudio.start(['intro.mp3', 'chapter-1.mp3'], {
+  title: 'A quiet journey',
+  artist: 'Layla Mini-App',
+  artworkUrl: 'https://example.com/artwork.jpg',
+});
+
+await layla.backgroundAudio.pause();
+await layla.backgroundAudio.resume();
+await layla.backgroundAudio.skip();
+await layla.backgroundAudio.skip(0);
+await layla.backgroundAudio.stop();
+```
+
+These controls are fire-and-forget in the host protocol. Their promises resolve
+once the command is posted, so use events for player state. `pause()` retains
+the queue and position; `stop()` clears and releases the player.
+
+```ts
+const onTrackChanged: BackgroundAudioTrackChangedListener = (event) => {
+  console.log(event.previousIndex, event.currentIndex);
+};
+const onStatus: BackgroundAudioStatusListener = (status) => {
+  console.log(status.playing, status.currentTime, status.duration);
+};
+const onFinished: BackgroundAudioFinishedListener = () => {
+  console.log('queue finished');
+};
+
+layla.backgroundAudio.on('trackChanged', onTrackChanged);
+layla.backgroundAudio.on('status', onStatus);
+layla.backgroundAudio.on('finished', onFinished);
+
+layla.backgroundAudio.off('trackChanged', onTrackChanged);
+layla.backgroundAudio.off('status', onStatus);
+layla.backgroundAudio.off('finished', onFinished);
+```
+
+The host may throttle or suspend periodic status events while the app is
+backgrounded, so do not use them to drive queue logic. The browser mock updates
+status for player commands and exposes `emitBackgroundAudioTrackChanged(...)`,
+`emitBackgroundAudioStatus(...)`, and `emitBackgroundAudioFinished()` for local
+event testing. Its `generateVoiceToFile(...)` returns a small mock WAV data URI
+or saves `mock-voice.wav` when `save` is true.
 
 ## Sentiment
 

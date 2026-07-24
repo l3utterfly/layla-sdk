@@ -14,6 +14,7 @@ import { Memories } from './resources/memories';
 import { Personas } from './resources/personas';
 import { TTS } from './resources/tts';
 import { Contextual } from './resources/contextual';
+import { BackgroundAudio } from './resources/background-audio';
 
 export interface LaylaSDKOptions {
   /** Reserved for future use (e.g. default model). */
@@ -30,6 +31,7 @@ export class LaylaSDK {
   readonly personas = new Personas();
   readonly tts = new TTS();
   readonly contextual = new Contextual();
+  readonly backgroundAudio = new BackgroundAudio();
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   constructor(_options: LaylaSDKOptions = {}) {}

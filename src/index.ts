@@ -48,10 +48,16 @@ export type {
   LaylaApiGetPersona,
   LaylaApiGetTTSVoices,
   LaylaApiGenerateVoice,
+  LaylaApiGenerateVoiceToFile,
   LaylaApiStopSpeaking,
   LaylaApiGetInferenceEngines,
   LaylaApiSetInferenceEngine,
   LaylaApiGetExecutionContext,
+  LaylaApiStartBackgroundAudioPlayer,
+  LaylaApiStopBackgroundAudioPlayer,
+  LaylaApiPauseBackgroundAudioPlayer,
+  LaylaApiResumeBackgroundAudioPlayer,
+  LaylaApiSkipBackgroundAudioTrack,
   LaylaApiCancel,
   LaylaApiRequest,
 
@@ -82,12 +88,16 @@ export type {
   LaylaApiEvent_onGetInferenceEnginesResponse,
   LaylaApiEvent_onSetInferenceEngineResponse,
   LaylaApiEvent_onFinishedSpeaking,
+  LaylaApiEvent_onGenerateVoiceToFileResponse,
   LaylaApiEvent_onGetExecutionContextResponse,
   LaylaApiEvent_onChatContextNewMessage,
   LaylaApiEvent_onChatContextSentimentUpdate,
   LaylaApiEvent_onChatContextStartedSpeaking,
   LaylaApiEvent_onChatContextFinishedSpeaking,
   LaylaApiEvent_onChatContextStartedThinking,
+  LaylaApiEvent_onBackgroundAudioTrackChanged,
+  LaylaApiEvent_onBackgroundAudioStatus,
+  LaylaApiEvent_onBackgroundAudioFinished,
 } from './protocol';
 export { SENTIMENT_THRESHOLDS } from './protocol';
 
@@ -127,6 +137,19 @@ export { Personas } from './resources/personas';
 
 // Text-to-speech resource surface.
 export { TTS } from './resources/tts';
+export type { GenerateVoiceToFileResult } from './resources/tts';
+
+// Background audio player surface.
+export { BackgroundAudio } from './resources/background-audio';
+export type {
+  BackgroundAudioMetadata,
+  BackgroundAudioTrackChanged,
+  BackgroundAudioTrackChangedListener,
+  BackgroundAudioStatus,
+  BackgroundAudioStatusListener,
+  BackgroundAudioFinished,
+  BackgroundAudioFinishedListener,
+} from './resources/background-audio';
 
 // Contextual mini-app surface.
 export { Contextual } from './resources/contextual';

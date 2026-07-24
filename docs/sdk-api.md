@@ -22,6 +22,11 @@ import LaylaSDK, {
   type LaylaMemory,
   type LaylaPersona,
   type LaylaTTSVoice,
+  type GenerateVoiceToFileResult,
+  type BackgroundAudioMetadata,
+  type BackgroundAudioStatusListener,
+  type BackgroundAudioTrackChangedListener,
+  type BackgroundAudioFinishedListener,
   type LaylaExecutionContext,
   type ChatContextFinishedSpeaking,
   type ChatContextFinishedSpeakingListener,
@@ -45,7 +50,13 @@ import LaylaSDK, {
   type LaylaApiGetPersona,
   type LaylaApiGetTTSVoices,
   type LaylaApiGenerateVoice,
+  type LaylaApiGenerateVoiceToFile,
   type LaylaApiStopSpeaking,
+  type LaylaApiStartBackgroundAudioPlayer,
+  type LaylaApiStopBackgroundAudioPlayer,
+  type LaylaApiPauseBackgroundAudioPlayer,
+  type LaylaApiResumeBackgroundAudioPlayer,
+  type LaylaApiSkipBackgroundAudioTrack,
   type LaylaApiGetInferenceEngines,
   type LaylaApiSetInferenceEngine,
   type LaylaApiGetExecutionContext,
@@ -68,6 +79,10 @@ import LaylaSDK, {
   type LaylaApiEvent_onChatContextStartedSpeaking,
   type LaylaApiEvent_onChatContextStartedThinking,
   type LaylaApiEvent_onFinishedSpeaking,
+  type LaylaApiEvent_onGenerateVoiceToFileResponse,
+  type LaylaApiEvent_onBackgroundAudioTrackChanged,
+  type LaylaApiEvent_onBackgroundAudioStatus,
+  type LaylaApiEvent_onBackgroundAudioFinished,
   type LaylaApiEvent_onSaveFileResponse,
   type LaylaApiEvent_onReadFileResponse,
   type LaylaCharacter,
@@ -732,6 +747,45 @@ await layla.tts.generateVoice(voice.id, 'Stop me if the UI changes.', {
 Aborting an in-progress `generateVoice(...)` call sends `stop_speaking` to the
 host.
 
+## `layla.tts.generateVoiceToFile(ttsVoiceId, text, save?, options?)`
+
+Generates voice audio without playing it. Pass a voice ID or `null` to use
+Layla's global default TTS voice. With the default `save: false`, the result's
+`audio_data_base64` contains a ready-to-use audio data URI:
+
+```ts
+const result: GenerateVoiceToFileResult =
+  await layla.tts.generateVoiceToFile(
+    null,
+    'Generate this line without playing it.',
+  );
+
+if (result.success && result.audio_data_base64) {
+  audioElement.src = result.audio_data_base64;
+}
+```
+
+Pass `true` as the third argument to ask the host to save the generated audio
+inside the mini-app's private files. The result then contains `filename`
+instead of audio data:
+
+```ts
+const result = await layla.tts.generateVoiceToFile(
+  voice.id,
+  'Save this generated line.',
+  true,
+  { signal: controller.signal },
+);
+
+if (!result.success || !result.filename) {
+  throw new Error(result.message ?? 'Voice generation failed');
+}
+```
+
+`GenerateVoiceToFileResult` contains `success`, `audio_data_base64`,
+`filename`, and an optional `message`. The audio data includes its data URI
+prefix. A saved filename includes its extension.
+
 ## `layla.tts.stopSpeaking(options?)`
 
 Stops any in-progress TTS playback on the host device. The promise resolves
@@ -752,6 +806,76 @@ await layla.tts.stopSpeaking({
   signal: controller.signal,
 });
 ```
+
+## Background audio player
+
+Background music and long-form audio use the separate
+`layla.backgroundAudio` surface. Its control methods are fire-and-forget in the
+host protocol: each returned promise resolves when the command has been posted
+to the WebView bridge, not when playback reaches a particular state.
+
+Start a queue with `start(queueAudioFiles, metadata?)`. Starting again replaces
+the current queue. Local paths are resolved from the mini-app root; remote
+audio URLs may also be used.
+
+```ts
+await layla.backgroundAudio.start(
+  ['audio/intro.mp3', 'https://example.com/audio/episode.mp3'],
+  {
+    title: 'A quiet journey',
+    artist: 'Layla Mini-App',
+    albumTitle: 'Stories',
+    artworkUrl: 'https://example.com/artwork.jpg',
+  },
+);
+```
+
+`artworkUrl`, when provided, must be a remote HTTPS URL. The other metadata
+fields are optional and may be shown on the lock screen or in the media
+notification.
+
+Control playback with:
+
+```ts
+await layla.backgroundAudio.pause();
+await layla.backgroundAudio.resume();
+await layla.backgroundAudio.skip();   // next track
+await layla.backgroundAudio.skip(0);  // zero-based queue index
+await layla.backgroundAudio.stop();   // clears and releases the player
+```
+
+`pause()` retains the queue and playback position. `stop()` clears the queue,
+so playback must be restarted with `start(...)`.
+
+Listen for track changes, periodic status, and queue completion:
+
+```ts
+const onTrackChanged: BackgroundAudioTrackChangedListener = ({
+  currentIndex,
+  previousIndex,
+}) => console.log(previousIndex, currentIndex);
+
+const onStatus: BackgroundAudioStatusListener = (status) => {
+  console.log(status.playing, status.currentTime, status.duration);
+};
+
+const onFinished: BackgroundAudioFinishedListener = () => {
+  console.log('The queue finished and the player was released.');
+};
+
+layla.backgroundAudio.on('trackChanged', onTrackChanged);
+layla.backgroundAudio.on('status', onStatus);
+layla.backgroundAudio.on('finished', onFinished);
+
+layla.backgroundAudio.off('trackChanged', onTrackChanged);
+layla.backgroundAudio.off('status', onStatus);
+layla.backgroundAudio.off('finished', onFinished);
+```
+
+Status contains `playing`, `currentIndex`, `currentTime`, `duration`, and
+`isLoaded`. The host normally emits status about once per second while active,
+but may throttle or suspend it while the app is backgrounded. Do not use status
+events to drive queue logic.
 
 ## `layla.classifier.getSentiment(text, options?)`
 
@@ -1201,6 +1325,15 @@ installLaylaMock({
 const voices = await layla.tts.getVoices();
 await layla.tts.generateVoice(voices[0].id, 'Preview this voice.');
 await layla.tts.generateVoice(null, 'Preview the global default voice.');
+const audio = await layla.tts.generateVoiceToFile(
+  null,
+  'Generate a mock audio data URI.',
+);
+const savedAudio = await layla.tts.generateVoiceToFile(
+  null,
+  'Save a mock audio file.',
+  true,
+);
 await layla.tts.stopSpeaking();
 ```
 
@@ -1208,6 +1341,33 @@ The browser mock does not synthesize audio; `generateVoice(...)` waits for the
 mock latency and then emits `on_finished_speaking`, whether passed a configured
 voice ID or `null` for the global default. `stopSpeaking()` immediately emits
 the same completion event and cancels any pending mock TTS completion.
+`generateVoiceToFile(...)` returns a small mock WAV data URI, or saves
+`mock-voice.wav` to mock private-file storage when `save` is true.
+
+The background-audio mock emits status updates as start, pause, resume, and
+skip commands change its simulated state. The mock handle can also drive any
+background-audio event directly:
+
+```ts
+const mock = installLaylaMock();
+
+layla.backgroundAudio.on('status', console.log);
+await layla.backgroundAudio.start(['intro.mp3', 'chapter-1.mp3']);
+await layla.backgroundAudio.skip();
+
+mock.emitBackgroundAudioTrackChanged({
+  previousIndex: 0,
+  currentIndex: 1,
+});
+mock.emitBackgroundAudioStatus({
+  playing: true,
+  currentIndex: 1,
+  currentTime: 12,
+  duration: 90,
+  isLoaded: true,
+});
+mock.emitBackgroundAudioFinished();
+```
 
 Customize mock private files with static base64 data or data URIs:
 
@@ -1264,6 +1424,14 @@ Useful exported types include:
 - `LaylaMemory`
 - `LaylaPersona`
 - `LaylaTTSVoice`
+- `GenerateVoiceToFileResult`
+- `BackgroundAudioMetadata`
+- `BackgroundAudioTrackChanged`
+- `BackgroundAudioTrackChangedListener`
+- `BackgroundAudioStatus`
+- `BackgroundAudioStatusListener`
+- `BackgroundAudioFinished`
+- `BackgroundAudioFinishedListener`
 - `LaylaExecutionContext`
 - `ChatContextFinishedSpeaking`
 - `ChatContextFinishedSpeakingListener`
@@ -1291,7 +1459,13 @@ Useful exported types include:
 - `LaylaApiGetPersona`
 - `LaylaApiGetTTSVoices`
 - `LaylaApiGenerateVoice`
+- `LaylaApiGenerateVoiceToFile`
 - `LaylaApiStopSpeaking`
+- `LaylaApiStartBackgroundAudioPlayer`
+- `LaylaApiStopBackgroundAudioPlayer`
+- `LaylaApiPauseBackgroundAudioPlayer`
+- `LaylaApiResumeBackgroundAudioPlayer`
+- `LaylaApiSkipBackgroundAudioTrack`
 - `LaylaApiGetInferenceEngines`
 - `LaylaApiSetInferenceEngine`
 - `LaylaApiGetExecutionContext`
@@ -1309,6 +1483,10 @@ Useful exported types include:
 - `LaylaApiEvent_onChatContextStartedSpeaking`
 - `LaylaApiEvent_onChatContextStartedThinking`
 - `LaylaApiEvent_onFinishedSpeaking`
+- `LaylaApiEvent_onGenerateVoiceToFileResponse`
+- `LaylaApiEvent_onBackgroundAudioTrackChanged`
+- `LaylaApiEvent_onBackgroundAudioStatus`
+- `LaylaApiEvent_onBackgroundAudioFinished`
 - `LaylaApiSaveFile`
 - `LaylaApiEvent_onSaveFileResponse`
 - `LaylaApiReadFile`
@@ -1341,6 +1519,7 @@ The TypeScript source is the source of truth for current signatures:
 - `src/resources/memories.ts`
 - `src/resources/personas.ts`
 - `src/resources/tts.ts`
+- `src/resources/background-audio.ts`
 - `src/resources/contextual.ts`
 - `src/resources/utils.ts`
 - `src/protocol.ts`

@@ -6,6 +6,7 @@
 
 import type {
   LaylaApiEvent,
+  LaylaApiEvent_onGenerateVoiceToFileResponse,
   LaylaApiEvent_onGetTTSVoicesResponse,
   LaylaApiEvent_onError,
   LaylaApiStopSpeaking,
@@ -17,6 +18,9 @@ import {
   LaylaBridgeUnavailableError,
   LaylaError,
 } from '../errors';
+
+export type GenerateVoiceToFileResult =
+  LaylaApiEvent_onGenerateVoiceToFileResponse['data'];
 
 export class TTS {
   /**
@@ -56,6 +60,35 @@ export class TTS {
       () => undefined,
       options.signal,
       () => ({ cmd: 'stop_speaking', data: null }),
+    );
+  }
+
+  /**
+   * Generate voice audio without playing it.
+   *
+   * When `save` is false, the result contains `audio_data_base64` including
+   * its data URI prefix. When true, the host saves the audio and returns its
+   * `filename` instead.
+   */
+  generateVoiceToFile(
+    ttsVoiceId: string | null,
+    text: string,
+    save = false,
+    options: RequestOptions = {},
+  ): Promise<GenerateVoiceToFileResult> {
+    return oneShot<GenerateVoiceToFileResult>(
+      {
+        cmd: 'generate_voice_to_file',
+        data: {
+          ttsVoiceId,
+          text,
+          save,
+        },
+      },
+      'on_generate_voice_to_file_response',
+      (event: LaylaApiEvent) =>
+        (event as LaylaApiEvent_onGenerateVoiceToFileResponse).data,
+      options.signal,
     );
   }
 
