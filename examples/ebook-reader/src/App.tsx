@@ -10,30 +10,35 @@ import {
   Loader2,
   Play,
   Pause,
+  RotateCw,
   Sparkles,
   SkipBack,
   SkipForward,
+  TriangleAlert,
   Type,
   Upload,
   Volume2,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import { extractText, formatFromName } from './lib/extract'
+import type { BookFormat, ExtractProgress } from './lib/extract'
+import { chunkParagraphs, estimateDuration } from './lib/chunk'
 import './App.css'
 
 /* ---------------------------------------------------------------------------
- * Types + dummy data
- * All data here is placeholder. The real pipeline (extract → chunk → TTS →
- * queue) will be wired up feature-by-feature later.
+ * Types
+ * Text extraction (TXT/PDF/EPUB) is real — see src/lib/extract.ts. Chunking is
+ * a placeholder paragraph split (src/lib/chunk.ts) pending its own stage, and
+ * synthesis + playback are still simulated.
  * ------------------------------------------------------------------------- */
 
-type BookFormat = 'txt' | 'pdf' | 'epub'
 type ChunkStatus = 'pending' | 'synthesizing' | 'ready'
 
 interface Chunk {
   id: number
   text: string
   status: ChunkStatus
-  duration: number // seconds (dummy)
+  duration: number // seconds — estimated from word count for real books
 }
 
 interface Book {
@@ -43,7 +48,25 @@ interface Book {
   format: BookFormat
   cover: string // single letter / short label
   gradient: string
+  /** Full extracted text, kept in memory for the (next) chunking stage. */
+  text: string
+  /** Pages (PDF) or sections (EPUB); undefined for TXT / samples. */
+  units?: number
   chunks: Chunk[]
+}
+
+const COVER_GRADIENTS = [
+  'linear-gradient(150deg, #47a6ff, #1b6fb8)',
+  'linear-gradient(150deg, #8a5cff, #4b2fa8)',
+  'linear-gradient(150deg, #2fbf8f, #12795a)',
+  'linear-gradient(150deg, #ff8a5c, #b8461b)',
+  'linear-gradient(150deg, #ff6b81, #a81b3a)',
+]
+
+function gradientFor(seed: string): string {
+  let h = 0
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0
+  return COVER_GRADIENTS[h % COVER_GRADIENTS.length]
 }
 
 const LOREM: string[] = [
@@ -68,6 +91,8 @@ function makeChunks(seed: number): Chunk[] {
   }))
 }
 
+const SAMPLE_TEXT = LOREM.join('\n\n')
+
 const SAMPLE_BOOKS: Book[] = [
   {
     id: 'lighthouse',
@@ -76,6 +101,7 @@ const SAMPLE_BOOKS: Book[] = [
     format: 'epub',
     cover: 'K',
     gradient: 'linear-gradient(150deg, #47a6ff, #1b6fb8)',
+    text: SAMPLE_TEXT,
     chunks: makeChunks(1),
   },
   {
@@ -85,6 +111,7 @@ const SAMPLE_BOOKS: Book[] = [
     format: 'pdf',
     cover: 'O',
     gradient: 'linear-gradient(150deg, #8a5cff, #4b2fa8)',
+    text: SAMPLE_TEXT,
     chunks: makeChunks(2),
   },
   {
@@ -94,6 +121,7 @@ const SAMPLE_BOOKS: Book[] = [
     format: 'txt',
     cover: 'G',
     gradient: 'linear-gradient(150deg, #2fbf8f, #12795a)',
+    text: SAMPLE_TEXT,
     chunks: makeChunks(3),
   },
 ]
@@ -111,13 +139,26 @@ function fmtTime(sec: number): string {
   return `${m}:${r.toString().padStart(2, '0')}`
 }
 
+function extractSub(book: Book): string {
+  const chars = book.text.length
+  const size = chars >= 1000 ? `${Math.round(chars / 1000)}k chars` : `${chars} chars`
+  if (book.units && book.format === 'pdf') return `${book.units} pages · ${size}`
+  if (book.units && book.format === 'epub') return `${book.units} sections · ${size}`
+  return `${size} extracted`
+}
+
 /* ---------------------------------------------------------------------------
  * App
  * ------------------------------------------------------------------------- */
 
+type ExtractState = { name: string; format: BookFormat; progress: ExtractProgress | null }
+
 export default function App() {
   const [book, setBook] = useState<Book | null>(null)
   const [dragActive, setDragActive] = useState(false)
+
+  const [extracting, setExtracting] = useState<ExtractState | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const [playingId, setPlayingId] = useState<number | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -128,6 +169,8 @@ export default function App() {
   const loadBook = useCallback((source: Book) => {
     // clone so each load restarts the simulated pipeline
     setBook({ ...source, chunks: source.chunks.map((c) => ({ ...c, status: 'pending' })) })
+    setError(null)
+    setExtracting(null)
     setPlayingId(null)
     setIsPlaying(false)
     setProgress(0)
@@ -135,6 +178,8 @@ export default function App() {
 
   const reset = useCallback(() => {
     setBook(null)
+    setError(null)
+    setExtracting(null)
     setPlayingId(null)
     setIsPlaying(false)
     setProgress(0)
@@ -228,22 +273,52 @@ export default function App() {
     [book, playingId],
   )
 
-  /* ---- File input (UI only — we load a dummy book) ---- */
-  const onFileChosen = useCallback(
-    (files: FileList | null) => {
-      const file = files?.[0]
-      const ext = file?.name.split('.').pop()?.toLowerCase()
-      const format: BookFormat =
-        ext === 'pdf' ? 'pdf' : ext === 'epub' ? 'epub' : 'txt'
-      const base = SAMPLE_BOOKS.find((b) => b.format === format) ?? SAMPLE_BOOKS[0]
-      loadBook(
-        file
-          ? { ...base, title: file.name.replace(/\.[^.]+$/, ''), author: 'Imported file', format }
-          : base,
-      )
-    },
-    [loadBook],
-  )
+  /* ---- Real text extraction (TXT/PDF/EPUB) ---- */
+  const onFileChosen = useCallback((files: FileList | null) => {
+    const file = files?.[0]
+    if (!file) return
+
+    const format = formatFromName(file.name)
+    setBook(null)
+    setError(null)
+    setPlayingId(null)
+    setIsPlaying(false)
+    setProgress(0)
+    setExtracting({ name: file.name, format, progress: null })
+
+    extractText(file, (p) => {
+      setExtracting((cur) => (cur ? { ...cur, progress: p } : cur))
+    })
+      .then((result) => {
+        const paragraphs = chunkParagraphs(result.text)
+        if (paragraphs.length === 0) {
+          throw new Error('No readable text was found in this file.')
+        }
+        const chunks: Chunk[] = paragraphs.map((text, i) => ({
+          id: i,
+          text,
+          status: 'pending',
+          duration: estimateDuration(text),
+        }))
+        const title = file.name.replace(/\.[^.]+$/, '') || file.name
+        setBook({
+          id: `file-${Date.now()}`,
+          title,
+          author: 'Imported file',
+          format: result.format,
+          cover: (title.trim().charAt(0) || '?').toUpperCase(),
+          gradient: gradientFor(title),
+          text: result.text, // full extracted text held in memory for chunking
+          units: result.units,
+          chunks,
+        })
+        setExtracting(null)
+      })
+      .catch((e: unknown) => {
+        setExtracting(null)
+        setError(e instanceof Error ? e.message : 'Could not read this file.')
+      })
+  }, [])
 
   return (
     <>
@@ -270,7 +345,11 @@ export default function App() {
         </header>
 
         <main>
-          {!book ? (
+          {extracting ? (
+            <Extracting info={extracting} />
+          ) : error ? (
+            <ExtractError message={error} onRetry={reset} />
+          ) : !book ? (
             <Landing
               dragActive={dragActive}
               setDragActive={setDragActive}
@@ -301,6 +380,55 @@ export default function App() {
         />
       )}
     </>
+  )
+}
+
+/* ---------------------------------------------------------------------------
+ * Extraction progress + error
+ * ------------------------------------------------------------------------- */
+
+function Extracting({ info }: { info: ExtractState }) {
+  const p = info.progress
+  const pct = p && p.total ? Math.round((p.unit / p.total) * 100) : null
+  return (
+    <section className="landing">
+      <div className="status-card panel">
+        <span className="dropzone-icon">
+          <Loader2 size={26} className="spin" />
+        </span>
+        <h3>Extracting text…</h3>
+        <p className="status-file">{info.name}</p>
+        {p && p.total ? (
+          <>
+            <div className="synth-progress" aria-hidden="true">
+              <div className="fill" style={{ width: `${pct}%` }} />
+            </div>
+            <p className="status-sub">
+              Reading {p.label} {p.unit} of {p.total}
+            </p>
+          </>
+        ) : (
+          <p className="status-sub">Reading {FORMAT_META[info.format].label} file…</p>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function ExtractError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <section className="landing">
+      <div className="status-card panel">
+        <span className="dropzone-icon danger">
+          <TriangleAlert size={26} />
+        </span>
+        <h3>Couldn't read that file</h3>
+        <p className="status-sub">{message}</p>
+        <button type="button" className="btn primary" onClick={onRetry}>
+          <RotateCw size={16} /> Try another file
+        </button>
+      </div>
+    </section>
   )
 }
 
@@ -464,7 +592,7 @@ function Reader({
         <div className="pipeline">
           <div className="pipeline-title">Pipeline</div>
           <Stage state="done" icon={BookOpen} name="File selected" sub={FORMAT_META[book.format].label + ' document'} />
-          <Stage state="done" icon={FileText} name="Text extracted" sub="Plain text ready" />
+          <Stage state="done" icon={FileText} name="Text extracted" sub={extractSub(book)} />
           <Stage state="done" icon={Layers} name="Chunked into passages" sub={`${total} paragraphs`} />
           <Stage
             state={synthDone ? 'done' : 'active'}
