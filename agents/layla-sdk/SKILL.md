@@ -529,6 +529,22 @@ const imageSrc = await layla.images.generateImage(
 if (imageSrc) imageElement.src = imageSrc;
 ```
 
+List the image models the host currently has available with
+`layla.images.getImageGenerationModels()`, then pass a model's `id` as the
+`modelId` argument (4th) to generate with it. When `modelId` is omitted the host
+uses its default model:
+
+```ts
+const models = await layla.images.getImageGenerationModels();
+
+const imageSrc = await layla.images.generateImage(
+  'A cozy pixel-art study with warm lamplight',
+  (status, step, totalSteps) => setProgress({ status, step, totalSteps }),
+  undefined, // img2img_base64
+  models[0]?.id, // modelId — omit to use the host default
+);
+```
+
 Character images follow the same convention:
 
 ```ts

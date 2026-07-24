@@ -7,11 +7,16 @@
 
 import type {
   LaylaApiEvent,
+  LaylaApiEvent_onGetImageGenerationModelsResponse,
   LaylaApiRequest,
 } from '../protocol';
-import { type RequestOptions } from '../internal/one-shot';
+import { oneShot, type RequestOptions } from '../internal/one-shot';
 import { type BridgeSink, LaylaBridge } from '../internal/bridge';
 import { LaylaAbortError } from '..';
+
+/** A single image generation model available on the host. */
+export type LaylaImageGenerationModel =
+  LaylaApiEvent_onGetImageGenerationModelsResponse['data'][number];
 
 type Listener =
   ((image_data_base64: string | null) => void) |
@@ -83,12 +88,36 @@ class ImagesBridgeSink implements BridgeSink {
 
 export class Images {
   /**
+   * Ask the native host for the list of image generation models that are
+   * immediately available for use. Models that are not downloaded are omitted.
+   *
+   * Pass a returned model's `id` as the `modelId` argument to
+   * {@link Images.generateImage} to generate with that specific model.
+   */
+  getImageGenerationModels(
+    options: RequestOptions = {},
+  ): Promise<LaylaImageGenerationModel[]> {
+    return oneShot<LaylaImageGenerationModel[]>(
+      { cmd: 'get_image_generation_models', data: null },
+      'on_get_image_generation_models_response',
+      (event: LaylaApiEvent) =>
+        (event as LaylaApiEvent_onGetImageGenerationModelsResponse).data ?? [],
+      options.signal,
+    );
+  }
+
+  /**
    * Ask the native host to generate an image. Resolves to a ready-to-use base64 image src string, or null if the character has no image
+   *
+   * Pass `modelId` to generate with a specific image model (one of the `id`s
+   * returned by {@link Images.getImageGenerationModels}). When omitted, the host
+   * uses its default image model.
    */
   generateImage(
     prompt: string,
     onProgress: (status: string, step: number, total_step: number) => void,
     img2img_base64?: string,
+    modelId?: string,
     options?: RequestOptions
   ): Promise<string | null> {
     const setupSince = () => {
@@ -113,6 +142,7 @@ export class Images {
           data: {
             prompt,
             img2img_base64,
+            model_id: modelId,
           },
         },
         sink: sink,

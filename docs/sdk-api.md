@@ -936,7 +936,19 @@ const updatedId = await layla.characters.update({
 });
 ```
 
-## `layla.images.generateImage(prompt, onProgress, img2img_base64?, options?)`
+## `layla.images.getImageGenerationModels(options?)`
+
+Returns the image generation models that are immediately available on the host. Models that are not downloaded are omitted. Each entry has an `id`, `name`, and `description`. Pass a model's `id` as the `modelId` argument to `generateImage(...)` to generate with that specific model.
+
+```ts
+const models = await layla.images.getImageGenerationModels();
+
+for (const model of models) {
+  console.log(model.id, model.name, model.description);
+}
+```
+
+## `layla.images.generateImage(prompt, onProgress, img2img_base64?, modelId?, options?)`
 
 Generates an image from a prompt. Progress updates are reported through the callback. The returned value is a ready-to-use image source string, or `null` if the host does not return an image.
 
@@ -967,9 +979,20 @@ const imageSrc = await layla.images.generateImage(
 );
 ```
 
-When no base image is needed, request options can still be passed as the third argument.
+Pass `modelId` to generate with a specific image model — one of the `id`s returned by `getImageGenerationModels()`. When omitted, the host uses its default image model.
 
-Use an abort signal when the UI can cancel image generation:
+```ts
+const [model] = await layla.images.getImageGenerationModels();
+
+const imageSrc = await layla.images.generateImage(
+  'A cozy pixel-art study with warm lamplight',
+  onProgress,
+  undefined,
+  model?.id,
+);
+```
+
+Use an abort signal when the UI can cancel image generation. `img2img_base64` and `modelId` come before the options argument, so pass `undefined` for the ones you are not using:
 
 ```ts
 const controller = new AbortController();
@@ -977,6 +1000,8 @@ const controller = new AbortController();
 const imagePromise = layla.images.generateImage(
   prompt,
   onProgress,
+  undefined,
+  undefined,
   { signal: controller.signal },
 );
 

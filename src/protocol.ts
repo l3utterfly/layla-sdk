@@ -252,7 +252,17 @@ export interface LaylaApiGenerateImage {
   data: {
     prompt: string;
     img2img_base64?: string; // optional base64-encoded image for img2img generation (including the data URI prefix)
+    model_id?: string; // optional model ID to use for image generation (if not provided, the host will use the default model)
   };
+}
+
+/**
+ * Ask the host for the list of available image generation models. The host should respond with an `on_get_image_generation_models_response` event containing an array of model names.
+ * The host will only return image models that are immediately available for use (so this will not include models that are not downloaded)
+ */
+export interface LaylaApiGetImageGenerationModels {
+  cmd: 'get_image_generation_models';
+  data: null; // no additional data is needed for this request
 }
 
 /**
@@ -451,7 +461,7 @@ export interface LaylaApiGenerateVoice {
 }
 
 /**
- * Ask the host to generate voice audio for the provided text using the specified TTS voice and optionally save it to a file.
+ * Ask the host to generate voice audio for the provided text using the specified TTS voice and save it to a file.
  * The host will generate the audio and save it to a .wav or .mp3 file. The host will respond with `on_generate_voice_to_file_response` event containing the base64-encoded audio data (including the data URI prefix) if the generation was successful, or an error message if there was an error during the generation process.
  */
 export interface LaylaApiGenerateVoiceToFile {
@@ -600,6 +610,7 @@ export type LaylaApiRequest =
   | LaylaApiPauseBackgroundAudioPlayer
   | LaylaApiResumeBackgroundAudioPlayer
   | LaylaApiSkipBackgroundAudioTrack
+  | LaylaApiGetImageGenerationModels
   ;
 
 /* ---- RN -> Web events ------------------------------------------------------ */
@@ -976,6 +987,15 @@ export interface LaylaApiEvent_onBackgroundAudioFinished {
   data: null; // no additional data is needed for this event
 }
 
+export interface LaylaApiEvent_onGetImageGenerationModelsResponse {
+  event: 'on_get_image_generation_models_response';
+  data: {
+    id: string;
+    name: string;
+    description: string;
+  }[]; // an array of all available image generation models with their details
+};
+
 export type LaylaApiEvent =
   | LaylaApiEvent_onMsg
   | LaylaApiEvent_onMsgEnd
@@ -1006,10 +1026,11 @@ export type LaylaApiEvent =
   | LaylaApiEvent_onChatContextNewMessage
   | LaylaApiEvent_onChatContextSentimentUpdate
   | LaylaApiEvent_onChatContextStartedSpeaking
-  | LaylaApiEvent_onChatContextFinishedSpeaking
   | LaylaApiEvent_onChatContextStartedThinking
+  | LaylaApiEvent_onChatContextFinishedSpeaking
   | LaylaApiEvent_onGenerateVoiceToFileResponse
   | LaylaApiEvent_onBackgroundAudioTrackChanged
   | LaylaApiEvent_onBackgroundAudioStatus
   | LaylaApiEvent_onBackgroundAudioFinished
+  | LaylaApiEvent_onGetImageGenerationModelsResponse
   ;

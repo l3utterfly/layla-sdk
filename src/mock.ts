@@ -30,6 +30,7 @@ import type {
   LaylaApiEvent_onChatContextStartedSpeaking,
   LaylaApiEvent_onChatContextStartedThinking,
   LaylaApiEvent_onGetChatSessionsResponse,
+  LaylaApiEvent_onGetImageGenerationModelsResponse,
   LaylaApiRequest,
   LaylaCharacter,
   LaylaChatHistoryEntry,
@@ -65,6 +66,9 @@ type MockScheduledChatMessageSource = LaylaScheduledChatMessage[];
 
 type MockChatSession =
   LaylaApiEvent_onGetChatSessionsResponse['data']['sessions'][number];
+
+type MockImageGenerationModel =
+  LaylaApiEvent_onGetImageGenerationModelsResponse['data'][number];
 
 export interface LaylaMockOptions {
   /**
@@ -113,6 +117,11 @@ export interface LaylaMockOptions {
   executionContext?: LaylaExecutionContext | null;
   /** TTS voices returned by `tts.getVoices()`. Defaults to two sample voices. */
   ttsVoices?: LaylaTTSVoice[];
+  /**
+   * Image generation models returned by `images.getImageGenerationModels()`.
+   * Defaults to two sample models.
+   */
+  imageGenerationModels?: MockImageGenerationModel[];
   /** Delay before the first event of a response (simulated latency). Default 150ms. */
   latencyMs?: number;
   /** Delay between streamed tokens. Default 40ms. */
@@ -297,6 +306,18 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
       type: 'mock',
       tags: ['male', 'calm', 'local-dev'],
       name: 'Mock Kai',
+    },
+  ];
+  const imageGenerationModels = options.imageGenerationModels ?? [
+    {
+      id: 'mock-image-model-fast',
+      name: 'Mock Turbo',
+      description: 'A fast, low-step mock image model for local development.',
+    },
+    {
+      id: 'mock-image-model-quality',
+      name: 'Mock Diffusion XL',
+      description: 'A higher-quality mock image model for local development.',
     },
   ];
 
@@ -563,7 +584,24 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     });
   }
 
-  async function handleGenerateImage(_: { prompt: string }): Promise<void> {
+  async function handleGetImageGenerationModels(): Promise<void> {
+    await delay(latencyMs);
+    if (shouldError()) {
+      emitError('Simulated image generation models error');
+      return;
+    }
+
+    emit({
+      event: 'on_get_image_generation_models_response',
+      data: imageGenerationModels.map((model) => ({ ...model })),
+    });
+  }
+
+  async function handleGenerateImage(_: {
+    prompt: string;
+    img2img_base64?: string;
+    model_id?: string;
+  }): Promise<void> {
     await delay(latencyMs);
     if (shouldError()) {
       emitError('Simulated image generation error');
@@ -1272,6 +1310,9 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
           break;
         case 'generate_image':
           void handleGenerateImage(msg.data);
+          break;
+        case 'get_image_generation_models':
+          void handleGetImageGenerationModels();
           break;
         case 'update_character':
           void handleUpdateCharacter(msg.data);

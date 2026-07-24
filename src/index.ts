@@ -32,6 +32,7 @@ export type {
   LaylaApiGetCharacters,
   LaylaApiGetCharacterImage,
   LaylaApiGenerateImage,
+  LaylaApiGetImageGenerationModels,
   LaylaApiUpdateCharacter,
   LaylaApiGetChatHistory,
   LaylaApiGetSentiment,
@@ -70,6 +71,7 @@ export type {
   LaylaApiEvent_onGetCharacterImageResponse,
   LaylaApiEvent_onGenerateImageResponse,
   LaylaApiEvent_onGenerateImageProgress,
+  LaylaApiEvent_onGetImageGenerationModelsResponse,
   LaylaApiEvent_onUpdateCharacterResponse,
   LaylaApiEvent_onGetChatHistoryResponse,
   LaylaApiEvent_onGetChatSessionsResponse,
@@ -123,6 +125,7 @@ export type {
 
 // Image resource surface.
 export { Images } from './resources/images';
+export type { LaylaImageGenerationModel } from './resources/images';
 
 // Utility resource surface.
 export { Utils } from './resources/utils';
