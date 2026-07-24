@@ -20,6 +20,7 @@ import {
   Volume2,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import { LaylaSDK, LaylaAbortError } from '../../../src/index'
 import { extractText, formatFromName } from './lib/extract'
 import type { BookFormat, ExtractProgress } from './lib/extract'
 import { chunkParagraphs, estimateDuration } from './lib/chunk'
@@ -28,9 +29,15 @@ import './App.css'
 /* ---------------------------------------------------------------------------
  * Types
  * Text extraction (TXT/PDF/EPUB) is real — see src/lib/extract.ts. Chunking is
- * a placeholder paragraph split (src/lib/chunk.ts) pending its own stage, and
- * synthesis + playback are still simulated.
+ * a placeholder paragraph split (src/lib/chunk.ts) pending its own stage.
+ * Synthesis is real too: every passage is pre-generated to a saved audio file
+ * via layla.tts.generateVoiceToFile(..., save=true). Only playback (the scrub
+ * bar progress) is still simulated.
  * ------------------------------------------------------------------------- */
+
+// One SDK client for the whole app. Outside the Layla host the browser mock
+// (installed in main.tsx) stands in for the native TTS endpoints.
+const layla = new LaylaSDK()
 
 type ChunkStatus = 'pending' | 'synthesizing' | 'ready'
 
@@ -39,6 +46,8 @@ interface Chunk {
   text: string
   status: ChunkStatus
   duration: number // seconds — estimated from word count for real books
+  /** Filename of the saved audio clip, set once the host has voiced it. */
+  filename?: string
 }
 
 interface Book {
@@ -166,8 +175,31 @@ export default function App() {
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // The voice used for pre-generation. `null` means the host's default voice;
+  // we read it into a ref so resolving it later doesn't restart synthesis.
+  const voiceRef = useRef<string | null>(null)
+  const [voiceName, setVoiceName] = useState<string | null>(null)
+
+  useEffect(() => {
+    let active = true
+    layla.tts
+      .getVoices()
+      .then((voices) => {
+        if (!active) return
+        const voice = voices[0] ?? null
+        voiceRef.current = voice?.id ?? null
+        setVoiceName(voice?.name ?? null)
+      })
+      .catch(() => {
+        // No voices available — fall back to the host default voice (null).
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
   const loadBook = useCallback((source: Book) => {
-    // clone so each load restarts the simulated pipeline
+    // clone so each load restarts the pre-generation pipeline
     setBook({ ...source, chunks: source.chunks.map((c) => ({ ...c, status: 'pending' })) })
     setError(null)
     setExtracting(null)
@@ -185,22 +217,60 @@ export default function App() {
     setProgress(0)
   }, [])
 
-  /* ---- Simulated TTS synthesis: promote one chunk per tick ---- */
+  /* ---- Real TTS pre-generation ----
+   * Voice every passage to a saved audio file up front via
+   * layla.tts.generateVoiceToFile(voiceId, text, save=true). With save=true the
+   * host persists each clip and returns its filename (rather than inline audio),
+   * which we stash on the chunk. Passages are voiced sequentially so the UI can
+   * show one being synthesized at a time; the SDK bridge serialises requests
+   * anyway. The AbortController cancels any in-flight clip when the book changes
+   * or the effect is torn down (e.g. StrictMode's double-invoke in dev). */
   useEffect(() => {
     if (!book) return
-    const timer = setInterval(() => {
-      setBook((prev) => {
-        if (!prev) return prev
-        const idx = prev.chunks.findIndex((c) => c.status !== 'ready')
-        if (idx === -1) return prev
-        const chunks = prev.chunks.map((c, i) => {
-          if (i !== idx) return c
-          return { ...c, status: c.status === 'pending' ? 'synthesizing' : 'ready' } as Chunk
-        })
-        return { ...prev, chunks }
-      })
-    }, 850)
-    return () => clearInterval(timer)
+    const chunks = book.chunks
+    const controller = new AbortController()
+    let cancelled = false
+
+    const patchChunk = (id: number, patch: Partial<Chunk>) =>
+      setBook((prev) =>
+        prev
+          ? { ...prev, chunks: prev.chunks.map((c) => (c.id === id ? { ...c, ...patch } : c)) }
+          : prev,
+      )
+
+    async function preGenerate() {
+      for (const chunk of chunks) {
+        if (cancelled) return
+        if (chunk.status === 'ready') continue
+        patchChunk(chunk.id, { status: 'synthesizing' })
+        try {
+          const result = await layla.tts.generateVoiceToFile(
+            voiceRef.current,
+            chunk.text,
+            true, // save = true — persist the clip and return its filename
+            { signal: controller.signal },
+          )
+          if (cancelled) return
+          patchChunk(chunk.id, {
+            status: 'ready',
+            filename: result.filename ?? undefined,
+          })
+        } catch (err) {
+          if (cancelled || err instanceof LaylaAbortError) return
+          // A real synthesis failure: leave the passage queued and stop here.
+          patchChunk(chunk.id, { status: 'pending' })
+          return
+        }
+      }
+    }
+
+    void preGenerate()
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
+    // Re-run only when a different book is loaded; chunk text is fixed per book.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [book?.id])
 
   /* ---- Simulated playback progress + auto-advance ---- */
@@ -362,6 +432,7 @@ export default function App() {
               book={book}
               currentChunk={currentChunk}
               isPlaying={isPlaying}
+              voiceName={voiceName}
               onReset={reset}
               onJump={jumpTo}
             />
@@ -537,12 +608,14 @@ function Reader({
   book,
   currentChunk,
   isPlaying,
+  voiceName,
   onReset,
   onJump,
 }: {
   book: Book
   currentChunk: Chunk | null
   isPlaying: boolean
+  voiceName: string | null
   onReset: () => void
   onJump: (c: Chunk) => void
 }) {
@@ -598,8 +671,12 @@ function Reader({
             state={synthDone ? 'done' : 'active'}
             icon={synthDone ? Check : Loader2}
             spin={!synthDone}
-            name="Synthesizing audio"
-            sub={synthDone ? 'All clips generated' : `${readyCount} / ${total} clips ready`}
+            name="Pre-generating audio"
+            sub={
+              synthDone
+                ? `All clips saved${voiceName ? ` · ${voiceName}` : ''}`
+                : `${readyCount} / ${total} clips saved${voiceName ? ` · ${voiceName}` : ''}`
+            }
           />
           <Stage
             state={isPlaying ? 'active' : synthDone ? 'done' : 'pending'}
