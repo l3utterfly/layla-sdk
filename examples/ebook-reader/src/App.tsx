@@ -21,6 +21,10 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { LaylaSDK, LaylaAbortError } from '../../../src/index'
+import type {
+  BackgroundAudioStatus,
+  BackgroundAudioTrackChanged,
+} from '../../../src/index'
 import { extractText, formatFromName } from './lib/extract'
 import type { BookFormat, ExtractProgress } from './lib/extract'
 import { chunkParagraphs, estimateDuration } from './lib/chunk'
@@ -30,9 +34,10 @@ import './App.css'
  * Types
  * Text extraction (TXT/PDF/EPUB) is real — see src/lib/extract.ts. Chunking is
  * a placeholder paragraph split (src/lib/chunk.ts) pending its own stage.
- * Synthesis is real too: every passage is pre-generated to a saved audio file
- * via layla.tts.generateVoiceToFile(..., save=true). Only playback (the scrub
- * bar progress) is still simulated.
+ * Synthesis is real: every passage is pre-generated to a saved audio file via
+ * layla.tts.generateVoiceToFile(..., save=true). Playback is real too: the
+ * saved files are queued into layla.backgroundAudio, and the transport reflects
+ * the host's status / track-changed / finished events.
  * ------------------------------------------------------------------------- */
 
 // One SDK client for the whole app. Outside the Layla host the browser mock
@@ -171,14 +176,32 @@ export default function App() {
 
   const [playingId, setPlayingId] = useState<number | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
-  const [progress, setProgress] = useState(0) // 0..1 within current chunk
+  // Live playhead reported by the host: seconds into the current clip and the
+  // clip's total length (0 until the host knows it).
+  const [position, setPosition] = useState<{ currentTime: number; duration: number }>({
+    currentTime: 0,
+    duration: 0,
+  })
 
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Chunk ids of the tracks currently queued in the background player, in queue
+  // order. Non-null means a queue is active; the array index matches the host's
+  // `currentIndex`. A ref (not state) because the event listeners read it.
+  const queueRef = useRef<number[] | null>(null)
 
   // The voice used for pre-generation. `null` means the host's default voice;
   // we read it into a ref so resolving it later doesn't restart synthesis.
   const voiceRef = useRef<string | null>(null)
   const [voiceName, setVoiceName] = useState<string | null>(null)
+
+  const resetPlayback = useCallback(() => {
+    queueRef.current = null
+    setPlayingId(null)
+    setIsPlaying(false)
+    setPosition({ currentTime: 0, duration: 0 })
+    void layla.backgroundAudio.stop()
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -199,23 +222,19 @@ export default function App() {
   }, [])
 
   const loadBook = useCallback((source: Book) => {
+    resetPlayback()
     // clone so each load restarts the pre-generation pipeline
     setBook({ ...source, chunks: source.chunks.map((c) => ({ ...c, status: 'pending' })) })
     setError(null)
     setExtracting(null)
-    setPlayingId(null)
-    setIsPlaying(false)
-    setProgress(0)
-  }, [])
+  }, [resetPlayback])
 
   const reset = useCallback(() => {
+    resetPlayback()
     setBook(null)
     setError(null)
     setExtracting(null)
-    setPlayingId(null)
-    setIsPlaying(false)
-    setProgress(0)
-  }, [])
+  }, [resetPlayback])
 
   /* ---- Real TTS pre-generation ----
    * Voice every passage to a saved audio file up front via
@@ -273,74 +292,118 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [book?.id])
 
-  /* ---- Simulated playback progress + auto-advance ---- */
   const currentChunk = useMemo(
     () => book?.chunks.find((c) => c.id === playingId) ?? null,
     [book, playingId],
   )
 
+  /* ---- Real playback via the background audio player ----
+   * The host owns queue progression, so the transport just issues commands
+   * (start/pause/resume/skip/stop) and mirrors what the host reports back:
+   *   status       → playing flag + live playhead + which track is current
+   *   trackChanged → the queue advanced (auto or via skip)
+   *   finished     → the last track ended and the player was released
+   * queueRef maps the host's numeric currentIndex back to a passage id. */
   useEffect(() => {
-    if (!isPlaying || !book || !currentChunk) return
-    const step = 0.2 // seconds per tick
-    const timer = setInterval(() => {
-      setProgress((p) => {
-        const next = p + step / currentChunk.duration
-        if (next < 1) return next
-        // advance to the next ready chunk in the queue
-        const idx = book.chunks.findIndex((c) => c.id === currentChunk.id)
-        const following = book.chunks.slice(idx + 1)
-        const nextChunk = following.find((c) => c.status === 'ready')
-        if (nextChunk) {
-          setPlayingId(nextChunk.id)
-          return 0
-        }
-        // nothing ready yet — hold at the end of this chunk
-        setIsPlaying(false)
-        return 1
-      })
-    }, 200)
-    return () => clearInterval(timer)
-  }, [isPlaying, book, currentChunk])
+    const idAt = (index: number) => queueRef.current?.[index] ?? null
 
-  const firstReadyId = useMemo(
-    () => book?.chunks.find((c) => c.status === 'ready')?.id ?? null,
-    [book],
+    const onStatus = (s: BackgroundAudioStatus) => {
+      setIsPlaying(s.playing)
+      setPosition({ currentTime: s.currentTime, duration: s.duration })
+      const id = idAt(s.currentIndex)
+      if (id != null) setPlayingId(id)
+    }
+    const onTrackChanged = (t: BackgroundAudioTrackChanged) => {
+      const id = idAt(t.currentIndex)
+      if (id != null) setPlayingId(id)
+      setPosition({ currentTime: 0, duration: 0 })
+    }
+    const onFinished = () => {
+      queueRef.current = null
+      setIsPlaying(false)
+      setPlayingId(null)
+      setPosition({ currentTime: 0, duration: 0 })
+    }
+
+    layla.backgroundAudio
+      .on('status', onStatus)
+      .on('trackChanged', onTrackChanged)
+      .on('finished', onFinished)
+    return () => {
+      layla.backgroundAudio
+        .off('status', onStatus)
+        .off('trackChanged', onTrackChanged)
+        .off('finished', onFinished)
+    }
+  }, [])
+
+  // The play queue: every passage that has a saved audio file, in reading order.
+  const buildQueue = useCallback((): { ids: number[]; files: string[] } => {
+    const ready = book?.chunks.filter((c) => c.status === 'ready' && c.filename) ?? []
+    return { ids: ready.map((c) => c.id), files: ready.map((c) => c.filename as string) }
+  }, [book])
+
+  const startQueue = useCallback(
+    (startIndex: number) => {
+      if (!book) return
+      const { ids, files } = buildQueue()
+      if (files.length === 0) return
+      queueRef.current = ids
+      void layla.backgroundAudio.start(files, { title: book.title, artist: book.author })
+      if (startIndex > 0) void layla.backgroundAudio.skip(startIndex)
+      setPlayingId(ids[startIndex] ?? ids[0] ?? null)
+      setIsPlaying(true)
+    },
+    [book, buildQueue],
   )
 
   const togglePlay = useCallback(() => {
     if (!book) return
-    if (playingId == null) {
-      if (firstReadyId == null) return
-      setPlayingId(firstReadyId)
-      setProgress(0)
-      setIsPlaying(true)
+    if (queueRef.current == null) {
+      startQueue(0)
       return
     }
-    setIsPlaying((v) => !v)
-  }, [book, playingId, firstReadyId])
+    if (isPlaying) {
+      void layla.backgroundAudio.pause()
+      setIsPlaying(false)
+    } else {
+      void layla.backgroundAudio.resume()
+      setIsPlaying(true)
+    }
+  }, [book, isPlaying, startQueue])
 
   const jumpTo = useCallback(
     (chunk: Chunk) => {
       if (chunk.status !== 'ready') return
+      const active = queueRef.current
+      if (active == null) {
+        const idx = buildQueue().ids.indexOf(chunk.id)
+        if (idx >= 0) startQueue(idx)
+        return
+      }
+      const idx = active.indexOf(chunk.id)
+      if (idx < 0) return
+      void layla.backgroundAudio.skip(idx)
+      // Tapping a passage means "play this one" — resume in case we were paused
+      // (skip alone preserves the host's play/pause state).
+      void layla.backgroundAudio.resume()
       setPlayingId(chunk.id)
-      setProgress(0)
       setIsPlaying(true)
     },
-    [],
+    [buildQueue, startQueue],
   )
 
   const skip = useCallback(
     (dir: -1 | 1) => {
-      if (!book || playingId == null) return
-      const ready = book.chunks.filter((c) => c.status === 'ready')
-      const pos = ready.findIndex((c) => c.id === playingId)
-      const target = ready[pos + dir]
-      if (target) {
-        setPlayingId(target.id)
-        setProgress(0)
-      }
+      const active = queueRef.current
+      if (active == null || playingId == null) return
+      const pos = active.indexOf(playingId)
+      const target = pos + dir
+      if (pos < 0 || target < 0 || target >= active.length) return
+      void layla.backgroundAudio.skip(target)
+      setPlayingId(active[target])
     },
-    [book, playingId],
+    [playingId],
   )
 
   /* ---- Real text extraction (TXT/PDF/EPUB) ---- */
@@ -349,11 +412,9 @@ export default function App() {
     if (!file) return
 
     const format = formatFromName(file.name)
+    resetPlayback()
     setBook(null)
     setError(null)
-    setPlayingId(null)
-    setIsPlaying(false)
-    setProgress(0)
     setExtracting({ name: file.name, format, progress: null })
 
     extractText(file, (p) => {
@@ -388,7 +449,7 @@ export default function App() {
         setExtracting(null)
         setError(e instanceof Error ? e.message : 'Could not read this file.')
       })
-  }, [])
+  }, [resetPlayback])
 
   return (
     <>
@@ -445,7 +506,7 @@ export default function App() {
           book={book}
           currentChunk={currentChunk}
           isPlaying={isPlaying}
-          progress={progress}
+          position={position}
           onToggle={togglePlay}
           onSkip={skip}
         />
@@ -802,20 +863,24 @@ function Player({
   book,
   currentChunk,
   isPlaying,
-  progress,
+  position,
   onToggle,
   onSkip,
 }: {
   book: Book
   currentChunk: Chunk | null
   isPlaying: boolean
-  progress: number
+  position: { currentTime: number; duration: number }
   onToggle: () => void
   onSkip: (dir: -1 | 1) => void
 }) {
   const index = currentChunk ? book.chunks.findIndex((c) => c.id === currentChunk.id) : -1
   const readyCount = book.chunks.filter((c) => c.status === 'ready').length
-  const elapsed = currentChunk ? currentChunk.duration * progress : 0
+  // The host reports the real clip length once known; until then fall back to
+  // the passage's estimated duration so the scrubber still has a total to show.
+  const total = position.duration > 0 ? position.duration : currentChunk?.duration ?? 0
+  const elapsed = currentChunk ? Math.min(position.currentTime, total) : 0
+  const fraction = total > 0 ? elapsed / total : 0
 
   return (
     <div className="player" role="region" aria-label="Audio player">
@@ -864,9 +929,9 @@ function Player({
         <div className="scrubber">
           <span className="time">{fmtTime(elapsed)}</span>
           <div className="track">
-            <div className="played" style={{ width: `${progress * 100}%` }} />
+            <div className="played" style={{ width: `${fraction * 100}%` }} />
           </div>
-          <span className="time">{fmtTime(currentChunk?.duration ?? 0)}</span>
+          <span className="time">{fmtTime(total)}</span>
         </div>
       </div>
 

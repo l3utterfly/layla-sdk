@@ -157,6 +157,11 @@ const mockFileStoragePrefix = '@layla-network/sdk:mock:file:';
 const mockVoiceAudioDataUri =
   'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
 const mockVoiceFilename = 'mock-voice.wav';
+// The real host reports each track's true audio duration and ticks status
+// roughly once per second. The mock invents a short fixed duration and ticks a
+// little faster so a queue plays through quickly and the scrubber stays smooth.
+const mockTrackDurationSec = 6;
+const mockAudioTickMs = 250;
 
 const mockFileStorageKey = (filename: string): string =>
   `${mockFileStoragePrefix}${filename}`;
@@ -302,7 +307,10 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     queueAudioFiles: string[];
     currentIndex: number;
     playing: boolean;
+    currentTime: number;
+    duration: number;
   } | null = null;
+  let backgroundAudioTimer: ReturnType<typeof setInterval> | null = null;
 
   const log = (...a: unknown[]) => {
     if (options.debug) console.log('[layla-mock]', ...a);
@@ -1114,17 +1122,60 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
       data: {
         playing: backgroundAudio.playing,
         currentIndex: backgroundAudio.currentIndex,
-        currentTime: 0,
-        duration: 0,
+        currentTime: backgroundAudio.currentTime,
+        duration: backgroundAudio.duration,
         isLoaded: true,
       },
     });
+  }
+
+  function stopBackgroundTicking(): void {
+    if (backgroundAudioTimer !== null) {
+      clearInterval(backgroundAudioTimer);
+      backgroundAudioTimer = null;
+    }
+  }
+
+  /**
+   * Drive the simulated playhead: advance currentTime, emit a status update each
+   * tick, auto-advance to the next track when one ends (emitting
+   * track_changed), and emit finished when the queue runs out — mirroring how
+   * the real host owns queue progression.
+   */
+  function startBackgroundTicking(): void {
+    stopBackgroundTicking();
+    backgroundAudioTimer = setInterval(() => {
+      if (!backgroundAudio || !backgroundAudio.playing) return;
+
+      backgroundAudio.currentTime += mockAudioTickMs / 1000;
+      if (backgroundAudio.currentTime < backgroundAudio.duration) {
+        emitBackgroundAudioStatus();
+        return;
+      }
+
+      const previousIndex = backgroundAudio.currentIndex;
+      const nextIndex = previousIndex + 1;
+      if (nextIndex < backgroundAudio.queueAudioFiles.length) {
+        backgroundAudio.currentIndex = nextIndex;
+        backgroundAudio.currentTime = 0;
+        emit({
+          event: 'on_background_audio_track_changed',
+          data: { currentIndex: nextIndex, previousIndex },
+        });
+        emitBackgroundAudioStatus();
+      } else {
+        stopBackgroundTicking();
+        backgroundAudio = null;
+        emit({ event: 'on_background_audio_finished', data: null });
+      }
+    }, mockAudioTickMs);
   }
 
   function handleStartBackgroundAudioPlayer(data: {
     queueAudioFiles: string[];
   }): void {
     if (data.queueAudioFiles.length === 0) {
+      stopBackgroundTicking();
       backgroundAudio = null;
       return;
     }
@@ -1133,24 +1184,34 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
       queueAudioFiles: [...data.queueAudioFiles],
       currentIndex: 0,
       playing: true,
+      currentTime: 0,
+      duration: mockTrackDurationSec,
     };
-    queueMicrotask(emitBackgroundAudioStatus);
+    queueMicrotask(() => {
+      emitBackgroundAudioStatus();
+      startBackgroundTicking();
+    });
   }
 
   function handleStopBackgroundAudioPlayer(): void {
+    stopBackgroundTicking();
     backgroundAudio = null;
   }
 
   function handlePauseBackgroundAudioPlayer(): void {
     if (!backgroundAudio) return;
     backgroundAudio.playing = false;
+    stopBackgroundTicking();
     queueMicrotask(emitBackgroundAudioStatus);
   }
 
   function handleResumeBackgroundAudioPlayer(): void {
     if (!backgroundAudio) return;
     backgroundAudio.playing = true;
-    queueMicrotask(emitBackgroundAudioStatus);
+    queueMicrotask(() => {
+      emitBackgroundAudioStatus();
+      startBackgroundTicking();
+    });
   }
 
   function handleSkipBackgroundAudioTrack(data: { index?: number }): void {
@@ -1174,6 +1235,7 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     if (currentIndex === previousIndex) return;
 
     backgroundAudio.currentIndex = currentIndex;
+    backgroundAudio.currentTime = 0;
     queueMicrotask(() => {
       emit({
         event: 'on_background_audio_track_changed',
@@ -1311,6 +1373,7 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     },
     emitBackgroundAudioFinished() {
       if (!installed) return;
+      stopBackgroundTicking();
       backgroundAudio = null;
       const event: LaylaApiEvent_onBackgroundAudioFinished = {
         event: 'on_background_audio_finished',
@@ -1355,6 +1418,7 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
       installed = false;
       if (current) current.cancelled = true;
       if (currentSpeech) currentSpeech.cancelled = true;
+      stopBackgroundTicking();
       backgroundAudio = null;
       if (previous) window.ReactNativeWebView = previous;
       else delete window.ReactNativeWebView;
