@@ -146,6 +146,22 @@ const FORMAT_META: Record<BookFormat, { label: string; icon: LucideIcon }> = {
   epub: { label: 'EPUB', icon: FileType2 },
 }
 
+/** True on devices that can drag-and-drop (fine pointer + hover). Mobile /
+ * touch devices return false so we can swap in tap-appropriate copy. */
+function useCanDragDrop(): boolean {
+  const query = '(hover: hover) and (pointer: fine)'
+  const [canDrag, setCanDrag] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia(query).matches,
+  )
+  useEffect(() => {
+    const mq = window.matchMedia(query)
+    const onChange = () => setCanDrag(mq.matches)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
+  return canDrag
+}
+
 function fmtTime(sec: number): string {
   const s = Math.max(0, Math.round(sec))
   const m = Math.floor(s / 60)
@@ -190,35 +206,12 @@ export default function App() {
   // `currentIndex`. A ref (not state) because the event listeners read it.
   const queueRef = useRef<number[] | null>(null)
 
-  // The voice used for pre-generation. `null` means the host's default voice;
-  // we read it into a ref so resolving it later doesn't restart synthesis.
-  const voiceRef = useRef<string | null>(null)
-  const [voiceName, setVoiceName] = useState<string | null>(null)
-
   const resetPlayback = useCallback(() => {
     queueRef.current = null
     setPlayingId(null)
     setIsPlaying(false)
     setPosition({ currentTime: 0, duration: 0 })
     void layla.backgroundAudio.stop()
-  }, [])
-
-  useEffect(() => {
-    let active = true
-    layla.tts
-      .getVoices()
-      .then((voices) => {
-        if (!active) return
-        const voice = voices[0] ?? null
-        voiceRef.current = voice?.id ?? null
-        setVoiceName(voice?.name ?? null)
-      })
-      .catch(() => {
-        // No voices available — fall back to the host default voice (null).
-      })
-    return () => {
-      active = false
-    }
   }, [])
 
   const loadBook = useCallback((source: Book) => {
@@ -264,15 +257,21 @@ export default function App() {
         patchChunk(chunk.id, { status: 'synthesizing' })
         try {
           const result = await layla.tts.generateVoiceToFile(
-            voiceRef.current,
+            null, // null = use the host's globally configured TTS voice
             chunk.text,
             true, // save = true — persist the clip and return its filename
             { signal: controller.signal },
           )
           if (cancelled) return
+          // The host reports failures in-band via success=false rather than
+          // rejecting, so surface those the same way as a thrown error.
+          if (!result.success || !result.filename) {
+            patchChunk(chunk.id, { status: 'pending' })
+            return
+          }
           patchChunk(chunk.id, {
             status: 'ready',
-            filename: result.filename ?? undefined,
+            filename: result.filename,
           })
         } catch (err) {
           if (cancelled || err instanceof LaylaAbortError) return
@@ -493,7 +492,6 @@ export default function App() {
               book={book}
               currentChunk={currentChunk}
               isPlaying={isPlaying}
-              voiceName={voiceName}
               onReset={reset}
               onJump={jumpTo}
             />
@@ -581,12 +579,14 @@ function Landing({
   onFileChosen: (files: FileList | null) => void
   onPickSample: (book: Book) => void
 }) {
+  const canDrag = useCanDragDrop()
+  const openPicker = () => fileInputRef.current?.click()
   return (
     <section className="landing">
       <p className="eyebrow">Text → Speech</p>
       <h1>Turn your books into audio</h1>
       <p className="lead">
-        Drop in a document and Layla reads it aloud — extracting the text,
+        Add a document and Layla reads it aloud — extracting the text,
         splitting it into passages, and voicing each one in order.
       </p>
 
@@ -600,26 +600,46 @@ function Landing({
 
       <div
         className={`dropzone${dragActive ? ' drag' : ''}`}
-        onDragOver={(e) => {
-          e.preventDefault()
-          setDragActive(true)
+        role="button"
+        tabIndex={0}
+        onClick={openPicker}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            openPicker()
+          }
         }}
-        onDragLeave={() => setDragActive(false)}
-        onDrop={(e) => {
-          e.preventDefault()
-          setDragActive(false)
-          onFileChosen(e.dataTransfer.files)
-        }}
+        onDragOver={
+          canDrag
+            ? (e) => {
+                e.preventDefault()
+                setDragActive(true)
+              }
+            : undefined
+        }
+        onDragLeave={canDrag ? () => setDragActive(false) : undefined}
+        onDrop={
+          canDrag
+            ? (e) => {
+                e.preventDefault()
+                setDragActive(false)
+                onFileChosen(e.dataTransfer.files)
+              }
+            : undefined
+        }
       >
         <span className="dropzone-icon">
           <Upload size={26} />
         </span>
-        <h3>Drop a file here</h3>
-        <p>or choose one from your device</p>
+        <h3>{canDrag ? 'Drop a file here' : 'Choose a file to get started'}</h3>
+        <p>{canDrag ? 'or choose one from your device' : 'TXT, PDF or EPUB from your device'}</p>
         <button
           type="button"
           className="btn primary"
-          onClick={() => fileInputRef.current?.click()}
+          onClick={(e) => {
+            e.stopPropagation()
+            openPicker()
+          }}
         >
           <BookOpen size={16} /> Choose file
         </button>
@@ -669,14 +689,12 @@ function Reader({
   book,
   currentChunk,
   isPlaying,
-  voiceName,
   onReset,
   onJump,
 }: {
   book: Book
   currentChunk: Chunk | null
   isPlaying: boolean
-  voiceName: string | null
   onReset: () => void
   onJump: (c: Chunk) => void
 }) {
@@ -735,8 +753,8 @@ function Reader({
             name="Pre-generating audio"
             sub={
               synthDone
-                ? `All clips saved${voiceName ? ` · ${voiceName}` : ''}`
-                : `${readyCount} / ${total} clips saved${voiceName ? ` · ${voiceName}` : ''}`
+                ? 'All clips saved'
+                : `${readyCount} / ${total} clips saved`
             }
           />
           <Stage

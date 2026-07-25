@@ -54,6 +54,9 @@ body {
   -moz-osx-font-smoothing: grayscale;
   font-size: 14px;
   line-height: 1.5;
+  /* Long words / unbroken strings (filenames in errors, URLs) wrap instead of
+     pushing content past the viewport edge on narrow screens. */
+  overflow-wrap: break-word;
 }
 
 button {
