@@ -1,0 +1,65 @@
+name: Release ebook reader
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'examples/ebook-reader/**'
+
+permissions:
+  contents: write   # create releases + upload assets
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: examples/ebook-reader
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Read version
+        id: ver
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Check if this version was already released
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="ebook-reader-v${{ steps.ver.outputs.version }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists — skipping."
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install dependencies
+        if: steps.check.outputs.exists == 'false'
+        run: npm ci
+
+      - name: Build
+        if: steps.check.outputs.exists == 'false'
+        run: npm run build        # tsc -b && vite build → dist/
+
+      - name: Package assets
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          (cd dist && zip -r "$GITHUB_WORKSPACE/ebook-reader.zip" .)
+
+      - name: Create release
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="ebook-reader-v${{ steps.ver.outputs.version }}"
+          gh release create "$TAG" \
+            --title "ebook-reader v${{ steps.ver.outputs.version }}" \
+            --generate-notes \
+            --latest=false \
+            "$GITHUB_WORKSPACE/ebook-reader.zip"
