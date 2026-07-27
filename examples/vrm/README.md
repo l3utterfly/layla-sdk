@@ -137,11 +137,11 @@ Any `.vrma` retargets automatically onto your model via its humanoid bones.
 This file is served from the site root as `/settings.json`. It's read at
 runtime, so after `npm run build` you can still edit it inside `dist/` and just
 refresh the page. The transform debug panel appears automatically when the app
-is running standalone (the Layla execution context is `null`). Its file pickers
-can load a local `.vrm`, image skybox, or image/GLB background into the current
-scene for quick testing. Skyboxes and backgrounds can also be removed from the
-scene; the VRM model always remains present. Use **Export zip** to save the
-current model, background, skybox, configured VRMA animations, live
+is running standalone (the Layla execution context has no character or session).
+Its file pickers can load a local `.vrm`, image skybox, or image/GLB background
+into the current scene for quick testing. Skyboxes and backgrounds can also be
+removed from the scene; the VRM model always remains present. Use **Export zip**
+to save the current model, background, skybox, configured VRMA animations, live
 transform/camera settings, and the app's metadata, icon, and cover image as a
 self-contained asset archive. Paths in the exported `settings.json` are
 relative to the archive root, and the exported `app.json` is named after the

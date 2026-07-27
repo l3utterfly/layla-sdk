@@ -117,12 +117,14 @@ Read `references/sdk-api.md` before using a method signature that is not shown h
 ## Contextual Mini-Apps
 
 Use `layla.contextual.getExecutionContext(options?)` to get the current character
-and session, or `null` when standalone. Contextual mini-apps can subscribe to
-new messages, sentiment updates, and character speaking or thinking state in
-the surrounding chat.
+and session along with the current Layla `app_version`. The context object is
+always returned; its `character` and `session_id` fields are `null` when
+standalone. Contextual mini-apps can subscribe to new messages, sentiment
+updates, and character speaking or thinking state in the surrounding chat.
 
 ```ts
-const context: LaylaExecutionContext | null = await layla.contextual.getExecutionContext();
+const context: LaylaExecutionContext = await layla.contextual.getExecutionContext();
+console.log(context.app_version);
 const onNewMessage: ChatContextNewMessageListener = ({ message }) => {
   console.log(message.role, message.content);
 };
@@ -156,7 +158,8 @@ The host uses `on_finished_speaking` for both contextual speech completion and
 TTS playback completion, so treat `chatContextFinishedSpeaking` as a shared
 speech-finished signal rather than a source-specific event.
 
-For local testing, set `executionContext` in `installLaylaMock(...)` and drive
+For local testing, set `executionContext` (including `app_version`) in
+`installLaylaMock(...)`, or omit it to use a standalone mock context. Drive
 events with the returned handle's `emitChatContextNewMessage(...)`,
 `emitChatContextSentimentUpdate(...)`, `emitChatContextStartedSpeaking()`,
 `emitChatContextFinishedSpeaking()`, and `emitChatContextStartedThinking()`.

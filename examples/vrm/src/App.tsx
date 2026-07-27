@@ -684,7 +684,10 @@ export default function App() {
         if (!res.ok) throw new Error(`Could not load settings.json (${res.status})`);
         const settings = (await res.json()) as ViewerSettings;
         setSettings(settings);
-        setIsStandalone(executionContext === null);
+        setIsStandalone(
+          executionContext.character === null &&
+            executionContext.session_id === null,
+        );
 
         if (cancelled || !containerRef.current) return;
 

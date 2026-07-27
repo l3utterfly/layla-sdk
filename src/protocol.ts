@@ -200,6 +200,7 @@ export interface TavernCharacterBook {
 }
 
 export interface LaylaExecutionContext {
+  app_version: string; // the current version of the Layla app
   character: LaylaCharacter | null; // the current character context, or null if no character is selected
   session_id: string | null; // the current session ID, or null if no session is active
 }
@@ -508,7 +509,7 @@ export interface LaylaApiSetInferenceEngine {
 /**
  * Ask the host for the current execution context.
  * The execution context can include information about the current state of the host, such as current character, session, or other relevant data.
- * The execution context can also be null, which means the mini-app is running standalone as a top-level mini-app, without any character or session context.
+ * For a standalone top-level mini-app, the character and session fields are null.
  * The host should respond with an `on_get_execution_context_response` event containing the current execution context.
  */
 export interface LaylaApiGetExecutionContext {
@@ -890,11 +891,11 @@ export interface LaylaApiEvent_onSetInferenceEngineResponse {
 /**
  * The response for a `get_execution_context` request, containing the current execution context of the mini-app.
  * The execution context can include information about the current state of the host, such as current character, session, or other relevant data.
- * If the mini-app is running standalone as a top-level mini-app without any character or session context, the `data` field will be null.
+ * If the mini-app is running standalone as a top-level mini-app, its character and session fields will be null.
  */
 export interface LaylaApiEvent_onGetExecutionContextResponse {
   event: 'on_get_execution_context_response';
-  data: LaylaExecutionContext | null; // the current execution context, or null if the mini-app is running standalone as a top-level mini-app without any character or session context
+  data: LaylaExecutionContext; // the current execution context
 }
 
 /**

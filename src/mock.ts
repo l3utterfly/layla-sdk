@@ -112,9 +112,9 @@ export interface LaylaMockOptions {
   inferenceEngines?: string[];
   /**
    * Context returned by `contextual.getExecutionContext()`.
-   * Defaults to `null`, matching a standalone top-level mini-app.
+   * Defaults to a mock app version with no active character or session.
    */
-  executionContext?: LaylaExecutionContext | null;
+  executionContext?: LaylaExecutionContext;
   /** TTS voices returned by `tts.getVoices()`. Defaults to two sample voices. */
   ttsVoices?: LaylaTTSVoice[];
   /**
@@ -484,7 +484,11 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     'mock-fast',
     'mock-quality',
   ];
-  const executionContext = options.executionContext ?? null;
+  const executionContext: LaylaExecutionContext = options.executionContext ?? {
+    app_version: 'mock',
+    character: null,
+    session_id: null,
+  };
   let selectedInferenceEngine: string | null = null;
   try {
     for (const [filename, contentBase64] of Object.entries(options.files ?? {})) {

@@ -30,12 +30,12 @@ if (import.meta.env.DEV) {
   });
   const mock = installLaylaMock({
     characters: [character],
-    
-    // to test execution under no context
-    executionContext: null,
+
+    // Omit executionContext to test standalone mode.
 
     // to test execution under chat
     // executionContext: {
+    //   app_version: "mock",
     //   character,
     //   session_id: MOCK_SESSION_ID,
     // },

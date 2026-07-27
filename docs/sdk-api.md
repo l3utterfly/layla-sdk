@@ -125,20 +125,21 @@ const layla = new LaylaSDK({
 ## `layla.contextual.getExecutionContext(options?)`
 
 Returns the context in which the host launched the mini-app. A contextual
-mini-app receives the current character and chat session. A standalone
-top-level mini-app receives `null`.
+mini-app receives the current character and chat session. The context always
+includes `app_version`, the version of the Layla app hosting the mini-app. For
+a standalone top-level mini-app, `character` and `session_id` are both `null`.
 
 ```ts
 const context = await layla.contextual.getExecutionContext();
 
-if (context) {
-  console.log(context.character?.data.data.name);
-  console.log(context.session_id);
-}
+console.log(context.app_version);
+console.log(context.character?.data.data.name);
+console.log(context.session_id);
 ```
 
 The character and session fields may each be `null` when that part of the
-context is not active. Pass an abort signal as the first argument:
+context is not active. Detect standalone mode by checking both fields. Pass an
+abort signal as the first argument:
 
 ```ts
 const context = await layla.contextual.getExecutionContext({
@@ -1192,6 +1193,7 @@ const character = makeMockCharacter('Aria');
 const mock = installLaylaMock({
   characters: [character],
   executionContext: {
+    app_version: '1.8.0',
     character,
     session_id: 'mock-aria-session-1',
   },
@@ -1218,7 +1220,7 @@ layla.contextual.on('chatContextStartedThinking', () => {
 mock.emitChatContextNewMessage({
   message: { role: 'user', content: 'Hello from the surrounding chat.' },
   character_id: character.id,
-  session_id: context?.session_id ?? 'mock-aria-session-1',
+  session_id: context.session_id ?? 'mock-aria-session-1',
   timestamp: Date.now(),
 });
 mock.emitChatContextSentimentUpdate({ sentiment: 'joy' });
@@ -1227,9 +1229,10 @@ mock.emitChatContextFinishedSpeaking();
 mock.emitChatContextStartedThinking();
 ```
 
-When `executionContext` is omitted or set to `null`, the mock represents a
-standalone top-level mini-app. The mock handle's `emitChatContext...` methods
-let local tests drive the same pushed events that the Layla host emits.
+When `executionContext` is omitted, the mock returns `{ app_version: 'mock',
+character: null, session_id: null }`, representing a standalone top-level
+mini-app. The mock handle's `emitChatContext...` methods let local tests drive
+the same pushed events that the Layla host emits.
 
 Customize mock session history with static transcript data:
 

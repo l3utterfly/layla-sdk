@@ -80,12 +80,13 @@ export class Contextual {
 
   /**
    * Ask the native host for the context in which this mini-app is running.
-   * Returns `null` for a standalone top-level mini-app.
+   * The returned context always includes the Layla app version. Its character
+   * and session fields are `null` for a standalone top-level mini-app.
    */
   getExecutionContext(
     options: RequestOptions = {},
-  ): Promise<LaylaExecutionContext | null> {
-    return oneShot<LaylaExecutionContext | null>(
+  ): Promise<LaylaExecutionContext> {
+    return oneShot<LaylaExecutionContext>(
       { cmd: 'get_execution_context', data: null },
       'on_get_execution_context_response',
       (event: LaylaApiEvent) =>
