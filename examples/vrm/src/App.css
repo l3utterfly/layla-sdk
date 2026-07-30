@@ -230,6 +230,335 @@
   opacity: 0.6;
 }
 
+.debug-help-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 12px;
+  color: #cfe6ff;
+  background: rgba(71, 166, 255, 0.12);
+  border: 1px solid rgba(71, 166, 255, 0.4);
+  border-radius: 7px;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.debug-help-button:hover {
+  background: rgba(71, 166, 255, 0.2);
+  border-color: rgba(71, 166, 255, 0.6);
+}
+
+.debug-help-button:focus-visible {
+  outline: 2px solid #47a6ff;
+  outline-offset: 2px;
+}
+
+.debug-help-button svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+/* Full-screen help modal — Layla site style: charcoal surface, electric blue accent. */
+.help-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(4, 5, 8, 0.78);
+  backdrop-filter: blur(16px);
+  animation: fade-in 0.18s ease-out both;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+}
+
+.help-modal {
+  display: flex;
+  flex-direction: column;
+  width: min(680px, 100%);
+  max-height: min(880px, 100%);
+  overflow: hidden;
+  color: #fff;
+  background: #202126;
+  border: 1px solid #343434;
+  border-radius: 24px;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.65), 0 0 60px rgba(71, 166, 255, 0.12);
+  animation: help-modal-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.help-modal__header {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 24px 24px 18px;
+  border-bottom: 1px solid #343434;
+  background: linear-gradient(
+    180deg,
+    rgba(71, 166, 255, 0.14),
+    rgba(32, 33, 38, 0)
+  );
+}
+
+.help-modal__eyebrow {
+  margin: 0 0 6px;
+  color: #47a6ff;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.help-modal__title {
+  margin: 0;
+  font-size: clamp(24px, 5vw, 32px);
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+}
+
+.help-modal__close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  color: #d3d3d3;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid #343434;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.help-modal__close:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+  border-color: #505050;
+}
+
+.help-modal__close:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+.help-modal__close svg {
+  width: 20px;
+  height: 20px;
+}
+
+.help-modal__body {
+  padding: 20px 24px 28px;
+  overflow-y: auto;
+}
+
+.help-modal__intro {
+  margin: 0 0 22px;
+  color: #d3d3d3;
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.help-steps {
+  display: grid;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: none;
+}
+
+.help-step {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 14px;
+  padding: 16px;
+  background: #2a2a2a;
+  border: 1px solid #343434;
+  border-radius: 16px;
+}
+
+.help-step__marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  color: #47a6ff;
+  background: rgba(71, 166, 255, 0.15);
+  border: 1px solid rgba(71, 166, 255, 0.45);
+  border-radius: 999px;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.help-step__content {
+  min-width: 0;
+}
+
+.help-step__title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 5px 0 8px;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.help-step__badge {
+  padding: 2px 9px;
+  color: #888;
+  background: #383838;
+  border: 1px solid #343434;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.help-step__text {
+  margin: 0;
+  color: #d3d3d3;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.help-step__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 8px 14px;
+  color: #47a6ff;
+  background: rgba(71, 166, 255, 0.12);
+  border: 1px solid rgba(71, 166, 255, 0.4);
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.help-step__link:hover {
+  background: rgba(71, 166, 255, 0.2);
+  border-color: rgba(71, 166, 255, 0.6);
+}
+
+.help-step__link:focus-visible {
+  outline: 2px solid #47a6ff;
+  outline-offset: 2px;
+}
+
+.help-step__link svg {
+  width: 15px;
+  height: 15px;
+}
+
+.help-shots {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.help-shots--split {
+  grid-template-columns: 1fr 1fr;
+  align-items: start;
+}
+
+.help-shot {
+  margin: 0;
+}
+
+/* Fallback placeholder figure sits directly in the step, so it needs its own gap. */
+.help-step__content > .help-shot {
+  margin-top: 14px;
+}
+
+.help-shot__media {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 440px;
+  object-fit: contain;
+  background: #1c1c1c;
+  border: 1px solid #343434;
+  border-radius: 12px;
+}
+
+.help-shots--split .help-shot__media {
+  max-height: 360px;
+}
+
+.help-shot__caption {
+  margin-top: 8px;
+  color: #888;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.help-shot__placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  aspect-ratio: 16 / 9;
+  color: #888;
+  background: repeating-linear-gradient(
+    -45deg,
+    rgba(255, 255, 255, 0.02),
+    rgba(255, 255, 255, 0.02) 10px,
+    rgba(255, 255, 255, 0.04) 10px,
+    rgba(255, 255, 255, 0.04) 20px
+  );
+  border: 1px dashed #505050;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.help-shot__placeholder svg {
+  width: 34px;
+  height: 34px;
+  opacity: 0.7;
+}
+
+@keyframes help-modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 540px) {
+  .help-overlay {
+    padding: 0;
+    align-items: flex-end;
+  }
+  .help-modal {
+    width: 100%;
+    max-height: 92vh;
+    border-radius: 24px 24px 0 0;
+  }
+}
+
 /* Overlays sit above the canvas but never block it once we're ready. */
 .overlay {
   position: absolute;
@@ -319,7 +648,9 @@
   .spinner {
     animation-duration: 2s;
   }
-  .overlay {
+  .overlay,
+  .help-overlay,
+  .help-modal {
     animation: none;
   }
 }

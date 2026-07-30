@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   LaylaSDK,
   type ChatContextFinishedSpeakingListener,
@@ -361,6 +362,240 @@ function DebugFilePicker({
   );
 }
 
+type HelpMedia = {
+  type: "image" | "video";
+  /** Public path to the asset. */
+  src: string;
+  caption?: string;
+};
+
+type HelpStep = {
+  title: string;
+  text: string;
+  optional?: boolean;
+  link?: { href: string; label: string };
+  /** One or more screenshots/clips; multiple items lay out in columns. */
+  media?: HelpMedia[];
+};
+
+const HELP_STEPS: HelpStep[] = [
+  {
+    title: "Download a VRM model",
+    text: "Grab an avatar from VRoid Hub. Filter for models that are free to use and downloadable, then open a model and download its .vrm file.",
+    link: {
+      href: "https://hub.vroid.com/en/models?is_other_users_available=1&is_downloadable=1",
+      label: "Open VRoid Hub",
+    },
+    media: [
+      {
+        type: "image",
+        src: "/tutorial/download/1.jpg",
+        caption: "Browse and pick a model",
+      },
+      {
+        type: "video",
+        src: "/tutorial/download/1.1.mp4",
+        caption: "Download the .vrm file",
+      },
+    ],
+  },
+  {
+    title: "Add an environment",
+    text: "Set the scene with a background. Any .glb model works — Sketchfab's places & travel category is a good place to start.",
+    optional: true,
+    link: {
+      href: "https://sketchfab.com/3d-models/categories/places-travel?date=week&sort_by=-likeCount&cursor=bz04JnA9Mg%3D%3D",
+      label: "Browse Sketchfab",
+    },
+    media: [{ type: "image", src: "/tutorial/download/2.jpg" }],
+  },
+  {
+    title: "Set a skybox image",
+    text: "Wrap the scene in atmosphere by loading an image as the skybox. It fills the space behind your model and environment.",
+    optional: true,
+    media: [{ type: "image", src: "/tutorial/download/3.jpg" }],
+  },
+  {
+    title: "Adjust each transform",
+    text: "Fine-tune the scale and rotation for the model and background until the composition looks right on your screen.",
+    media: [{ type: "image", src: "/tutorial/download/4.jpg" }],
+  },
+  {
+    title: "Export your scene",
+    text: "When it looks right, export a zip package. Your model, background, skybox, and transforms are all bundled together, ready to use.",
+    media: [{ type: "image", src: "/tutorial/download/5.jpg" }],
+  },
+];
+
+function HelpModal({ onClose }: { onClose: () => void }) {
+  const closeRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    closeRef.current?.focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKeyDown);
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [onClose]);
+
+  return createPortal(
+    <div
+      className="help-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="help-title"
+      onClick={onClose}
+    >
+      <div className="help-modal" onClick={(event) => event.stopPropagation()}>
+        <header className="help-modal__header">
+          <div className="help-modal__heading">
+            <p className="help-modal__eyebrow">VRM Viewer</p>
+            <h1 className="help-modal__title" id="help-title">
+              How to build your scene
+            </h1>
+          </div>
+          <button
+            ref={closeRef}
+            className="help-modal__close"
+            type="button"
+            onClick={onClose}
+            aria-label="Close help"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M6 6l12 12M18 6L6 18"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+            </svg>
+          </button>
+        </header>
+
+        <div className="help-modal__body">
+          <p className="help-modal__intro">
+            Load an avatar, dress the scene around it, then dial in the framing.
+            Steps two and three are optional — a bare avatar works fine on its own.
+          </p>
+
+          <ol className="help-steps">
+            {HELP_STEPS.map((step, index) => (
+              <li className="help-step" key={step.title}>
+                <div className="help-step__marker" aria-hidden="true">
+                  {index + 1}
+                </div>
+                <div className="help-step__content">
+                  <h2 className="help-step__title">
+                    {step.title}
+                    {step.optional && (
+                      <span className="help-step__badge">Optional</span>
+                    )}
+                  </h2>
+                  <p className="help-step__text">{step.text}</p>
+                  {step.link && (
+                    <a
+                      className="help-step__link"
+                      href={step.link.href}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {step.link.label}
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path
+                          d="M7 17L17 7M9 7h8v8"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </a>
+                  )}
+                  {step.media && step.media.length > 0 ? (
+                    <div
+                      className={`help-shots${
+                        step.media.length > 1 ? " help-shots--split" : ""
+                      }`}
+                    >
+                      {step.media.map((item) => (
+                        <figure className="help-shot" key={item.src}>
+                          {item.type === "video" ? (
+                            <video
+                              className="help-shot__media"
+                              src={item.src}
+                              autoPlay
+                              loop
+                              muted
+                              playsInline
+                              controls
+                            />
+                          ) : (
+                            <img
+                              className="help-shot__media"
+                              src={item.src}
+                              alt={`${step.title} screenshot`}
+                              loading="lazy"
+                            />
+                          )}
+                          {item.caption && (
+                            <figcaption className="help-shot__caption">
+                              {item.caption}
+                            </figcaption>
+                          )}
+                        </figure>
+                      ))}
+                    </div>
+                  ) : (
+                    // Fallback placeholder when a step has no media yet.
+                    <figure className="help-shot">
+                      <div className="help-shot__placeholder">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <rect
+                            x="3"
+                            y="5"
+                            width="18"
+                            height="14"
+                            rx="2"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.6"
+                          />
+                          <circle cx="8.5" cy="10" r="1.6" fill="currentColor" />
+                          <path
+                            d="M5 18l4.5-5 3 3.5L15 14l4 4"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.6"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                        <span>Screenshot coming soon</span>
+                      </div>
+                    </figure>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 function DebugPanel({
   engine,
   settings,
@@ -403,6 +638,7 @@ function DebugPanel({
   const [backgroundError, setBackgroundError] = useState("");
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
+  const [helpOpen, setHelpOpen] = useState(false);
   const assetLoading = modelLoading || skyboxLoading || backgroundLoading;
 
   const updateModel = (value: TransformValue) => {
@@ -555,73 +791,101 @@ function DebugPanel({
   };
 
   return (
-    <details className="debug-panel" open>
-      <summary>Transform debug</summary>
-      <div className="debug-panel__content">
-        <DebugFilePicker
-          title="VRM model"
-          prompt="Choose .vrm file"
-          accept=".vrm,model/gltf-binary"
-          name={modelAsset.name}
-          loading={modelLoading}
-          disabled={assetLoading || exporting}
-          error={modelError}
-          onChange={selectModel}
-        />
-        <DebugFilePicker
-          title="Skybox"
-          prompt="Choose image"
-          accept="image/*"
-          name={skyboxAsset?.name ?? "None"}
-          loading={skyboxLoading}
-          disabled={assetLoading || exporting}
-          error={skyboxError}
-          onChange={selectSkybox}
-          onRemove={removeSkybox}
-        />
-        <DebugFilePicker
-          title="Background"
-          prompt="Choose image or .glb file"
-          accept="image/*,.glb,model/gltf-binary"
-          name={backgroundAsset?.name ?? backgroundValue ?? "None"}
-          loading={backgroundLoading}
-          disabled={assetLoading || exporting}
-          error={backgroundError}
-          onChange={selectBackground}
-          onRemove={removeBackground}
-        />
-        <CameraControls value={camera} onChange={updateCamera} />
-        <TransformControls
-          title="Model"
-          value={model}
-          positionRange={[-10, 10, 0.01]}
-          scaleRange={[0.01, 10, 0.01]}
-          onChange={updateModel}
-        />
-        <TransformControls
-          title="Background"
-          value={background}
-          positionRange={[-100, 100, 0.1]}
-          scaleRange={[0.01, 100, 0.01]}
-          onChange={updateBackground}
-        />
-        <div className="debug-export">
+    <>
+      <details className="debug-panel" open>
+        <summary>Transform debug</summary>
+        <div className="debug-panel__content">
           <button
-            className="debug-export__button"
+            className="debug-help-button"
             type="button"
-            disabled={assetLoading || exporting}
-            onClick={() => void exportArchive()}
+            onClick={() => setHelpOpen(true)}
           >
-            {exporting ? "Creating zip…" : "Export zip"}
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle
+                cx="12"
+                cy="12"
+                r="9"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+              />
+              <path
+                d="M9.2 9.3a2.8 2.8 0 015.4 1c0 1.9-2.6 2.2-2.6 3.9"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+              />
+              <circle cx="12" cy="17.4" r="1" fill="currentColor" />
+            </svg>
+            How to use this viewer
           </button>
-          {exportError && (
-            <p className="debug-file-error" role="alert">
-              {exportError}
-            </p>
-          )}
+          <DebugFilePicker
+            title="VRM model"
+            prompt="Choose .vrm file"
+            accept=".vrm,model/gltf-binary"
+            name={modelAsset.name}
+            loading={modelLoading}
+            disabled={assetLoading || exporting}
+            error={modelError}
+            onChange={selectModel}
+          />
+          <DebugFilePicker
+            title="Skybox"
+            prompt="Choose image"
+            accept="image/*"
+            name={skyboxAsset?.name ?? "None"}
+            loading={skyboxLoading}
+            disabled={assetLoading || exporting}
+            error={skyboxError}
+            onChange={selectSkybox}
+            onRemove={removeSkybox}
+          />
+          <DebugFilePicker
+            title="Background"
+            prompt="Choose image or .glb file"
+            accept="image/*,.glb,model/gltf-binary"
+            name={backgroundAsset?.name ?? backgroundValue ?? "None"}
+            loading={backgroundLoading}
+            disabled={assetLoading || exporting}
+            error={backgroundError}
+            onChange={selectBackground}
+            onRemove={removeBackground}
+          />
+          <CameraControls value={camera} onChange={updateCamera} />
+          <TransformControls
+            title="Model"
+            value={model}
+            positionRange={[-10, 10, 0.01]}
+            scaleRange={[0.01, 10, 0.01]}
+            onChange={updateModel}
+          />
+          <TransformControls
+            title="Background"
+            value={background}
+            positionRange={[-100, 100, 0.1]}
+            scaleRange={[0.01, 100, 0.01]}
+            onChange={updateBackground}
+          />
+          <div className="debug-export">
+            <button
+              className="debug-export__button"
+              type="button"
+              disabled={assetLoading || exporting}
+              onClick={() => void exportArchive()}
+            >
+              {exporting ? "Creating zip…" : "Export zip"}
+            </button>
+            {exportError && (
+              <p className="debug-file-error" role="alert">
+                {exportError}
+              </p>
+            )}
+          </div>
         </div>
-      </div>
-    </details>
+      </details>
+      {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
+    </>
   );
 }
 
