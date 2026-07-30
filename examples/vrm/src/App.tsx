@@ -643,6 +643,20 @@ export default function App() {
       | null = null;
     let isSpeaking = false;
 
+    // Tap-to-look: a tap points the avatar at the touch location, then it eases
+    // back to facing the camera after a short pause. Each tap refreshes the pause,
+    // so repeated taps keep it looking around. Mobile-first, so this is driven by
+    // pointer events (which cover touch, pen, and mouse alike).
+    const LOOK_BACK_DELAY_MS = 3000;
+    let lookBackTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const onPointerTap = (event: PointerEvent) => {
+      if (!engine) return;
+      engine.lookAt(event.clientX, event.clientY);
+      if (lookBackTimer !== undefined) clearTimeout(lookBackTimer);
+      lookBackTimer = setTimeout(() => engine?.stopLookAt(), LOOK_BACK_DELAY_MS);
+    };
+
     const onStartedSpeaking: ChatContextStartedSpeakingListener = () => {
       if (cancelled) return;
       isSpeaking = true;
@@ -727,6 +741,10 @@ export default function App() {
     layla.contextual.on("chatContextStartedSpeaking", onStartedSpeaking);
     layla.contextual.on("chatContextFinishedSpeaking", onFinishedSpeaking);
     layla.contextual.on("chatContextStartedThinking", onStartedThinking);
+    // The div is mounted by the time this effect runs; taps before the engine
+    // is ready are ignored by the handler.
+    const stage = containerRef.current;
+    stage?.addEventListener("pointerdown", onPointerTap);
     boot();
 
     return () => {
@@ -735,6 +753,8 @@ export default function App() {
       layla.contextual.off("chatContextStartedSpeaking", onStartedSpeaking);
       layla.contextual.off("chatContextFinishedSpeaking", onFinishedSpeaking);
       layla.contextual.off("chatContextStartedThinking", onStartedThinking);
+      stage?.removeEventListener("pointerdown", onPointerTap);
+      if (lookBackTimer !== undefined) clearTimeout(lookBackTimer);
       if (window.avatar === engine) delete window.avatar;
       if (engineRef.current === engine) engineRef.current = null;
       engine?.dispose();

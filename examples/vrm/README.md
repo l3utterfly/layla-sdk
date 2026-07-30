@@ -88,6 +88,27 @@ Available presets depend on the model, but the standard ones are: `blink`,
 emotions `happy` / `angry` / `sad` / `relaxed` / `surprised` / `neutral`.
 Setting a preset the model doesn't define is a safe no-op.
 
+## Looking at a point
+
+The avatar can turn its head (and eyes) to look at a point in **screen space**.
+Feed it pointer coordinates and it tracks that spot, layered on top of the
+procedural idle so the head still drifts subtly while it aims:
+
+```js
+// Follow the cursor (clientX / clientY from a pointer event)
+window.addEventListener("mousemove", (e) => avatar.lookAt(e.clientX, e.clientY));
+avatar.stopLookAt();               // release; head and eyes ease back to neutral
+
+avatar.lookAtNdc(0, 0);            // normalized device coords, x,y in [-1,1], y up
+avatar.lookAtWorld(0, 1.4, 2);    // an explicit world-space position
+```
+
+Tune it under `lookAt` in `settings.json`: `maxYaw` / `maxPitch` cap the turn,
+`smoothing` sets how lazily the head chases a moving point, `fade` blends the
+whole look in and out, `distribution` shares the turn across chest/neck/head,
+and `eyes: false` turns off the eye tracking. The point is resolved at the
+avatar's own depth, so pointing at the avatar looks it straight at the camera.
+
 ### Mapping Layla sentiments to expressions
 
 The app listens directly for `chatContextSentimentUpdate` from Layla and uses

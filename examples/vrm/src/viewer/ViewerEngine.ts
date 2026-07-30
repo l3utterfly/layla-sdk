@@ -13,6 +13,7 @@ import {
   ProceduralTalking,
   type TalkingSettings,
 } from "./ProceduralTalking";
+import { ProceduralLookAt, type LookAtSettings } from "./ProceduralLookAt";
 
 const DEG2RAD = Math.PI / 180;
 const MOUTH_VISEMES = ["aa", "ih", "ou", "ee", "oh"] as const;
@@ -42,6 +43,7 @@ export interface ViewerSettings {
   thinking?: string[];
   idle?: IdleSettings;
   talking?: TalkingSettings;
+  lookAt?: LookAtSettings;
   animation?: {
     crossFadeDuration?: number;
   };
@@ -133,6 +135,7 @@ export class ViewerEngine {
   private readonly _neutralIndices: number[] = [];
   private proceduralIdle: ProceduralIdle | null = null;
   private proceduralTalking: ProceduralTalking | null = null;
+  private proceduralLookAt: ProceduralLookAt | null = null;
   private _talking = false;
   private _ambientEnabled = true;
   private _ambientTimer = _randomNeutralDelay();
@@ -528,6 +531,11 @@ export class ViewerEngine {
     this.mixer = mixer;
     this.proceduralIdle = new ProceduralIdle(vrm, this.settings.idle);
     this.proceduralTalking = new ProceduralTalking(vrm, this.settings.talking);
+    this.proceduralLookAt = new ProceduralLookAt(
+      vrm,
+      this.camera,
+      this.settings.lookAt,
+    );
     if (this._talking) this.proceduralTalking.start();
     this.scene.add(vrm.scene);
 
@@ -924,6 +932,45 @@ export class ViewerEngine {
     return talking ? this.startTalking() : this.stopTalking();
   }
 
+  /* ----------------------------------------------------------------- look-at */
+  // Turn the avatar's head (and eyes) toward a point. The head keeps tracking
+  // the last point you gave until you call stopLookAt(). Layers on top of the
+  // procedural idle, so the head still drifts subtly while it aims.
+
+  /**
+   * Look at a point in **screen space**, given as coordinates from a pointer
+   * event (clientX/clientY). Feed a mousemove straight in:
+   *   window.addEventListener("mousemove", (e) => avatar.lookAt(e.clientX, e.clientY))
+   */
+  lookAt(clientX: number, clientY: number) {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    this.proceduralLookAt?.lookAtScreen(
+      clientX - rect.left,
+      clientY - rect.top,
+      rect.width,
+      rect.height,
+    );
+    return this;
+  }
+
+  /** Look at a point in normalized device coordinates (x,y ∈ [-1,1], y up). */
+  lookAtNdc(x: number, y: number) {
+    this.proceduralLookAt?.lookAtNdc(x, y);
+    return this;
+  }
+
+  /** Look at an explicit world-space position. */
+  lookAtWorld(x: number, y: number, z: number) {
+    this.proceduralLookAt?.lookAtWorld(new THREE.Vector3(x, y, z));
+    return this;
+  }
+
+  /** Release the look; the head and eyes ease back to neutral. */
+  stopLookAt() {
+    this.proceduralLookAt?.clear();
+    return this;
+  }
+
   private _applyFace(delta: number) {
     const em = this.vrm?.expressionManager;
     if (!em) return;
@@ -1078,6 +1125,9 @@ export class ViewerEngine {
       this.vrm?.humanoid.resetNormalizedPose();
       this.mixer?.update(delta);
       this.proceduralIdle?.update(delta);
+      // Aim the head after the idle so its micro-drift shows through, and before
+      // vrm.update() so the eye look-at target it sets is applied this frame.
+      this.proceduralLookAt?.update(delta);
       this.proceduralTalking?.update(delta);
       // Apply blinking + expression overrides after the animation mixer (so
       // manual control wins) and before vrm.update (which pushes weights to the
