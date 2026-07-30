@@ -378,7 +378,7 @@ type HelpStep = {
   media?: HelpMedia[];
 };
 
-const HELP_STEPS: HelpStep[] = [
+const DOWNLOAD_STEPS: HelpStep[] = [
   {
     title: "Download a VRM model",
     text: "Grab an avatar from VRoid Hub. Filter for models that are free to use and downloadable, then open a model and download its .vrm file.",
@@ -427,7 +427,42 @@ const HELP_STEPS: HelpStep[] = [
   },
 ];
 
-function HelpModal({ onClose }: { onClose: () => void }) {
+const IMPORT_STEPS: HelpStep[] = [
+  {
+    title: "Add an animated background",
+    text: "Open your character in Layla, go to the Appearance tab, and add an Animated Background.",
+    media: [{ type: "image", src: "/tutorial/import/1.jpg" }],
+  },
+  {
+    title: 'Choose the type "Mini-app"',
+    text: "When Layla asks for a background type, pick Mini-app — that's the format your scene was exported as.",
+    media: [{ type: "image", src: "/tutorial/import/2.jpg" }],
+  },
+  {
+    title: "Choose your exported mini-app",
+    text: "Select your scene from the list. If it isn't there yet, tap Import Custom Mini-app and pick the .zip you just exported.",
+    media: [{ type: "image", src: "/tutorial/import/3.jpg" }],
+  },
+  {
+    title: "Chat with your character!",
+    text: "Save, then start chatting — your character now lives inside the scene you built.",
+    media: [{ type: "video", src: "/tutorial/import/4.mp4" }],
+  },
+];
+
+function TutorialModal({
+  eyebrow,
+  title,
+  intro,
+  steps,
+  onClose,
+}: {
+  eyebrow: string;
+  title: string;
+  intro: string;
+  steps: HelpStep[];
+  onClose: () => void;
+}) {
   const closeRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -458,9 +493,9 @@ function HelpModal({ onClose }: { onClose: () => void }) {
       <div className="help-modal" onClick={(event) => event.stopPropagation()}>
         <header className="help-modal__header">
           <div className="help-modal__heading">
-            <p className="help-modal__eyebrow">VRM Viewer</p>
+            <p className="help-modal__eyebrow">{eyebrow}</p>
             <h1 className="help-modal__title" id="help-title">
-              How to build your scene
+              {title}
             </h1>
           </div>
           <button
@@ -483,13 +518,10 @@ function HelpModal({ onClose }: { onClose: () => void }) {
         </header>
 
         <div className="help-modal__body">
-          <p className="help-modal__intro">
-            Load an avatar, dress the scene around it, then dial in the framing.
-            Steps two and three are optional — a bare avatar works fine on its own.
-          </p>
+          <p className="help-modal__intro">{intro}</p>
 
           <ol className="help-steps">
-            {HELP_STEPS.map((step, index) => (
+            {steps.map((step, index) => (
               <li className="help-step" key={step.title}>
                 <div className="help-step__marker" aria-hidden="true">
                   {index + 1}
@@ -639,6 +671,7 @@ function DebugPanel({
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
   const [helpOpen, setHelpOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const assetLoading = modelLoading || skyboxLoading || backgroundLoading;
 
   const updateModel = (value: TransformValue) => {
@@ -782,6 +815,7 @@ function DebugPanel({
       if (!result.success) {
         throw new Error(result.message ?? `Could not save ${filename}.`);
       }
+      setImportOpen(true);
     } catch (err: unknown) {
       console.error("Could not export the VRM package:", err);
       setExportError(err instanceof Error ? err.message : String(err));
@@ -884,7 +918,24 @@ function DebugPanel({
           </div>
         </div>
       </details>
-      {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
+      {helpOpen && (
+        <TutorialModal
+          eyebrow="VRM Viewer"
+          title="How to build your scene"
+          intro="Load an avatar, dress the scene around it, then dial in the framing. Steps two and three are optional — a bare avatar works fine on its own."
+          steps={DOWNLOAD_STEPS}
+          onClose={() => setHelpOpen(false)}
+        />
+      )}
+      {importOpen && (
+        <TutorialModal
+          eyebrow="Scene exported"
+          title="Import your scene into Layla"
+          intro="Your scene saved as a .zip mini-app. Here's how to load it onto a character and chat inside it."
+          steps={IMPORT_STEPS}
+          onClose={() => setImportOpen(false)}
+        />
+      )}
     </>
   );
 }
