@@ -940,6 +940,34 @@ function DebugPanel({
   );
 }
 
+// The minimum Layla app version this mini-app supports. getExecutionContext
+// reports the host version as e.g. "7.1.0" or "7.1.0-alpha" (the pre-release
+// suffix is optional and ignored for comparison).
+const MIN_LAYLA_VERSION = "7.1.0";
+
+// Compare two dotted numeric versions, ignoring any "-suffix". Returns true when
+// `version` is strictly older than `minimum`. Unparseable versions are treated
+// as supported so a malformed host string never locks the user out.
+function isVersionBelow(version: string, minimum: string): boolean {
+  const parse = (v: string) =>
+    v
+      .split("-")[0]
+      .split(".")
+      .map((part) => Number.parseInt(part, 10));
+
+  const actual = parse(version);
+  if (actual.some(Number.isNaN)) return false;
+  const required = parse(minimum);
+
+  const length = Math.max(actual.length, required.length);
+  for (let i = 0; i < length; i++) {
+    const a = actual[i] ?? 0;
+    const b = required[i] ?? 0;
+    if (a !== b) return a < b;
+  }
+  return false;
+}
+
 export default function App() {
   const containerRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<ViewerEngine | null>(null);
@@ -947,6 +975,7 @@ export default function App() {
   const [message, setMessage] = useState("");
   const [settings, setSettings] = useState<ViewerSettings | null>(null);
   const [isStandalone, setIsStandalone] = useState(false);
+  const [versionUnsupported, setVersionUnsupported] = useState(false);
 
   useEffect(() => {
     let engine: ViewerEngine | null = null;
@@ -962,7 +991,7 @@ export default function App() {
     // back to facing the camera after a short pause. Each tap refreshes the pause,
     // so repeated taps keep it looking around. Mobile-first, so this is driven by
     // pointer events (which cover touch, pen, and mouse alike).
-    const LOOK_BACK_DELAY_MS = 3000;
+    const LOOK_BACK_DELAY_MS = 1000;
     let lookBackTimer: ReturnType<typeof setTimeout> | undefined;
 
     const onPointerTap = (event: PointerEvent) => {
@@ -1013,6 +1042,9 @@ export default function App() {
         if (!res.ok) throw new Error(`Could not load settings.json (${res.status})`);
         const settings = (await res.json()) as ViewerSettings;
         setSettings(settings);
+        setVersionUnsupported(
+          isVersionBelow(executionContext.app_version, MIN_LAYLA_VERSION),
+        );
         setIsStandalone(
           executionContext.character === null &&
             executionContext.session_id === null,
@@ -1100,6 +1132,38 @@ export default function App() {
 
       {status === "ready" && isStandalone && settings && engineRef.current && (
         <DebugPanel engine={engineRef.current} settings={settings} />
+      )}
+
+      {versionUnsupported && (
+        <div
+          className="version-gate"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="version-gate-title"
+        >
+          <div className="version-gate__card">
+            <svg
+              className="version-gate__icon"
+              viewBox="0 0 24 24"
+              width="48"
+              height="48"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M12 9v4" />
+              <path d="M12 17h.01" />
+              <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+            </svg>
+            <p id="version-gate-title" className="version-gate__title">
+              This mini-app is only support on Layla v7.1.0 or above, please
+              update your Layla app version!
+            </p>
+          </div>
+        </div>
       )}
     </div>
   );

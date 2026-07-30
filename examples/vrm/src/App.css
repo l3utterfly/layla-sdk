@@ -644,13 +644,63 @@
   }
 }
 
+/* Full-screen version gate: covers the whole viewport, sits above every other
+   layer, and offers no way to dismiss it. */
+.version-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  color: #e7e5ff;
+  font-family: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: 0.02em;
+  background: radial-gradient(
+    120% 120% at 50% 40%,
+    rgba(18, 17, 30, 0.9),
+    rgba(6, 6, 12, 0.97)
+  );
+  backdrop-filter: blur(6px);
+  animation: fade-in 0.3s ease both;
+}
+
+.version-gate__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  max-width: 36ch;
+  padding: 32px 28px;
+  text-align: center;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(24, 22, 38, 0.85);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+}
+
+.version-gate__icon {
+  color: #ffcf6b;
+  flex-shrink: 0;
+}
+
+.version-gate__title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: #ffe9b0;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .spinner {
     animation-duration: 2s;
   }
   .overlay,
   .help-overlay,
-  .help-modal {
+  .help-modal,
+  .version-gate {
     animation: none;
   }
 }
