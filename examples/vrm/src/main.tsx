@@ -68,8 +68,11 @@ if (import.meta.env.DEV) {
       app_version: "7.1.0-alpha5",
 
       // Omit character and session to test standalone mode.
-      character,
-      session_id: MOCK_SESSION_ID,
+      character: null,
+      session_id: null,
+
+      // character,
+      // session_id: MOCK_SESSION_ID,
     },
   });
 
