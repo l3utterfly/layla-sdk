@@ -16,6 +16,10 @@ import LaylaSDK, {
   LaylaError,
   installLaylaMock,
   makeMockCharacter,
+  type ChatCompletionMessageParam,
+  type ChatCompletionContentPart,
+  type ChatCompletionContentPartText,
+  type ChatCompletionContentPartImage,
   type LaylaChatMessage,
   type LaylaChatHistoryEntry,
   type LaylaScheduledChatMessage,
@@ -224,11 +228,14 @@ event as a speech-finished signal rather than as a uniquely identifiable source.
 Creates a chat completion. Use this when you only need the final assistant message.
 
 ```ts
-import { LaylaSDK, type LaylaChatMessage } from '@layla-network/sdk';
+import {
+  LaylaSDK,
+  type ChatCompletionMessageParam,
+} from '@layla-network/sdk';
 
 const layla = new LaylaSDK();
 
-const messages: LaylaChatMessage[] = [
+const messages: ChatCompletionMessageParam[] = [
   { role: 'system', content: 'You are concise and helpful.' },
   { role: 'user', content: 'Give me one chess tip.' },
 ];
@@ -248,6 +255,42 @@ await layla.chat.completions.create({
   messages,
 });
 ```
+
+### Image input
+
+Image messages use the
+[OpenAI Chat Completions content-part shape](https://developers.openai.com/api/reference/resources/chat).
+Put text in a `text` part and the image in an `image_url` part. The
+`image_url.url` value must be a base64 data URL, including its media type and
+`;base64,` prefix:
+
+```ts
+const completion = await layla.chat.completions.create({
+  messages: [
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: 'What is in this image?' },
+        {
+          type: 'image_url',
+          image_url: {
+            url: `data:image/jpeg;base64,${base64Image}`,
+            detail: 'auto',
+          },
+        },
+      ],
+    },
+  ],
+});
+```
+
+Before posting `send_message`, the SDK joins any `text` parts into the Layla
+message's `content` field and moves the data URL into the native protocol's
+`image_base64` field. The native protocol supports one image per message, so
+the SDK rejects messages with multiple `image_url` parts. Although OpenAI's
+shape also permits remote image URLs, Layla's protocol requires base64 data;
+remote URLs are therefore rejected. `detail` is accepted for API compatibility
+but is not sent because the Layla protocol has no corresponding field.
 
 ## `layla.chat.completions.stream(...)`
 
@@ -1166,10 +1209,16 @@ Customize mock chat responses:
 installLaylaMock({
   respond: (messages) => {
     const last = messages.at(-1)?.content ?? '';
+    const image = messages.at(-1)?.image_base64;
+    console.log(image); // Normalized data URL received by the mock host.
     return `Mock response to: ${last}`;
   },
 });
 ```
+
+The mock receives the same normalized `LaylaChatMessage[]` wire payload as the
+native host. Its default reply also notes when the last user message contains
+an image, which makes image-input UI easy to exercise locally.
 
 Customize the inference engines exposed by the mock:
 
@@ -1527,6 +1576,10 @@ Useful exported types include:
 - `TavernCharacterBook`
 - `ChatCompletion`
 - `ChatCompletionChunk`
+- `ChatCompletionMessageParam`
+- `ChatCompletionContentPart`
+- `ChatCompletionContentPartText`
+- `ChatCompletionContentPartImage`
 - `ChatCompletionCreateParamsBase`
 - `ChatCompletionCreateParamsNonStreaming`
 - `ChatCompletionCreateParamsStreaming`

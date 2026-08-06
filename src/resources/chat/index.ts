@@ -6,7 +6,7 @@
  * and the stream class for the package barrel.
  */
 
-import { LaylaAbortError } from '../../errors';
+import { LaylaAbortError, LaylaError } from '../../errors';
 import type {
   LaylaApiEvent,
   LaylaApiEvent_onGetChatHistoryResponse,
@@ -25,11 +25,56 @@ import { LaylaBridge } from '../../internal/bridge';
 import { ChatCompletionStream } from './stream';
 import type {
   ChatCompletion,
+  ChatCompletionContentPartImage,
   ChatCompletionCreateParamsBase,
   ChatCompletionCreateParamsNonStreaming,
   ChatCompletionCreateParamsStreaming,
+  ChatCompletionMessageParam,
 } from './types';
 import { oneShot, type RequestOptions } from '../../internal/one-shot';
+
+const BASE64_IMAGE_DATA_URL =
+  /^data:image\/(?:gif|jpe?g|png|webp);base64,/i;
+
+function toLaylaChatMessage(
+  message: ChatCompletionMessageParam,
+): LaylaChatMessage {
+  if (!Array.isArray(message.content)) {
+    return {
+      role: message.role,
+      content: message.content,
+      name: message.name,
+    };
+  }
+
+  const textParts = message.content
+    .filter((part) => part.type === 'text')
+    .map((part) => part.text);
+  const images = message.content.filter(
+    (part): part is ChatCompletionContentPartImage =>
+      part.type === 'image_url',
+  );
+
+  if (images.length > 1) {
+    throw new LaylaError(
+      'Layla supports at most one image_url content part per chat message.',
+    );
+  }
+
+  const imageUrl = images[0]?.image_url.url;
+  if (imageUrl && !BASE64_IMAGE_DATA_URL.test(imageUrl)) {
+    throw new LaylaError(
+      'Layla image inputs must use a base64 data URL for a PNG, JPEG, GIF, or WEBP image. Remote image URLs cannot be translated to the Layla image_base64 protocol field.',
+    );
+  }
+
+  return {
+    role: message.role,
+    content: textParts.length > 0 ? textParts.join('\n') : null,
+    name: message.name,
+    ...(imageUrl ? { image_base64: imageUrl } : {}),
+  };
+}
 
 class Completions {
   create(
@@ -61,7 +106,7 @@ class Completions {
   }
 
   private startStream(
-    messages: LaylaChatMessage[],
+    messages: ChatCompletionMessageParam[],
     model: string,
     signal?: AbortSignal,
   ): ChatCompletionStream {
@@ -81,7 +126,10 @@ class Completions {
     }
 
     LaylaBridge.shared().enqueue({
-      message: { cmd: 'send_message', data: messages },
+      message: {
+        cmd: 'send_message',
+        data: messages.map(toLaylaChatMessage),
+      },
       sink: stream,
     });
     return stream;
@@ -241,7 +289,11 @@ export { ChatCompletionStream } from './stream';
 export type {
   ChatCompletion,
   ChatCompletionChunk,
+  ChatCompletionContentPart,
+  ChatCompletionContentPartImage,
+  ChatCompletionContentPartText,
   ChatCompletionCreateParamsBase,
   ChatCompletionCreateParamsNonStreaming,
   ChatCompletionCreateParamsStreaming,
+  ChatCompletionMessageParam,
 } from './types';

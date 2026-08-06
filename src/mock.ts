@@ -354,8 +354,11 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
   const defaultReply = (messages: LaylaChatMessage[]): string => {
     const lastUser = [...messages].reverse().find((m) => m.role === 'user');
     const said = lastUser?.content ?? '(nothing)';
+    const image = lastUser?.image_base64
+      ? ' You also attached an image.'
+      : '';
     return (
-      `This is a mock Layla response. You said: "${said}". ` +
+      `This is a mock Layla response. You said: "${said}".${image} ` +
       `Tokens stream one at a time so you can exercise your streaming UI, ` +
       `cancellation, and the final-content promise.`
     );

@@ -21,16 +21,14 @@ declare global {
 
 /* ---- chat messages --------------------------------------------------------- */
 
-export type LaylaChatRole =
-  | 'system'
-  | 'user'
-  | 'assistant';
+export type LaylaChatRole = 'system' | 'user' | 'assistant';
 
 /** An OpenAI-style chat message. */
 export interface LaylaChatMessage {
   role: LaylaChatRole;
   content: string | null;
   name?: string;
+  image_base64?: string; // optional base64-encoded image (including the data URI prefix) sent to the LLM
 }
 
 export interface LaylaChatHistoryEntry extends LaylaChatMessage {
@@ -80,7 +78,7 @@ export interface LaylaTTSVoice {
   type: string;
   tags: string[];
   name: string;
-};
+}
 
 /* ---- Sentiment Analysis ---------------------------------------------------- */
 export const SENTIMENT_EMOJIS = {
@@ -181,7 +179,7 @@ export interface TavernCharacterBook {
   token_budget?: number;
   recursive_scanning?: boolean;
   extensions: Record<string, unknown>;
-  entries: Array<{
+  entries: {
     keys: string[];
     content: string;
     extensions: Record<string, unknown>;
@@ -196,7 +194,7 @@ export interface TavernCharacterBook {
     secondary_keys?: string[];
     constant?: boolean;
     position?: 'before_char' | 'after_char';
-  }>;
+  }[];
 }
 
 export interface LaylaExecutionContext {
@@ -219,7 +217,7 @@ export interface LaylaApiGetCharacters {
   data: {
     offset: number;
     limit: number;
-  }
+  };
 }
 
 /** Ask the host for a character image identified by <characterId>. */
@@ -229,7 +227,6 @@ export interface LaylaApiGetCharacterImage {
     character_id: string;
   };
 }
-
 
 /**
  * Stop the in-flight generation.
@@ -303,7 +300,7 @@ export interface LaylaApiGetSentiment {
   cmd: 'get_sentiment';
   data: {
     text: string;
-  }
+  };
 }
 
 /**
@@ -316,7 +313,7 @@ export interface LaylaApiGetChatSessions {
     character_id: string;
     offset: number;
     limit: number;
-  }
+  };
 }
 
 /**
@@ -357,8 +354,8 @@ export interface LaylaApiReadFile {
 /**
  * Ask the host for the memories associated with a specific character ID.
  * The host should respond with an `on_get_memories_response` event containing an array of memories, each including the content, timestamp, and any additional metadata.
- * The memories should be returned in reverse chronological order (newest to oldest). 
-*/
+ * The memories should be returned in reverse chronological order (newest to oldest).
+ */
 export interface LaylaApiGetMemories {
   cmd: 'get_memories';
   data: {
@@ -391,7 +388,7 @@ export interface LaylaApiGetTopMemories {
 export interface LaylaApiCreateOrUpdateMemories {
   cmd: 'create_or_update_memories';
   data: LaylaMemory[]; // if memory.id <= 0, a new memory will be created. Otherwise, the existing memory with the provided id will be updated.
-};
+}
 
 /**
  * Ask the host to schedule a chat message to be sent at a specific timestamp (in the future).
@@ -434,7 +431,7 @@ export interface LaylaApiGetPersona {
   cmd: 'get_persona';
   data: {
     character_id: string | null; // if null, return the default persona
-  }
+  };
 }
 
 /**
@@ -458,7 +455,7 @@ export interface LaylaApiGenerateVoice {
   data: {
     ttsVoiceId: string | null; // if null, use the default global TTS voice
     text: string;
-  }
+  };
 }
 
 /**
@@ -471,7 +468,7 @@ export interface LaylaApiGenerateVoiceToFile {
     ttsVoiceId: string | null; // if null, use the default global TTS voice
     text: string;
     save: boolean; // if true, the host will save the generated audio to a file and return the file name (with extension) in the response. If false, the host will return the base64-encoded audio data in the response.
-  }
+  };
 }
 
 /**
@@ -503,13 +500,13 @@ export interface LaylaApiSetInferenceEngine {
   cmd: 'set_inference_engine';
   data: {
     engineName: string | null; // the name of the inference engine to set, if null, the host should reset to the default inference engine
-  }
+  };
 }
 
 /**
  * Ask the host for the current execution context.
  * The execution context can include information about the current state of the host, such as current character, session, or other relevant data.
- * For a standalone top-level mini-app, the character and session fields are null.
+ * The execution context can also be null, which means the mini-app is running standalone as a top-level mini-app, without any character or session context.
  * The host should respond with an `on_get_execution_context_response` event containing the current execution context.
  */
 export interface LaylaApiGetExecutionContext {
@@ -526,13 +523,14 @@ export interface LaylaApiStartBackgroundAudioPlayer {
   cmd: 'start_background_audio_player';
   data: {
     queueAudioFiles: string[]; // an array of audio file paths (local or remote) to queue for playback in the background audio player (local paths are resolved from the custom mini-app root, so a simple filename.ext is sufficient)
-    metadata?: { // optional track info shown on the lock screen and in the media notification
+    metadata?: {
+      // optional track info shown on the lock screen and in the media notification
       title?: string;
       artist?: string;
       albumTitle?: string;
       artworkUrl?: string; // must be a remote https url
     };
-  }
+  };
 }
 
 /**
@@ -571,7 +569,7 @@ export interface LaylaApiSkipBackgroundAudioTrack {
   cmd: 'skip_background_audio_track';
   data: {
     index?: number; // zero-based index of the track to skip to, clamped to the queue length, if null, skip to next
-  }
+  };
 }
 
 /**
@@ -611,8 +609,7 @@ export type LaylaApiRequest =
   | LaylaApiPauseBackgroundAudioPlayer
   | LaylaApiResumeBackgroundAudioPlayer
   | LaylaApiSkipBackgroundAudioTrack
-  | LaylaApiGetImageGenerationModels
-  ;
+  | LaylaApiGetImageGenerationModels;
 
 /* ---- RN -> Web events ------------------------------------------------------ */
 
@@ -712,11 +709,11 @@ export interface LaylaApiEvent_onGetChatSessionsResponse {
   event: 'on_get_chat_sessions_response';
   data: {
     character_id: string;
-    sessions: Array<{
+    sessions: {
       session_id: string;
       last_message_timestamp: number;
       last_message_content: string;
-    }>;
+    }[];
   };
 }
 
@@ -752,9 +749,8 @@ export interface LaylaApiEvent_onReadFileResponse {
     filename: string;
     content_base64: string | null; // file content encoded in base64 (including the data URI prefix). If null, it indicates that there was an error reading the file (e.g., file not found, access denied, etc.)
     message?: string; // optional message providing additional information about the read operation (e.g., error details if content_base64 is null)
-  }
+  };
 }
-
 
 /**
  * The response for a `get_memories` request, containing an array of memories associated with the specified character ID in reverse chronological order (newest to oldest).
@@ -831,8 +827,8 @@ export interface LaylaApiEvent_onGetPersonaResponse {
   data: {
     character_id: string | null; // the character ID for which the persona was requested. If null, this is the default persona.
     persona: LaylaPersona;
-  }
-};
+  };
+}
 
 /**
  * The response for a `get_tts_voices` request, containing an array of all available TTS voices installed in Layla.
@@ -891,7 +887,7 @@ export interface LaylaApiEvent_onSetInferenceEngineResponse {
 /**
  * The response for a `get_execution_context` request, containing the current execution context of the mini-app.
  * The execution context can include information about the current state of the host, such as current character, session, or other relevant data.
- * If the mini-app is running standalone as a top-level mini-app, its character and session fields will be null.
+ * If the mini-app is running standalone as a top-level mini-app without any character or session context, the `data` field will be null.
  */
 export interface LaylaApiEvent_onGetExecutionContextResponse {
   event: 'on_get_execution_context_response';
@@ -961,7 +957,7 @@ export interface LaylaApiEvent_onBackgroundAudioTrackChanged {
   data: {
     currentIndex: number; // zero-based index of the track now playing
     previousIndex: number; // zero-based index of the track that was playing before
-  }
+  };
 }
 
 /**
@@ -976,7 +972,7 @@ export interface LaylaApiEvent_onBackgroundAudioStatus {
     currentTime: number; // playback position within the current track, in seconds
     duration: number; // duration of the current track in seconds, or 0 if not yet known
     isLoaded: boolean; // whether the current track has finished loading
-  }
+  };
 }
 
 /**
@@ -995,7 +991,7 @@ export interface LaylaApiEvent_onGetImageGenerationModelsResponse {
     name: string;
     description: string;
   }[]; // an array of all available image generation models with their details
-};
+}
 
 export type LaylaApiEvent =
   | LaylaApiEvent_onMsg
@@ -1033,5 +1029,4 @@ export type LaylaApiEvent =
   | LaylaApiEvent_onBackgroundAudioTrackChanged
   | LaylaApiEvent_onBackgroundAudioStatus
   | LaylaApiEvent_onBackgroundAudioFinished
-  | LaylaApiEvent_onGetImageGenerationModelsResponse
-  ;
+  | LaylaApiEvent_onGetImageGenerationModelsResponse;

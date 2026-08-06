@@ -118,9 +118,13 @@ export { ChatCompletionStream } from './resources/chat';
 export type {
   ChatCompletion,
   ChatCompletionChunk,
+  ChatCompletionContentPart,
+  ChatCompletionContentPartImage,
+  ChatCompletionContentPartText,
   ChatCompletionCreateParamsBase,
   ChatCompletionCreateParamsNonStreaming,
   ChatCompletionCreateParamsStreaming,
+  ChatCompletionMessageParam,
 } from './resources/chat';
 
 // Image resource surface.

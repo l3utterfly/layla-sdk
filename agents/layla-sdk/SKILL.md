@@ -40,6 +40,7 @@ import LaylaSDK, {
   LaylaAbortError,
   LaylaBridgeUnavailableError,
   LaylaError,
+  type ChatCompletionMessageParam,
   type LaylaChatMessage,
   type LaylaChatHistoryEntry,
   type LaylaScheduledChatMessage,
@@ -167,14 +168,41 @@ Read `references/sdk-api.md` for full payloads, mock examples, and abort handlin
 
 ## Chat
 
-Chat uses an OpenAI-shaped API. Messages use `LaylaChatMessage`:
+Chat uses an OpenAI-shaped API. Completion inputs use
+`ChatCompletionMessageParam`:
 
 ```ts
-const messages: LaylaChatMessage[] = [
+const messages: ChatCompletionMessageParam[] = [
   { role: 'system', content: 'You are concise and helpful.' },
   { role: 'user', content: 'Write a tiny haiku about chess.' },
 ];
 ```
+
+Send images using OpenAI Chat Completions content parts. The image URL must be
+a base64 data URL because the SDK translates it to Layla's native
+`image_base64` wire field:
+
+```ts
+const messages: ChatCompletionMessageParam[] = [
+  {
+    role: 'user',
+    content: [
+      { type: 'text', text: 'What is in this image?' },
+      {
+        type: 'image_url',
+        image_url: {
+          url: `data:image/png;base64,${base64Image}`,
+          detail: 'auto',
+        },
+      },
+    ],
+  },
+];
+```
+
+Layla supports one image per message. Remote image URLs and multiple image
+parts are rejected because the native protocol accepts one base64 image. The
+OpenAI `detail` field is accepted but has no Layla wire equivalent.
 
 Use non-streaming chat when the UI only needs the final answer:
 
