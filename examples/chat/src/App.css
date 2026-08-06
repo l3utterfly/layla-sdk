@@ -170,6 +170,22 @@ body {
   white-space: pre-wrap;
 }
 
+.message-image {
+  display: block;
+
+  width: auto;
+  max-width: min(320px, 100%);
+  max-height: 320px;
+
+  border-radius: 12px;
+
+  object-fit: contain;
+}
+
+.message-text:not(:first-child) {
+  margin-top: 10px;
+}
+
 .user .bubble {
   background: #47a6ff;
 
@@ -224,8 +240,9 @@ body {
 
 .composer {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
 
   padding: 16px 20px;
 
@@ -236,6 +253,71 @@ body {
   border-top: 1px solid #343434;
 
   flex-shrink: 0;
+}
+
+.composer-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.file-input {
+  display: none;
+}
+
+.attachment-preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  min-width: 0;
+  max-width: 520px;
+
+  padding: 8px;
+
+  background: #2a2a2a;
+  border: 1px solid #3a3a3a;
+  border-radius: 14px;
+}
+
+.attachment-preview img {
+  width: 54px;
+  height: 54px;
+
+  border-radius: 10px;
+
+  object-fit: cover;
+}
+
+.attachment-details {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+
+  min-width: 0;
+}
+
+.attachment-details strong {
+  overflow: hidden;
+
+  width: 100%;
+
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-details span {
+  color: #9b9b9b;
+  font-size: 12px;
+}
+
+.attachment-error {
+  color: #ffaaaa;
+  font-size: 13px;
+  text-align: left;
 }
 
 .composer input {
@@ -286,12 +368,69 @@ body {
   transition: all 0.2s ease;
 }
 
+.composer button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  transform: none;
+}
+
+.composer .attach-btn,
+.composer .remove-attachment-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  min-width: 48px;
+  width: 48px;
+}
+
+.attach-btn {
+  padding: 0;
+
+  background: #333333;
+  color: white;
+}
+
+.attach-btn:hover:not(:disabled) {
+  background: #404040;
+}
+
+.attach-btn svg {
+  width: 22px;
+  height: 22px;
+
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.composer .remove-attachment-btn {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+
+  padding: 0;
+
+  background: transparent;
+  color: #bdbdbd;
+
+  font-size: 24px;
+  font-weight: 400;
+}
+
+.remove-attachment-btn:hover {
+  background: #3a3a3a;
+  color: white;
+}
+
 .send-btn {
   background: #47a6ff;
   color: white;
 }
 
-.send-btn:hover {
+.send-btn:hover:not(:disabled) {
   transform: translateY(-1px);
 
   box-shadow:
@@ -338,6 +477,18 @@ body {
 
   .composer {
     padding: 12px;
+  }
+
+  .composer-row {
+    gap: 8px;
+  }
+
+  .composer button {
+    min-width: 72px;
+  }
+
+  .composer .attach-btn {
+    min-width: 48px;
   }
 
   .empty-state h1 {

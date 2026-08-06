@@ -5,8 +5,13 @@ import App from "./App";
 if (import.meta.env.DEV) {
   import("../../../src/mock").then(({ installLaylaMock }) => {
     installLaylaMock({
-      respond: (messages) =>
-        `You said: ${messages.at(-1)?.content}. Mock response from Layla.`,
+      respond: (messages) => {
+        const message = messages.at(-1);
+        const imageNote = message?.image_base64
+          ? " I received the attached image."
+          : "";
+        return `You said: ${message?.content ?? "(no text)"}.${imageNote} Mock response from Layla.`;
+      },
       latencyMs: 300,
       tokenDelayMs: 25,
     });
