@@ -1198,6 +1198,16 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     }, latencyMs);
   }
 
+  async function handleSTTStopListening(): Promise<void> {
+    await delay(latencyMs);
+    if (shouldError()) {
+      emitError('Simulated STT stop listening error');
+      return;
+    }
+
+    emit({ event: 'on_stt_listening_stopped', data: null });
+  }
+
   function emitBackgroundAudioStatus(): void {
     if (!backgroundAudio) return;
     emit({
@@ -1436,6 +1446,9 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
           break;
         case 'stt_start_listening':
           void handleSTTStartListening();
+          break;
+        case 'stt_stop_listening':
+          void handleSTTStopListening();
           break;
         default:
           break;

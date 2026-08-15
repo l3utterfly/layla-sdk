@@ -853,10 +853,11 @@ await layla.tts.stopSpeaking({
 
 ## Speech-to-text
 
-Microphone speech input uses the `layla.stt` surface. It has two parts: a
+Microphone speech input uses the `layla.stt` surface. It has three parts: a
 `startListening()` request that asks the host to begin capturing microphone
-audio, and a `speechRecognized` event that delivers transcripts asynchronously
-as the host's speech-to-text service recognises them.
+audio, a `speechRecognized` event that delivers transcripts asynchronously as
+the host's speech-to-text service recognises them, and a `stopListening()`
+request that releases the microphone.
 
 ### `layla.stt.startListening(options?)`
 
@@ -873,6 +874,17 @@ Pass an abort signal to stop waiting for the start acknowledgement:
 
 ```ts
 await layla.stt.startListening({ signal: controller.signal });
+```
+
+### `layla.stt.stopListening(options?)`
+
+Asks the host to stop listening and release the microphone. The promise resolves
+once the host emits `on_stt_listening_stopped`, or rejects on error/abort. This
+stops the host recogniser; it does not remove your `speechRecognized`
+subscription — use `off('speechRecognized', ...)` for that.
+
+```ts
+await layla.stt.stopListening();
 ```
 
 ### `layla.stt.on('speechRecognized', listener)`
@@ -1344,6 +1356,9 @@ await layla.stt.startListening();
 
 // Drive additional recognised-speech events manually:
 mock.emitSTTSpeechRecognized({ transcript: 'A second recognised phrase.' });
+
+// Release the microphone; the mock confirms with `on_stt_listening_stopped`.
+await layla.stt.stopListening();
 ```
 
 By default the mock emits a sample transcript shortly after `startListening()`
@@ -1609,6 +1624,7 @@ Useful exported types include:
 - `LaylaApiGenerateVoiceToFile`
 - `LaylaApiStopSpeaking`
 - `LaylaApiSTTStartListening`
+- `LaylaApiSTTStopListening`
 - `LaylaApiStartBackgroundAudioPlayer`
 - `LaylaApiStopBackgroundAudioPlayer`
 - `LaylaApiPauseBackgroundAudioPlayer`
@@ -1637,6 +1653,7 @@ Useful exported types include:
 - `LaylaApiEvent_onBackgroundAudioFinished`
 - `LaylaApiEvent_onSTTListeningStarted`
 - `LaylaApiEvent_onSTTSpeechRecognized`
+- `LaylaApiEvent_onSTTListeningStopped`
 - `LaylaApiSaveFile`
 - `LaylaApiEvent_onSaveFileResponse`
 - `LaylaApiReadFile`

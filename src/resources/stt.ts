@@ -7,7 +7,8 @@
  * resolves once the host confirms the recogniser has started (or rejects on
  * error/abort). Recognised speech is then delivered asynchronously through the
  * `speechRecognized` event, so subscribe with `on('speechRecognized', ...)`
- * before (or right after) calling `startListening()`.
+ * before (or right after) calling `startListening()`. `stopListening()` asks the
+ * host to stop capturing and release the microphone.
  */
 
 import type { LaylaApiEvent } from '../interface';
@@ -23,7 +24,7 @@ type STTEventListener = STTSpeechRecognizedListener;
 export class STT {
   private readonly speechRecognizedListeners =
     new Set<STTSpeechRecognizedListener>();
-  private listening = false;
+  private subscribed = false;
 
   /**
    * Ask the native host to start listening for speech input using the device's
@@ -43,6 +44,23 @@ export class STT {
     );
   }
 
+  /**
+   * Ask the native host to stop listening and release the microphone. Resolves
+   * once the host emits `on_stt_listening_stopped`, confirming the
+   * speech-to-text service stopped, or rejects on error/abort.
+   *
+   * This stops the host recogniser; it does not remove your `speechRecognized`
+   * subscription. Use `off('speechRecognized', ...)` to unsubscribe.
+   */
+  stopListening(options: RequestOptions = {}): Promise<void> {
+    return oneShot<void>(
+      { cmd: 'stt_stop_listening', data: null },
+      'on_stt_listening_stopped',
+      () => undefined,
+      options.signal,
+    );
+  }
+
   /** Listen for speech recognised by the host's speech-to-text service. */
   on(event: 'speechRecognized', listener: STTSpeechRecognizedListener): this;
   on(event: STTEventName, listener: STTEventListener): this {
@@ -53,7 +71,7 @@ export class STT {
         );
         break;
     }
-    this.ensureListening();
+    this.attachWindowListener();
     return this;
   }
 
@@ -67,7 +85,7 @@ export class STT {
         );
         break;
     }
-    if (!this.hasListeners()) this.stopListening();
+    if (!this.hasListeners()) this.detachWindowListener();
     return this;
   }
 
@@ -75,16 +93,16 @@ export class STT {
     return this.speechRecognizedListeners.size > 0;
   }
 
-  private ensureListening(): void {
-    if (this.listening || typeof window === 'undefined') return;
+  private attachWindowListener(): void {
+    if (this.subscribed || typeof window === 'undefined') return;
     window.addEventListener('message', this.onWindowMessage);
-    this.listening = true;
+    this.subscribed = true;
   }
 
-  private stopListening(): void {
-    if (!this.listening || typeof window === 'undefined') return;
+  private detachWindowListener(): void {
+    if (!this.subscribed || typeof window === 'undefined') return;
     window.removeEventListener('message', this.onWindowMessage);
-    this.listening = false;
+    this.subscribed = false;
   }
 
   private onWindowMessage = (messageEvent: MessageEvent): void => {

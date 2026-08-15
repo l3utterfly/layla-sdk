@@ -582,6 +582,15 @@ export interface LaylaApiSTTStartListening {
 }
 
 /**
+ * Ask the host to stop listening for speech input and terminate the speech-to-text (STT) service.
+ * The host should respond with an `on_stt_listening_stopped` event indicating whether the STT service was stopped successfully or if there was an error stopping the service.
+ */
+export interface LaylaApiSTTStopListening {
+  cmd: 'stt_stop_listening';
+  data: null; // no additional data is needed for this request
+}
+
+/**
  * A request command (anything that opens a job and expects events back).
  * Add new one-shot commands here. `cancel` is not a request — it's a control
  * signal for an already-open job — so it lives outside this union.
@@ -619,7 +628,8 @@ export type BaseApiRequest =
   | LaylaApiResumeBackgroundAudioPlayer
   | LaylaApiSkipBackgroundAudioTrack
   | LaylaApiGetImageGenerationModels
-  | LaylaApiSTTStartListening;
+  | LaylaApiSTTStartListening
+  | LaylaApiSTTStopListening;
 
 /* ---- RN -> Web events ------------------------------------------------------ */
 
@@ -1001,11 +1011,24 @@ export interface LaylaApiEvent_onSTTListeningStarted {
   data: null; // no additional data is needed for this event
 }
 
+/**
+ * The event emitted by the host when the speech-to-text (STT) service recognizes speech input and generates a transcript.
+ * This event is emitted in response to a `stt_start_listening` request and provides the recognized speech transcript.
+ */
 export interface LaylaApiEvent_onSTTSpeechRecognized {
   event: 'on_stt_recognised_speech';
   data: {
     transcript: string; // the recognised speech transcript
   };
+}
+
+/**
+ * The event emitted by the host when the speech-to-text (STT) service stops listening for speech input and terminates the STT service.
+ * This event is emitted in response to a `stt_stop_listening` request and indicates that the STT service has stopped successfully.
+ */
+export interface LaylaApiEvent_onSTTListeningStopped {
+  event: 'on_stt_listening_stopped';
+  data: null; // no additional data is needed for this event
 }
 
 export type BaseApiEvent =
@@ -1044,4 +1067,5 @@ export type BaseApiEvent =
   | LaylaApiEvent_onBackgroundAudioFinished
   | LaylaApiEvent_onGetImageGenerationModelsResponse
   | LaylaApiEvent_onSTTListeningStarted
-  | LaylaApiEvent_onSTTSpeechRecognized;
+  | LaylaApiEvent_onSTTSpeechRecognized
+  | LaylaApiEvent_onSTTListeningStopped;

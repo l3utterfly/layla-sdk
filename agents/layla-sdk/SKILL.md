@@ -108,6 +108,7 @@ await layla.tts.generateVoiceToFile(ttsVoiceId, text, save);
 await layla.tts.stopSpeaking();
 await layla.stt.startListening();
 layla.stt.on('speechRecognized', ({ transcript }) => {});
+await layla.stt.stopListening();
 await layla.backgroundAudio.start(audioFiles, metadata);
 await layla.backgroundAudio.pause();
 await layla.backgroundAudio.resume();
@@ -486,8 +487,9 @@ console.log(saved.filename);
 
 ## Speech-To-Text
 
-Use the `layla.stt` surface for microphone speech input. It has two parts: a
-`startListening(options?)` request and a `speechRecognized` event.
+Use the `layla.stt` surface for microphone speech input. It has three parts: a
+`startListening(options?)` request, a `speechRecognized` event, and a
+`stopListening(options?)` request.
 
 `layla.stt.startListening(options?)` asks the host to start capturing microphone
 audio. Its promise resolves once the host emits `on_stt_listening_started`,
@@ -505,16 +507,24 @@ layla.stt.on('speechRecognized', onSpeech);
 
 await layla.stt.startListening();
 
+// Release the microphone when input is no longer needed. Resolves once the
+// host emits `on_stt_listening_stopped`.
+await layla.stt.stopListening();
+
 // Stop receiving transcripts when microphone input is no longer needed.
 layla.stt.off('speechRecognized', onSpeech);
 ```
+
+`stopListening()` stops the host recogniser; it does not remove your
+`speechRecognized` subscription — use `off('speechRecognized', ...)` for that.
 
 The resource attaches its window `message` listener only while it has
 subscribers and detaches it after the last `off(...)`. The browser mock confirms
 listening, then emits one canned `speechRecognized` event shortly after
 `startListening()` succeeds; configure that phrase with the `sttTranscript`
 option (set it to `null` to disable), and drive additional recognised-speech
-events with the returned handle's `emitSTTSpeechRecognized(...)`.
+events with the returned handle's `emitSTTSpeechRecognized(...)`. It also
+confirms `stopListening()` with `on_stt_listening_stopped`.
 
 ## Background Audio
 

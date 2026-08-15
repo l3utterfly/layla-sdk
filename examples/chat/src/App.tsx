@@ -193,12 +193,23 @@ export default function App() {
     }
   };
 
+  /** Ask the host to stop capturing microphone speech and release the mic. */
+  const stopListening = async () => {
+    if (!listeningRef.current) return;
+    setListening(false);
+    listeningRef.current = false;
+    try {
+      await layla.stt.stopListening();
+    } catch (err) {
+      if (!(err instanceof LaylaAbortError)) {
+        console.error("Failed to stop listening", err);
+      }
+    }
+  };
+
   const toggleListening = () => {
     if (listeningRef.current) {
-      // There is no host "stop listening" command; just drop the local state so
-      // any late transcript is ignored by the UI.
-      setListening(false);
-      listeningRef.current = false;
+      void stopListening();
     } else {
       void startListening();
     }
@@ -212,8 +223,7 @@ export default function App() {
       void startListening();
     } else {
       stopSpeaking();
-      setListening(false);
-      listeningRef.current = false;
+      void stopListening();
     }
   };
 
@@ -355,6 +365,7 @@ export default function App() {
     return () => {
       layla.stt.off("speechRecognized", handleSpeech);
       void layla.tts.stopSpeaking();
+      if (listeningRef.current) void layla.stt.stopListening();
     };
   }, []);
 

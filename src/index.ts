@@ -60,6 +60,7 @@ export type {
   LaylaApiResumeBackgroundAudioPlayer,
   LaylaApiSkipBackgroundAudioTrack,
   LaylaApiSTTStartListening,
+  LaylaApiSTTStopListening,
   LaylaApiCancel,
 
   // event types
@@ -99,6 +100,7 @@ export type {
   LaylaApiEvent_onBackgroundAudioFinished,
   LaylaApiEvent_onSTTListeningStarted,
   LaylaApiEvent_onSTTSpeechRecognized,
+  LaylaApiEvent_onSTTListeningStopped,
 } from './protocol';
 export { SENTIMENT_THRESHOLDS } from './protocol';
 
