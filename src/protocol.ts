@@ -573,11 +573,20 @@ export interface LaylaApiSkipBackgroundAudioTrack {
 }
 
 /**
+ * Ask the host to start listening for speech input using the device's microphone.
+ * The host should respond with an `on_stt_listening_started` event indicating whether the speech-to-text (STT) service was started successfully or if there was an error starting the service.
+ */
+export interface LaylaApiSTTStartListening {
+  cmd: 'stt_start_listening';
+  data: null; // no additional data is needed for this request
+}
+
+/**
  * A request command (anything that opens a job and expects events back).
  * Add new one-shot commands here. `cancel` is not a request — it's a control
  * signal for an already-open job — so it lives outside this union.
  */
-export type LaylaApiRequest =
+export type BaseApiRequest =
   | LaylaApiSendMessage
   | LaylaApiGetCharacters
   | LaylaApiGetCharacterImage
@@ -609,19 +618,17 @@ export type LaylaApiRequest =
   | LaylaApiPauseBackgroundAudioPlayer
   | LaylaApiResumeBackgroundAudioPlayer
   | LaylaApiSkipBackgroundAudioTrack
-  | LaylaApiGetImageGenerationModels;
+  | LaylaApiGetImageGenerationModels
+  | LaylaApiSTTStartListening;
 
 /* ---- RN -> Web events ------------------------------------------------------ */
-
-/** A streamed token. `msg` is the full snapshot, `delta` is new. */
-export interface LaylaApiEvent_onMsg {
-  event: 'on_message';
-  data: { msg: string; delta: string };
-}
 
 /** Stream finished. */
 export interface LaylaApiEvent_onMsgEnd {
   event: 'on_message_end';
+  data: {
+    msg: string;
+  } | null; // null if there was an error and no final message content is available
 }
 
 /** Error. Terminates whatever request is in flight, of any kind. */
@@ -653,18 +660,6 @@ export interface LaylaApiEvent_onGenerateImageResponse {
   data: {
     image_data_base64: string | null;
   } | null; // null if there was an error generating the image
-}
-
-/**
- * Progress update for a `generate_image` request. The host can emit multiple progress events during the image generation process, providing updates on the current status and progress of the generation.
- */
-export interface LaylaApiEvent_onGenerateImageProgress {
-  event: 'on_generate_image_progress';
-  data: {
-    status: string; // e.g., "Generating image...", "Refining details...", etc.
-    steps: number; // current step number
-    total_steps: number; // total number of steps for the generation process
-  };
 }
 
 /**
@@ -984,6 +979,10 @@ export interface LaylaApiEvent_onBackgroundAudioFinished {
   data: null; // no additional data is needed for this event
 }
 
+/**
+ * The response for a `get_image_generation_models` request, containing an array of all available image generation models with their details.
+ * This event is emitted by the host after successfully retrieving the list of image generation models.
+ */
 export interface LaylaApiEvent_onGetImageGenerationModelsResponse {
   event: 'on_get_image_generation_models_response';
   data: {
@@ -993,14 +992,28 @@ export interface LaylaApiEvent_onGetImageGenerationModelsResponse {
   }[]; // an array of all available image generation models with their details
 }
 
-export type LaylaApiEvent =
-  | LaylaApiEvent_onMsg
+/**
+ * The event emitted by the host when the speech-to-text (STT) service starts listening for speech input using the device's microphone.
+ * This event is emitted in response to a `stt_start_listening` request and indicates that the STT service has started successfully.
+ */
+export interface LaylaApiEvent_onSTTListeningStarted {
+  event: 'on_stt_listening_started';
+  data: null; // no additional data is needed for this event
+}
+
+export interface LaylaApiEvent_onSTTSpeechRecognized {
+  event: 'on_stt_recognised_speech';
+  data: {
+    transcript: string; // the recognised speech transcript
+  };
+}
+
+export type BaseApiEvent =
   | LaylaApiEvent_onMsgEnd
   | LaylaApiEvent_onError
   | LaylaApiEvent_onGetCharactersResponse
   | LaylaApiEvent_onGetCharacterImageResponse
   | LaylaApiEvent_onGenerateImageResponse
-  | LaylaApiEvent_onGenerateImageProgress
   | LaylaApiEvent_onUpdateCharacterResponse
   | LaylaApiEvent_onGetChatHistoryResponse
   | LaylaApiEvent_onGetSentimentResponse
@@ -1029,4 +1042,6 @@ export type LaylaApiEvent =
   | LaylaApiEvent_onBackgroundAudioTrackChanged
   | LaylaApiEvent_onBackgroundAudioStatus
   | LaylaApiEvent_onBackgroundAudioFinished
-  | LaylaApiEvent_onGetImageGenerationModelsResponse;
+  | LaylaApiEvent_onGetImageGenerationModelsResponse
+  | LaylaApiEvent_onSTTListeningStarted
+  | LaylaApiEvent_onSTTSpeechRecognized;

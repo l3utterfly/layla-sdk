@@ -6,12 +6,11 @@
  * bridge; player state is reported through this resource's events.
  */
 
+import type { LaylaApiEvent, LaylaApiRequest } from '../interface';
 import type {
-  LaylaApiEvent,
   LaylaApiEvent_onBackgroundAudioFinished,
   LaylaApiEvent_onBackgroundAudioStatus,
   LaylaApiEvent_onBackgroundAudioTrackChanged,
-  LaylaApiRequest,
   LaylaApiStartBackgroundAudioPlayer,
 } from '../protocol';
 import { LaylaBridgeUnavailableError, LaylaError } from '../errors';

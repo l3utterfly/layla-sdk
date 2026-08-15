@@ -11,7 +11,8 @@
  */
 
 import { LaylaAbortError } from '../../errors';
-import type { LaylaApiCancel, LaylaApiEvent } from '../../protocol';
+import type { LaylaApiEvent } from '../../interface';
+import type { LaylaApiCancel } from '../../protocol';
 import { Deferred } from '../../internal/deferred';
 import { LaylaBridge, type BridgeSink } from '../../internal/bridge';
 import type { ChatCompletion, ChatCompletionChunk } from './types';

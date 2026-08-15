@@ -4,8 +4,8 @@
  * Text-to-speech helpers backed by the host's TTS protocol endpoints.
  */
 
+import type { LaylaApiEvent } from '../interface';
 import type {
-  LaylaApiEvent,
   LaylaApiEvent_onGenerateVoiceToFileResponse,
   LaylaApiEvent_onGetTTSVoicesResponse,
   LaylaApiEvent_onError,

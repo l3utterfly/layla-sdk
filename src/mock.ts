@@ -19,8 +19,8 @@
  * host and rejects with LaylaBridgeUnavailableError.
  */
 
+import type { LaylaApiEvent, LaylaApiRequest } from './interface';
 import type {
-  LaylaApiEvent,
   LaylaApiEvent_onBackgroundAudioFinished,
   LaylaApiEvent_onBackgroundAudioStatus,
   LaylaApiEvent_onBackgroundAudioTrackChanged,
@@ -31,7 +31,7 @@ import type {
   LaylaApiEvent_onChatContextStartedThinking,
   LaylaApiEvent_onGetChatSessionsResponse,
   LaylaApiEvent_onGetImageGenerationModelsResponse,
-  LaylaApiRequest,
+  LaylaApiEvent_onSTTSpeechRecognized,
   LaylaCharacter,
   LaylaChatHistoryEntry,
   LaylaChatMessage,
@@ -118,6 +118,14 @@ export interface LaylaMockOptions {
   /** TTS voices returned by `tts.getVoices()`. Defaults to two sample voices. */
   ttsVoices?: LaylaTTSVoice[];
   /**
+   * Transcript the mock emits as an `on_stt_recognised_speech` event shortly
+   * after `stt.startListening()` succeeds, so listeners fire without extra
+   * wiring. Set to `null` to disable the automatic event and drive recognised
+   * speech manually via {@link LaylaMockHandle.emitSTTSpeechRecognized}.
+   * Defaults to a sample phrase.
+   */
+  sttTranscript?: string | null;
+  /**
    * Image generation models returned by `images.getImageGenerationModels()`.
    * Defaults to two sample models.
    */
@@ -157,6 +165,10 @@ export interface LaylaMockHandle {
   emitChatContextFinishedSpeaking(): void;
   /** Emit a host-pushed thinking-start event for contextual listener testing. */
   emitChatContextStartedThinking(): void;
+  /** Emit a host-pushed recognised-speech event for STT listener testing. */
+  emitSTTSpeechRecognized(
+    data: LaylaApiEvent_onSTTSpeechRecognized['data'],
+  ): void;
   /** Remove the fake bridge and restore whatever was there before. */
   uninstall(): void;
 }
@@ -308,6 +320,10 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
       name: 'Mock Kai',
     },
   ];
+  const sttTranscript =
+    options.sttTranscript === undefined
+      ? 'Hello Layla, this is a mock speech transcript.'
+      : options.sttTranscript;
   const imageGenerationModels = options.imageGenerationModels ?? [
     {
       id: 'mock-image-model-fast',
@@ -410,7 +426,7 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
         await delay(tokenDelayMs);
         if (gen.cancelled) return;
       }
-      emit({ event: 'on_message_end' });
+      emit({ event: 'on_message_end', data: { msg: snapshot } });
     } finally {
       if (current === gen) current = null;
     }
@@ -423,7 +439,7 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     // inside postMessage, and doing so here would re-enter the SDK's bridge.
     if (current && !current.cancelled) {
       current.cancelled = true;
-      queueMicrotask(() => emit({ event: 'on_message_end' }));
+      queueMicrotask(() => emit({ event: 'on_message_end', data: null }));
     }
   }
 
@@ -1160,6 +1176,28 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     );
   }
 
+  async function handleSTTStartListening(): Promise<void> {
+    await delay(latencyMs);
+    if (shouldError()) {
+      emitError('Simulated STT start listening error');
+      return;
+    }
+
+    emit({ event: 'on_stt_listening_started', data: null });
+
+    // Simulate the host recognising a phrase shortly after listening starts, so
+    // consumers can exercise their `stt.on('speechRecognized', ...)` handler
+    // without wiring the manual emitter. Disabled when `sttTranscript` is null.
+    if (sttTranscript === null) return;
+    window.setTimeout(() => {
+      if (!installed) return;
+      emit({
+        event: 'on_stt_recognised_speech',
+        data: { transcript: sttTranscript },
+      });
+    }, latencyMs);
+  }
+
   function emitBackgroundAudioStatus(): void {
     if (!backgroundAudio) return;
     emit({
@@ -1396,6 +1434,9 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
         case 'get_execution_context':
           void handleGetExecutionContext();
           break;
+        case 'stt_start_listening':
+          void handleSTTStartListening();
+          break;
         default:
           break;
       }
@@ -1460,6 +1501,10 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
         data: null,
       };
       emit(event);
+    },
+    emitSTTSpeechRecognized(data) {
+      if (!installed) return;
+      emit({ event: 'on_stt_recognised_speech', data });
     },
     uninstall() {
       if (!installed) return;

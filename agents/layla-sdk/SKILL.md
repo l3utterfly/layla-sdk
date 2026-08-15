@@ -1,6 +1,6 @@
 ---
 name: layla-sdk
-description: Use the @layla-network/sdk package in third-party Layla mini-apps and WebView apps. Covers the public API surface for creating a Layla client, contextual character-chat execution state and events, OpenAI-shaped chat completions and streams including reasoning deltas, inference engine selection, paginated character listing, chat sessions, session history, message saves, scheduled chat messages, memories, personas, TTS voices, playback and audio-file generation, background audio controls and events, character images, sentiment analysis, image generation progress/results, file saving, abort handling, SDK errors, exported TypeScript types, and runtime expectations inside the Layla WebView.
+description: Use the @layla-network/sdk package in third-party Layla mini-apps and WebView apps. Covers the public API surface for creating a Layla client, contextual character-chat execution state and events, OpenAI-shaped chat completions and streams including reasoning deltas, inference engine selection, paginated character listing, chat sessions, session history, message saves, scheduled chat messages, memories, personas, TTS voices, playback and audio-file generation, speech-to-text microphone input and events, background audio controls and events, character images, sentiment analysis, image generation progress/results, file saving, abort handling, SDK errors, exported TypeScript types, and runtime expectations inside the Layla WebView.
 ---
 
 # Layla SDK
@@ -49,6 +49,7 @@ import LaylaSDK, {
   type LaylaPersona,
   type LaylaTTSVoice,
   type GenerateVoiceToFileResult,
+  type STTSpeechRecognizedListener,
   type BackgroundAudioStatusListener,
   type BackgroundAudioTrackChangedListener,
   type BackgroundAudioFinishedListener,
@@ -105,6 +106,8 @@ await layla.tts.getVoices();
 await layla.tts.generateVoice(ttsVoiceId, text);
 await layla.tts.generateVoiceToFile(ttsVoiceId, text, save);
 await layla.tts.stopSpeaking();
+await layla.stt.startListening();
+layla.stt.on('speechRecognized', ({ transcript }) => {});
 await layla.backgroundAudio.start(audioFiles, metadata);
 await layla.backgroundAudio.pause();
 await layla.backgroundAudio.resume();
@@ -480,6 +483,38 @@ const saved = await layla.tts.generateVoiceToFile(
 );
 console.log(saved.filename);
 ```
+
+## Speech-To-Text
+
+Use the `layla.stt` surface for microphone speech input. It has two parts: a
+`startListening(options?)` request and a `speechRecognized` event.
+
+`layla.stt.startListening(options?)` asks the host to start capturing microphone
+audio. Its promise resolves once the host emits `on_stt_listening_started`,
+confirming the recogniser started, or rejects on error/abort. Recognised speech
+is not returned by this call — subscribe to the `speechRecognized` event to
+receive transcripts. Subscribe before (or right after) starting so no transcript
+is missed.
+
+```ts
+const onSpeech: STTSpeechRecognizedListener = ({ transcript }) => {
+  console.log('Heard:', transcript);
+};
+
+layla.stt.on('speechRecognized', onSpeech);
+
+await layla.stt.startListening();
+
+// Stop receiving transcripts when microphone input is no longer needed.
+layla.stt.off('speechRecognized', onSpeech);
+```
+
+The resource attaches its window `message` listener only while it has
+subscribers and detaches it after the last `off(...)`. The browser mock confirms
+listening, then emits one canned `speechRecognized` event shortly after
+`startListening()` succeeds; configure that phrase with the `sttTranscript`
+option (set it to `null` to disable), and drive additional recognised-speech
+events with the returned handle's `emitSTTSpeechRecognized(...)`.
 
 ## Background Audio
 

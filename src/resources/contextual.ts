@@ -4,8 +4,8 @@
  * Helpers for mini-apps launched inside a character chat context.
  */
 
+import type { LaylaApiEvent } from '../interface';
 import type {
-  LaylaApiEvent,
   LaylaApiEvent_onChatContextFinishedSpeaking,
   LaylaApiEvent_onChatContextNewMessage,
   LaylaApiEvent_onChatContextSentimentUpdate,

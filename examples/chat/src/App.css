@@ -1,3 +1,9 @@
+/*
+ * Mobile-first styles. Base rules target a phone-width viewport; the
+ * `@media (min-width: 768px)` block at the bottom layers on the desktop
+ * enhancements (larger spacing, wider bubbles, roomier buttons).
+ */
+
 * {
   box-sizing: border-box;
 }
@@ -23,6 +29,9 @@ body {
     sans-serif;
 
   overflow: hidden;
+
+  /* Avoid iOS auto-inflating text on rotation. */
+  -webkit-text-size-adjust: 100%;
 }
 
 .app {
@@ -30,7 +39,9 @@ body {
   flex-direction: column;
 
   width: 100%;
+  /* dvh tracks the real viewport as mobile browser chrome shows/hides. */
   height: 100vh;
+  height: 100dvh;
 
   background: #1c1c1c;
 }
@@ -40,13 +51,14 @@ body {
 /* ========================= */
 
 .header {
-  height: 72px;
+  height: 60px;
 
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
 
-  padding: 0 20px;
+  padding: 0 14px;
 
   background: #222222;
 
@@ -58,16 +70,24 @@ body {
 .header-left {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
+
+  min-width: 0;
+}
+
+.header-left > div {
+  min-width: 0;
 }
 
 .logo {
-  width: 42px;
-  height: 42px;
+  width: 38px;
+  height: 38px;
 
   display: flex;
   align-items: center;
   justify-content: center;
+
+  flex-shrink: 0;
 
   border-radius: 12px;
 
@@ -80,18 +100,36 @@ body {
 }
 
 .header-title {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
+
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .header-subtitle {
-  font-size: 13px;
+  font-size: 12px;
   color: lightgrey;
+
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  flex-shrink: 0;
 }
 
 .typing-indicator {
   color: #888888;
-  font-size: 14px;
+  font-size: 13px;
+
+  white-space: nowrap;
 }
 
 /* ========================= */
@@ -103,11 +141,11 @@ body {
 
   overflow-y: auto;
 
-  padding: 24px;
+  padding: 16px;
 
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
 }
 
 .messages::-webkit-scrollbar {
@@ -122,7 +160,7 @@ body {
 .message {
   display: flex;
   align-items: flex-end;
-  gap: 10px;
+  gap: 8px;
 }
 
 .message.user {
@@ -134,8 +172,8 @@ body {
 }
 
 .avatar {
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
 
   border-radius: 50%;
 
@@ -160,13 +198,15 @@ body {
 }
 
 .bubble {
-  max-width: min(75%, 900px);
+  max-width: 85%;
+  min-width: 0;
 
-  padding: 14px 16px;
+  padding: 12px 14px;
 
-  line-height: 1.6;
+  line-height: 1.55;
 
   word-wrap: break-word;
+  overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
 
@@ -174,7 +214,7 @@ body {
   display: block;
 
   width: auto;
-  max-width: min(320px, 100%);
+  max-width: min(260px, 100%);
   max-height: 320px;
 
   border-radius: 12px;
@@ -209,6 +249,49 @@ body {
   border-bottom-left-radius: 6px;
 }
 
+.speak-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+
+  margin-top: 10px;
+  padding: 5px 10px;
+
+  background: #333333;
+  color: #dcdcdc;
+
+  border: none;
+  border-radius: 999px;
+
+  font-size: 12px;
+  font-weight: 600;
+
+  cursor: pointer;
+
+  transition: all 0.2s ease;
+}
+
+.speak-btn:hover:not(:disabled) {
+  background: #404040;
+  color: white;
+}
+
+.speak-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.speak-btn svg {
+  width: 15px;
+  height: 15px;
+
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
 /* ========================= */
 /* Empty State */
 /* ========================= */
@@ -219,19 +302,21 @@ body {
   text-align: center;
 
   max-width: 600px;
+
+  padding: 0 8px;
 }
 
 .empty-state h1 {
   margin-bottom: 10px;
 
-  font-size: 38px;
+  font-size: 28px;
   font-weight: 700;
 }
 
 .empty-state p {
   color: lightgrey;
 
-  font-size: 16px;
+  font-size: 15px;
 }
 
 /* ========================= */
@@ -244,9 +329,9 @@ body {
   align-items: stretch;
   gap: 10px;
 
-  padding: 16px 20px;
+  padding: 12px;
 
-  background: rgba(34, 34, 34, 0.9);
+  background: rgba(34, 34, 34, 0.95);
 
   backdrop-filter: blur(20px);
 
@@ -255,10 +340,94 @@ body {
   flex-shrink: 0;
 }
 
+/* Voice controls toolbar (TTS voice picker + hands-free toggle). */
+.voice-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.voice-select {
+  flex: 1;
+  min-width: 0;
+
+  height: 38px;
+
+  padding: 0 10px;
+
+  background: #2a2a2a;
+  color: white;
+
+  border: 1px solid #343434;
+  border-radius: 10px;
+
+  font-size: 13px;
+
+  outline: none;
+  cursor: pointer;
+}
+
+.speaking-indicator {
+  flex-shrink: 0;
+
+  height: 38px;
+
+  padding: 0 12px;
+
+  border: 1px solid #47a6ff;
+  border-radius: 999px;
+
+  background: rgba(71, 166, 255, 0.12);
+  color: #9fd0ff;
+
+  font-size: 13px;
+  font-weight: 600;
+
+  cursor: pointer;
+
+  white-space: nowrap;
+}
+
+.voice-mode-btn {
+  flex-shrink: 0;
+
+  height: 38px;
+
+  padding: 0 14px;
+
+  background: #2a2a2a;
+  color: #cfcfcf;
+
+  border: 1px solid #343434;
+  border-radius: 999px;
+
+  font-size: 13px;
+  font-weight: 600;
+
+  cursor: pointer;
+
+  white-space: nowrap;
+
+  transition: all 0.2s ease;
+}
+
+.voice-mode-btn:hover {
+  background: #333333;
+}
+
+.voice-mode-btn.active {
+  background: #47a6ff;
+  color: white;
+
+  border-color: #47a6ff;
+
+  box-shadow: 0 4px 12px rgba(71, 166, 255, 0.25);
+}
+
 .composer-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 
 .file-input {
@@ -271,7 +440,6 @@ body {
   gap: 12px;
 
   min-width: 0;
-  max-width: 520px;
 
   padding: 8px;
 
@@ -281,8 +449,10 @@ body {
 }
 
 .attachment-preview img {
-  width: 54px;
-  height: 54px;
+  width: 48px;
+  height: 48px;
+
+  flex-shrink: 0;
 
   border-radius: 10px;
 
@@ -320,8 +490,34 @@ body {
   text-align: left;
 }
 
-.composer input {
+.listening-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  color: #9fd0ff;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.listening-dot {
+  width: 10px;
+  height: 10px;
+
+  flex-shrink: 0;
+
+  border-radius: 50%;
+
+  background: #47a6ff;
+
+  animation: blink 1s infinite;
+}
+
+.composer input:not(.file-input) {
   flex: 1;
+  min-width: 0;
+
+  height: 48px;
 
   background: #2a2a2a;
 
@@ -329,11 +525,12 @@ body {
 
   border: 1px solid #343434;
 
-  border-radius: 16px;
+  border-radius: 14px;
 
-  padding: 14px 18px;
+  padding: 0 14px;
 
-  font-size: 15px;
+  /* 16px keeps iOS Safari from zooming in when the field is focused. */
+  font-size: 16px;
 
   outline: none;
 
@@ -358,7 +555,7 @@ body {
 
   height: 48px;
 
-  min-width: 96px;
+  flex-shrink: 0;
 
   font-size: 14px;
   font-weight: 600;
@@ -375,18 +572,19 @@ body {
 }
 
 .composer .attach-btn,
+.composer .mic-btn,
 .composer .remove-attachment-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
 
-  min-width: 48px;
   width: 48px;
+  min-width: 48px;
+
+  padding: 0;
 }
 
 .attach-btn {
-  padding: 0;
-
   background: #333333;
   color: white;
 }
@@ -395,7 +593,8 @@ body {
   background: #404040;
 }
 
-.attach-btn svg {
+.attach-btn svg,
+.mic-btn svg {
   width: 22px;
   height: 22px;
 
@@ -404,6 +603,32 @@ body {
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 1.8;
+}
+
+.composer .mic-btn {
+  background: #333333;
+  color: white;
+}
+
+.mic-btn:hover:not(:disabled) {
+  background: #404040;
+}
+
+.mic-btn.listening {
+  background: #47a6ff;
+  color: white;
+
+  animation: mic-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes mic-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(71, 166, 255, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(71, 166, 255, 0);
+  }
 }
 
 .composer .remove-attachment-btn {
@@ -423,6 +648,15 @@ body {
 .remove-attachment-btn:hover {
   background: #3a3a3a;
   color: white;
+}
+
+.send-btn,
+.stop-btn {
+  /* One size that fits a 320px row (input still gets ~100px) and reads well on
+     desktop, so it needs no width bump at larger breakpoints. */
+  min-width: 76px;
+
+  padding: 0 16px;
 }
 
 .send-btn {
@@ -463,35 +697,80 @@ body {
 }
 
 /* ========================= */
-/* Mobile */
+/* Desktop / tablet enhancements */
 /* ========================= */
 
-@media (max-width: 768px) {
+@media (min-width: 768px) {
+  .header {
+    height: 72px;
+    padding: 0 20px;
+  }
+
+  .logo {
+    width: 42px;
+    height: 42px;
+  }
+
+  .header-title {
+    font-size: 16px;
+  }
+
+  .header-subtitle {
+    font-size: 13px;
+  }
+
   .messages {
-    padding: 16px;
+    padding: 24px;
+    gap: 14px;
+  }
+
+  .message {
+    gap: 10px;
+  }
+
+  .avatar {
+    width: 34px;
+    height: 34px;
   }
 
   .bubble {
-    max-width: 90%;
+    max-width: min(75%, 900px);
+    padding: 14px 16px;
+    line-height: 1.6;
   }
 
-  .composer {
-    padding: 12px;
-  }
-
-  .composer-row {
-    gap: 8px;
-  }
-
-  .composer button {
-    min-width: 72px;
-  }
-
-  .composer .attach-btn {
-    min-width: 48px;
+  .message-image {
+    max-width: min(320px, 100%);
   }
 
   .empty-state h1 {
-    font-size: 28px;
+    font-size: 38px;
+  }
+
+  .empty-state p {
+    font-size: 16px;
+  }
+
+  .composer {
+    padding: 16px 20px;
+    gap: 12px;
+  }
+
+  .composer-row {
+    gap: 12px;
+  }
+
+  .composer input:not(.file-input) {
+    font-size: 15px;
+  }
+
+  /* Keep the voice picker compact and right-aligned on wide screens. */
+  .voice-bar {
+    justify-content: flex-end;
+  }
+
+  .voice-select {
+    flex: 0 0 auto;
+    width: 220px;
   }
 }

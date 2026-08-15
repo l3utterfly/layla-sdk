@@ -8,8 +8,8 @@
  * Copy this file to add a new resource (e.g. `settings.ts` -> `Settings.get`).
  */
 
+import type { LaylaApiEvent } from '../interface';
 import type {
-  LaylaApiEvent,
   LaylaApiEvent_onGetCharactersResponse,
   LaylaApiEvent_onGetCharacterImageResponse,
   LaylaCharacter,

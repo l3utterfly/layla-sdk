@@ -18,11 +18,8 @@
  */
 
 import { LaylaError, LaylaBridgeUnavailableError } from '../errors';
-import type {
-  LaylaApiEvent,
-  LaylaApiEvent_onError,
-  LaylaApiRequest,
-} from '../protocol';
+import type { LaylaApiEvent, LaylaApiRequest } from '../interface';
+import type { LaylaApiEvent_onError } from '../protocol';
 
 /**
  * Everything the bridge needs from a job. A sink consumes the inbound event

@@ -11,7 +11,7 @@
  */
 
 import { LaylaError, LaylaAbortError } from '../errors';
-import type { LaylaApiEvent, LaylaApiRequest } from '../protocol';
+import type { LaylaApiEvent, LaylaApiRequest } from '../interface';
 import { Deferred } from './deferred';
 import { LaylaBridge, type BridgeJob, type BridgeSink } from './bridge';
 

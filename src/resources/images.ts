@@ -5,10 +5,9 @@
  * 
  */
 
+import type { LaylaApiEvent, LaylaApiRequest } from '../interface';
 import type {
-  LaylaApiEvent,
   LaylaApiEvent_onGetImageGenerationModelsResponse,
-  LaylaApiRequest,
 } from '../protocol';
 import { oneShot, type RequestOptions } from '../internal/one-shot';
 import { type BridgeSink, LaylaBridge } from '../internal/bridge';

@@ -7,8 +7,8 @@
  */
 
 import { LaylaAbortError, LaylaError } from '../../errors';
+import type { LaylaApiEvent } from '../../interface';
 import type {
-  LaylaApiEvent,
   LaylaApiEvent_onGetChatHistoryResponse,
   LaylaApiEvent_onGetInferenceEnginesResponse,
   LaylaApiEvent_onGetChatSessionsResponse,

@@ -13,6 +13,7 @@ import { Utils } from './resources/utils';
 import { Memories } from './resources/memories';
 import { Personas } from './resources/personas';
 import { TTS } from './resources/tts';
+import { STT } from './resources/stt';
 import { Contextual } from './resources/contextual';
 import { BackgroundAudio } from './resources/background-audio';
 
@@ -30,6 +31,7 @@ export class LaylaSDK {
   readonly memories = new Memories();
   readonly personas = new Personas();
   readonly tts = new TTS();
+  readonly stt = new STT();
   readonly contextual = new Contextual();
   readonly backgroundAudio = new BackgroundAudio();
 

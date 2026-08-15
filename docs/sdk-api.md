@@ -851,6 +851,52 @@ await layla.tts.stopSpeaking({
 });
 ```
 
+## Speech-to-text
+
+Microphone speech input uses the `layla.stt` surface. It has two parts: a
+`startListening()` request that asks the host to begin capturing microphone
+audio, and a `speechRecognized` event that delivers transcripts asynchronously
+as the host's speech-to-text service recognises them.
+
+### `layla.stt.startListening(options?)`
+
+Asks the host to start listening on the device microphone. The promise resolves
+once the host emits `on_stt_listening_started`, confirming the recogniser
+started successfully, or rejects on error/abort. It takes no arguments other
+than the shared request options.
+
+```ts
+await layla.stt.startListening();
+```
+
+Pass an abort signal to stop waiting for the start acknowledgement:
+
+```ts
+await layla.stt.startListening({ signal: controller.signal });
+```
+
+### `layla.stt.on('speechRecognized', listener)`
+
+Recognised speech is not returned by `startListening()`; it arrives through the
+`speechRecognized` event. Subscribe before (or right after) starting so no
+transcript is missed. Each event carries a `transcript` string.
+
+```ts
+const onSpeech: STTSpeechRecognizedListener = ({ transcript }) => {
+  console.log('Heard:', transcript);
+};
+
+layla.stt.on('speechRecognized', onSpeech);
+
+await layla.stt.startListening();
+
+// Later, when the mini-app no longer needs microphone input:
+layla.stt.off('speechRecognized', onSpeech);
+```
+
+The resource attaches its window `message` listener only while it has
+subscribers and detaches it once the last listener is removed with `off(...)`.
+
 ## Background audio player
 
 Background music and long-form audio use the separate
@@ -1283,6 +1329,28 @@ character: null, session_id: null }`, representing a standalone top-level
 mini-app. The mock handle's `emitChatContext...` methods let local tests drive
 the same pushed events that the Layla host emits.
 
+Exercise the speech-to-text surface:
+
+```ts
+const mock = installLaylaMock();
+
+layla.stt.on('speechRecognized', ({ transcript }) => {
+  console.log('Heard:', transcript);
+});
+
+// Resolves when the mock confirms listening started, then it auto-emits one
+// canned `speechRecognized` event shortly after.
+await layla.stt.startListening();
+
+// Drive additional recognised-speech events manually:
+mock.emitSTTSpeechRecognized({ transcript: 'A second recognised phrase.' });
+```
+
+By default the mock emits a sample transcript shortly after `startListening()`
+succeeds. Pass `sttTranscript` to change that phrase, or set it to `null` to
+disable the automatic event and drive recognised speech only through
+`mock.emitSTTSpeechRecognized(...)`.
+
 Customize mock session history with static transcript data:
 
 ```ts
@@ -1502,6 +1570,8 @@ Useful exported types include:
 - `LaylaPersona`
 - `LaylaTTSVoice`
 - `GenerateVoiceToFileResult`
+- `STTSpeechRecognized`
+- `STTSpeechRecognizedListener`
 - `BackgroundAudioMetadata`
 - `BackgroundAudioTrackChanged`
 - `BackgroundAudioTrackChangedListener`
@@ -1538,6 +1608,7 @@ Useful exported types include:
 - `LaylaApiGenerateVoice`
 - `LaylaApiGenerateVoiceToFile`
 - `LaylaApiStopSpeaking`
+- `LaylaApiSTTStartListening`
 - `LaylaApiStartBackgroundAudioPlayer`
 - `LaylaApiStopBackgroundAudioPlayer`
 - `LaylaApiPauseBackgroundAudioPlayer`
@@ -1564,6 +1635,8 @@ Useful exported types include:
 - `LaylaApiEvent_onBackgroundAudioTrackChanged`
 - `LaylaApiEvent_onBackgroundAudioStatus`
 - `LaylaApiEvent_onBackgroundAudioFinished`
+- `LaylaApiEvent_onSTTListeningStarted`
+- `LaylaApiEvent_onSTTSpeechRecognized`
 - `LaylaApiSaveFile`
 - `LaylaApiEvent_onSaveFileResponse`
 - `LaylaApiReadFile`
@@ -1600,9 +1673,12 @@ The TypeScript source is the source of truth for current signatures:
 - `src/resources/memories.ts`
 - `src/resources/personas.ts`
 - `src/resources/tts.ts`
+- `src/resources/stt.ts`
 - `src/resources/background-audio.ts`
 - `src/resources/contextual.ts`
 - `src/resources/utils.ts`
 - `src/protocol.ts`
+- `src/interface.ts`
+- `src/typescript-protocol.ts`
 - `src/errors.ts`
 - `src/mock.ts`

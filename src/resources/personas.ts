@@ -4,8 +4,8 @@
  * Persona helpers backed by the host's persona protocol endpoint.
  */
 
+import type { LaylaApiEvent } from '../interface';
 import type {
-  LaylaApiEvent,
   LaylaApiEvent_onGetPersonaResponse,
   LaylaPersona,
 } from '../protocol';

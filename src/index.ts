@@ -59,18 +59,15 @@ export type {
   LaylaApiPauseBackgroundAudioPlayer,
   LaylaApiResumeBackgroundAudioPlayer,
   LaylaApiSkipBackgroundAudioTrack,
+  LaylaApiSTTStartListening,
   LaylaApiCancel,
-  LaylaApiRequest,
 
   // event types
-  LaylaApiEvent,
-  LaylaApiEvent_onMsg,
   LaylaApiEvent_onMsgEnd,
   LaylaApiEvent_onError,
   LaylaApiEvent_onGetCharactersResponse,
   LaylaApiEvent_onGetCharacterImageResponse,
   LaylaApiEvent_onGenerateImageResponse,
-  LaylaApiEvent_onGenerateImageProgress,
   LaylaApiEvent_onGetImageGenerationModelsResponse,
   LaylaApiEvent_onUpdateCharacterResponse,
   LaylaApiEvent_onGetChatHistoryResponse,
@@ -100,8 +97,17 @@ export type {
   LaylaApiEvent_onBackgroundAudioTrackChanged,
   LaylaApiEvent_onBackgroundAudioStatus,
   LaylaApiEvent_onBackgroundAudioFinished,
+  LaylaApiEvent_onSTTListeningStarted,
+  LaylaApiEvent_onSTTSpeechRecognized,
 } from './protocol';
 export { SENTIMENT_THRESHOLDS } from './protocol';
+
+// Combined wire-contract unions (base protocol + TypeScript-side streaming events).
+export type { LaylaApiRequest, LaylaApiEvent } from './interface';
+export type {
+  LaylaApiEvent_onMsg,
+  LaylaApiEvent_onGenerateImageProgress,
+} from './typescript-protocol';
 
 // Errors.
 export {
@@ -145,6 +151,13 @@ export { Personas } from './resources/personas';
 // Text-to-speech resource surface.
 export { TTS } from './resources/tts';
 export type { GenerateVoiceToFileResult } from './resources/tts';
+
+// Speech-to-text resource surface.
+export { STT } from './resources/stt';
+export type {
+  STTSpeechRecognized,
+  STTSpeechRecognizedListener,
+} from './resources/stt';
 
 // Background audio player surface.
 export { BackgroundAudio } from './resources/background-audio';

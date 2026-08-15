@@ -4,8 +4,8 @@
  * Memory CRUD-ish helpers backed by the host's memory protocol endpoints.
  */
 
+import type { LaylaApiEvent } from '../interface';
 import type {
-  LaylaApiEvent,
   LaylaApiEvent_onCreateOrUpdateMemoriesResponse,
   LaylaApiEvent_onGetMemoriesResponse,
   LaylaApiEvent_onGetTopMemoriesResponse,

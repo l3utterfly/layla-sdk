@@ -2,8 +2,8 @@
  * Utility APIs that do not belong to a domain-specific resource.
  */
 
+import type { LaylaApiEvent } from '../interface';
 import type {
-  LaylaApiEvent,
   LaylaApiEvent_onReadFileResponse,
   LaylaApiEvent_onSaveFileResponse,
 } from '../protocol';
