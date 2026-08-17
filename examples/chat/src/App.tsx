@@ -100,6 +100,68 @@ const saveChatMessage = async (
   }
 };
 
+// Local chat history persisted in the mini-app's private sqlite database via the
+// `layla.db` surface. This is separate from `saveChatMessage` above (which writes
+// to Layla's native chat history): it is what lets this app reload its own
+// transcript across launches.
+const messagesTable = "chat_messages";
+
+/** Create the messages table on first run. Safe to call every launch. */
+const createMessagesTable = () =>
+  layla.db.executeSql(
+    `CREATE TABLE IF NOT EXISTS ${messagesTable} (
+       id INTEGER PRIMARY KEY AUTOINCREMENT,
+       role TEXT NOT NULL,
+       content TEXT,
+       image_base64 TEXT,
+       image_name TEXT,
+       timestamp INTEGER NOT NULL
+     )`,
+  );
+
+/** Read the whole transcript back, oldest first, as `ChatMessage`s. */
+const loadMessages = async (): Promise<ChatMessage[]> => {
+  const result = await layla.db.executeSql(
+    `SELECT role, content, image_base64, image_name
+       FROM ${messagesTable}
+      ORDER BY id ASC`,
+  );
+
+  return result.rows.map((row) => {
+    const record = row as Record<string, unknown>;
+    const imageBase64 = record.image_base64;
+    const imageName = record.image_name;
+    return {
+      role: record.role === "assistant" ? "assistant" : "user",
+      content: record.content == null ? null : String(record.content),
+      ...(imageBase64 ? { imageBase64: String(imageBase64) } : {}),
+      ...(imageName ? { imageName: String(imageName) } : {}),
+    };
+  });
+};
+
+/** Append one message to the transcript. Uses bound params, never string SQL. */
+const insertMessage = async (message: ChatMessage) => {
+  try {
+    await layla.db.executeSql(
+      `INSERT INTO ${messagesTable} (role, content, image_base64, image_name, timestamp)
+       VALUES (?, ?, ?, ?, ?)`,
+      [
+        message.role,
+        message.content,
+        message.imageBase64 ?? null,
+        message.imageName ?? null,
+        Date.now(),
+      ],
+    );
+  } catch (err) {
+    console.error("Failed to persist chat message", err);
+  }
+};
+
+/** Wipe the whole transcript. */
+const clearMessages = () => layla.db.executeSql(`DELETE FROM ${messagesTable}`);
+
 export default function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -142,6 +204,19 @@ export default function App() {
       behavior: "smooth",
     });
   }, [messages]);
+
+  // Create the table once, then hydrate the transcript from the database.
+  useEffect(() => {
+    (async () => {
+      try {
+        await createMessagesTable();
+        const history = await loadMessages();
+        if (history.length > 0) setMessages(history);
+      } catch (err) {
+        console.error("Failed to load chat history", err);
+      }
+    })();
+  }, []);
 
   // Load the installed TTS voices once and default to the first one.
   useEffect(() => {
@@ -271,6 +346,7 @@ export default function App() {
 
     try {
       await saveChatMessage(userMessage, "user");
+      await insertMessage(userMessage);
 
       const stream = layla.chat.completions.stream({
         messages: nextMessages.map(toCompletionMessage),
@@ -305,24 +381,22 @@ export default function App() {
       assistantContent = await stream.finalContent();
 
       if (assistantContent) {
-        await saveChatMessage(
-          {
-            role: "assistant",
-            content: assistantContent,
-          },
-          "layla",
-        );
+        const assistantMessage: ChatMessage = {
+          role: "assistant",
+          content: assistantContent,
+        };
+        await saveChatMessage(assistantMessage, "layla");
+        await insertMessage(assistantMessage);
       }
     } catch (err) {
       if (err instanceof LaylaAbortError) {
         if (assistantContent) {
-          await saveChatMessage(
-            {
-              role: "assistant",
-              content: assistantContent,
-            },
-            "layla",
-          );
+          const assistantMessage: ChatMessage = {
+            role: "assistant",
+            content: assistantContent,
+          };
+          await saveChatMessage(assistantMessage, "layla");
+          await insertMessage(assistantMessage);
         }
       } else {
         console.error(err);
@@ -373,6 +447,21 @@ export default function App() {
     streamRef.current?.abort();
   };
 
+  /** Delete every stored message and empty the on-screen transcript. */
+  const clearHistory = async () => {
+    if (busyRef.current) return;
+    if (messages.length === 0) return;
+    if (!window.confirm("Clear all chat messages? This cannot be undone.")) {
+      return;
+    }
+    try {
+      await clearMessages();
+      setMessages([]);
+    } catch (err) {
+      console.error("Failed to clear chat history", err);
+    }
+  };
+
   const selectImage = async (file: File | undefined) => {
     if (!file) return;
 
@@ -419,6 +508,16 @@ export default function App() {
               Generating...
             </div>
           )}
+
+          <button
+            type="button"
+            className="clear-btn"
+            title="Clear all messages"
+            disabled={busy || messages.length === 0}
+            onClick={() => void clearHistory()}
+          >
+            Clear
+          </button>
         </div>
       </header>
 

@@ -132,6 +132,41 @@ body {
   white-space: nowrap;
 }
 
+.clear-btn {
+  flex-shrink: 0;
+
+  height: 34px;
+
+  padding: 0 14px;
+
+  background: #2a2a2a;
+  color: #cfcfcf;
+
+  border: 1px solid #343434;
+  border-radius: 999px;
+
+  font-size: 13px;
+  font-weight: 600;
+
+  cursor: pointer;
+
+  white-space: nowrap;
+
+  transition: all 0.2s ease;
+}
+
+.clear-btn:hover:not(:disabled) {
+  background: #3a2a2a;
+  color: #ff8f8f;
+
+  border-color: #5a3030;
+}
+
+.clear-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* ========================= */
 /* Messages */
 /* ========================= */
