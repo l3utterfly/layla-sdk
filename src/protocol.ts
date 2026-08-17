@@ -591,6 +591,18 @@ export interface LaylaApiSTTStopListening {
 }
 
 /**
+ * Ask the host to execute a SQL query against a local sqlite database. This database is not shared with the host app; it is a private database created for the API caller.
+ * The host should respond with an `on_execute_sql_response` event containing the query results, or 'on_error' if there was an error executing the query.
+ */
+export interface LaylaApiExecuteSql {
+  cmd: 'execute_sql';
+  data: {
+    query: string;
+    params?: any[];
+  };
+}
+
+/**
  * A request command (anything that opens a job and expects events back).
  * Add new one-shot commands here. `cancel` is not a request — it's a control
  * signal for an already-open job — so it lives outside this union.
@@ -629,7 +641,8 @@ export type BaseApiRequest =
   | LaylaApiSkipBackgroundAudioTrack
   | LaylaApiGetImageGenerationModels
   | LaylaApiSTTStartListening
-  | LaylaApiSTTStopListening;
+  | LaylaApiSTTStopListening
+  | LaylaApiExecuteSql;
 
 /* ---- RN -> Web events ------------------------------------------------------ */
 
@@ -1031,6 +1044,18 @@ export interface LaylaApiEvent_onSTTListeningStopped {
   data: null; // no additional data is needed for this event
 }
 
+export interface LaylaApiEvent_onExecuteSqlResponse {
+  event: 'on_execute_sql_response';
+  data: {
+    /** Rows returned by the query (empty for writes). Each row is a column->value map. */
+    rows: any[];
+    /** Number of rows changed by an INSERT/UPDATE/DELETE. */
+    rowsAffected: number;
+    /** Row id of the last inserted row (0 when not applicable). */
+    insertId: number;
+  };
+}
+
 export type BaseApiEvent =
   | LaylaApiEvent_onMsgEnd
   | LaylaApiEvent_onError
@@ -1068,4 +1093,5 @@ export type BaseApiEvent =
   | LaylaApiEvent_onGetImageGenerationModelsResponse
   | LaylaApiEvent_onSTTListeningStarted
   | LaylaApiEvent_onSTTSpeechRecognized
-  | LaylaApiEvent_onSTTListeningStopped;
+  | LaylaApiEvent_onSTTListeningStopped
+  | LaylaApiEvent_onExecuteSqlResponse;

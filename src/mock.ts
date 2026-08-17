@@ -30,6 +30,7 @@ import type {
   LaylaApiEvent_onChatContextStartedSpeaking,
   LaylaApiEvent_onChatContextStartedThinking,
   LaylaApiEvent_onGetChatSessionsResponse,
+  LaylaApiEvent_onExecuteSqlResponse,
   LaylaApiEvent_onGetImageGenerationModelsResponse,
   LaylaApiEvent_onSTTSpeechRecognized,
   LaylaCharacter,
@@ -69,6 +70,8 @@ type MockChatSession =
 
 type MockImageGenerationModel =
   LaylaApiEvent_onGetImageGenerationModelsResponse['data'][number];
+
+type MockExecuteSqlResult = LaylaApiEvent_onExecuteSqlResponse['data'];
 
 export interface LaylaMockOptions {
   /**
@@ -130,6 +133,18 @@ export interface LaylaMockOptions {
    * Defaults to two sample models.
    */
   imageGenerationModels?: MockImageGenerationModel[];
+  /**
+   * Handle `db.executeSql(query, params)` calls. Return the query result the
+   * mock should reply with (`rows`, `rowsAffected`, `insertId`). May be async,
+   * so you can back it with an in-browser SQL engine (e.g. sql.js) for realistic
+   * local testing. The browser mock has no real database, so when this is
+   * omitted every query resolves to an empty result
+   * (`{ rows: [], rowsAffected: 0, insertId: 0 }`).
+   */
+  executeSql?: (
+    query: string,
+    params: unknown[],
+  ) => MockExecuteSqlResult | Promise<MockExecuteSqlResult>;
   /** Delay before the first event of a response (simulated latency). Default 150ms. */
   latencyMs?: number;
   /** Delay between streamed tokens. Default 40ms. */
@@ -1208,6 +1223,28 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     emit({ event: 'on_stt_listening_stopped', data: null });
   }
 
+  async function handleExecuteSql(data: {
+    query: string;
+    params?: unknown[];
+  }): Promise<void> {
+    await delay(latencyMs);
+    if (shouldError()) {
+      emitError('Simulated SQL execution error');
+      return;
+    }
+
+    // The browser mock has no real sqlite. Delegate to the caller-supplied
+    // handler when present; otherwise reply with an empty successful result.
+    const result: MockExecuteSqlResult = options.executeSql
+      ? await options.executeSql(data.query, data.params ?? [])
+      : { rows: [], rowsAffected: 0, insertId: 0 };
+
+    emit({
+      event: 'on_execute_sql_response',
+      data: result,
+    });
+  }
+
   function emitBackgroundAudioStatus(): void {
     if (!backgroundAudio) return;
     emit({
@@ -1449,6 +1486,9 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
           break;
         case 'stt_stop_listening':
           void handleSTTStopListening();
+          break;
+        case 'execute_sql':
+          void handleExecuteSql(msg.data);
           break;
         default:
           break;

@@ -979,6 +979,52 @@ Status contains `playing`, `currentIndex`, `currentTime`, `duration`, and
 but may throttle or suspend it while the app is backgrounded. Do not use status
 events to drive queue logic.
 
+## Database
+
+The `layla.db` surface runs SQL against a private sqlite database. Each mini-app
+gets its own database; it is not shared with the Layla app or with other
+mini-apps, so it is the place to persist structured mini-app state such as
+settings, saved records, or caches.
+
+### `layla.db.executeSql(query, params?, options?)`
+
+Asks the host to run a single SQL statement. The promise resolves once the host
+emits `on_execute_sql_response`, or rejects on error/abort. Use `?` placeholders
+in `query` and pass their values in `params` so the host binds them safely
+rather than interpolating untrusted values into the SQL string.
+
+```ts
+await layla.db.executeSql(
+  'CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY, body TEXT)',
+);
+
+const insert = await layla.db.executeSql(
+  'INSERT INTO notes (body) VALUES (?)',
+  ['Remember to water the plants.'],
+);
+console.log(insert.insertId, insert.rowsAffected);
+
+const read: ExecuteSqlResult = await layla.db.executeSql(
+  'SELECT id, body FROM notes WHERE body LIKE ?',
+  ['%plants%'],
+);
+for (const row of read.rows) {
+  console.log(row.id, row.body);
+}
+```
+
+The result is an `ExecuteSqlResult` with:
+
+- `rows` — rows returned by a read, each a column-to-value map. Empty for writes.
+- `rowsAffected` — number of rows changed by an INSERT/UPDATE/DELETE.
+- `insertId` — row id of the last inserted row (0 when not applicable).
+
+Pass an abort signal to stop waiting for the response:
+
+```ts
+await layla.db.executeSql('SELECT 1', undefined, { signal: controller.signal });
+```
+
 ## `layla.classifier.getSentiment(text, options?)`
 
 Scores a piece of text with Layla's sentiment classifier and returns `SentimentValues`, keyed by emotion category.
@@ -1366,6 +1412,32 @@ succeeds. Pass `sttTranscript` to change that phrase, or set it to `null` to
 disable the automatic event and drive recognised speech only through
 `mock.emitSTTSpeechRecognized(...)`.
 
+Exercise the database surface:
+
+```ts
+const rows: Record<string, unknown>[] = [];
+
+installLaylaMock({
+  executeSql: (query, params) => {
+    if (query.startsWith('INSERT')) {
+      rows.push({ id: rows.length + 1, body: params[0] });
+      return { rows: [], rowsAffected: 1, insertId: rows.length };
+    }
+    return { rows: [...rows], rowsAffected: 0, insertId: 0 };
+  },
+});
+
+await layla.db.executeSql('INSERT INTO notes (body) VALUES (?)', ['hello']);
+const read = await layla.db.executeSql('SELECT * FROM notes');
+console.log(read.rows);
+```
+
+The browser mock has no real sqlite. When the `executeSql` handler is omitted,
+every query resolves to an empty result
+(`{ rows: [], rowsAffected: 0, insertId: 0 }`). Provide the handler to return
+your own results, or to back the mock with an in-browser SQL engine such as
+sql.js for realistic local testing.
+
 Customize mock session history with static transcript data:
 
 ```ts
@@ -1585,6 +1657,7 @@ Useful exported types include:
 - `LaylaPersona`
 - `LaylaTTSVoice`
 - `GenerateVoiceToFileResult`
+- `ExecuteSqlResult`
 - `STTSpeechRecognized`
 - `STTSpeechRecognizedListener`
 - `BackgroundAudioMetadata`
@@ -1625,6 +1698,7 @@ Useful exported types include:
 - `LaylaApiStopSpeaking`
 - `LaylaApiSTTStartListening`
 - `LaylaApiSTTStopListening`
+- `LaylaApiExecuteSql`
 - `LaylaApiStartBackgroundAudioPlayer`
 - `LaylaApiStopBackgroundAudioPlayer`
 - `LaylaApiPauseBackgroundAudioPlayer`
@@ -1654,6 +1728,7 @@ Useful exported types include:
 - `LaylaApiEvent_onSTTListeningStarted`
 - `LaylaApiEvent_onSTTSpeechRecognized`
 - `LaylaApiEvent_onSTTListeningStopped`
+- `LaylaApiEvent_onExecuteSqlResponse`
 - `LaylaApiSaveFile`
 - `LaylaApiEvent_onSaveFileResponse`
 - `LaylaApiReadFile`
@@ -1691,6 +1766,7 @@ The TypeScript source is the source of truth for current signatures:
 - `src/resources/personas.ts`
 - `src/resources/tts.ts`
 - `src/resources/stt.ts`
+- `src/resources/db.ts`
 - `src/resources/background-audio.ts`
 - `src/resources/contextual.ts`
 - `src/resources/utils.ts`

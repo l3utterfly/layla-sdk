@@ -1,6 +1,6 @@
 ---
 name: layla-sdk
-description: Use the @layla-network/sdk package in third-party Layla mini-apps and WebView apps. Covers the public API surface for creating a Layla client, contextual character-chat execution state and events, OpenAI-shaped chat completions and streams including reasoning deltas, inference engine selection, paginated character listing, chat sessions, session history, message saves, scheduled chat messages, memories, personas, TTS voices, playback and audio-file generation, speech-to-text microphone input and events, background audio controls and events, character images, sentiment analysis, image generation progress/results, file saving, abort handling, SDK errors, exported TypeScript types, and runtime expectations inside the Layla WebView.
+description: Use the @layla-network/sdk package in third-party Layla mini-apps and WebView apps. Covers the public API surface for creating a Layla client, contextual character-chat execution state and events, OpenAI-shaped chat completions and streams including reasoning deltas, inference engine selection, paginated character listing, chat sessions, session history, message saves, scheduled chat messages, memories, personas, TTS voices, playback and audio-file generation, speech-to-text microphone input and events, background audio controls and events, character images, sentiment analysis, image generation progress/results, private per-mini-app sqlite database queries, file saving, abort handling, SDK errors, exported TypeScript types, and runtime expectations inside the Layla WebView.
 ---
 
 # Layla SDK
@@ -49,6 +49,7 @@ import LaylaSDK, {
   type LaylaPersona,
   type LaylaTTSVoice,
   type GenerateVoiceToFileResult,
+  type ExecuteSqlResult,
   type STTSpeechRecognizedListener,
   type BackgroundAudioStatusListener,
   type BackgroundAudioTrackChangedListener,
@@ -114,6 +115,7 @@ await layla.backgroundAudio.pause();
 await layla.backgroundAudio.resume();
 await layla.backgroundAudio.skip();
 await layla.backgroundAudio.stop();
+await layla.db.executeSql(query, params);
 await layla.utils.saveFile(filename, contentBase64, share);
 ```
 
@@ -577,6 +579,45 @@ status for player commands and exposes `emitBackgroundAudioTrackChanged(...)`,
 `emitBackgroundAudioStatus(...)`, and `emitBackgroundAudioFinished()` for local
 event testing. Its `generateVoiceToFile(...)` returns a small mock WAV data URI
 or saves `mock-voice.wav` when `save` is true.
+
+## Database
+
+Use `layla.db.executeSql(query, params?, options?)` to run SQL against a private
+sqlite database. Each mini-app gets its own database; it is not shared with the
+Layla app or with other mini-apps, so it is the place to persist structured
+mini-app state (settings, saved records, caches).
+
+Use `?` placeholders and pass their values in `params` so the host binds them
+safely instead of interpolating untrusted values into the SQL string.
+
+```ts
+await layla.db.executeSql(
+  'CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY, body TEXT)',
+);
+
+const insert = await layla.db.executeSql(
+  'INSERT INTO notes (body) VALUES (?)',
+  ['Remember to water the plants.'],
+);
+console.log(insert.insertId, insert.rowsAffected);
+
+const read: ExecuteSqlResult = await layla.db.executeSql(
+  'SELECT id, body FROM notes WHERE body LIKE ?',
+  ['%plants%'],
+);
+for (const row of read.rows) {
+  console.log(row.id, row.body);
+}
+```
+
+The result has `rows` (rows returned by a read; empty for writes),
+`rowsAffected` (rows changed by an INSERT/UPDATE/DELETE), and `insertId` (row id
+of the last inserted row, 0 when not applicable).
+
+For local testing, the browser mock has no real sqlite. By default every query
+resolves to an empty result (`{ rows: [], rowsAffected: 0, insertId: 0 }`); pass
+an `executeSql` handler to `installLaylaMock(...)` to return your own results, or
+to back the mock with an in-browser SQL engine.
 
 ## Sentiment
 

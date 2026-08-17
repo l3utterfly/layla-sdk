@@ -61,6 +61,7 @@ export type {
   LaylaApiSkipBackgroundAudioTrack,
   LaylaApiSTTStartListening,
   LaylaApiSTTStopListening,
+  LaylaApiExecuteSql,
   LaylaApiCancel,
 
   // event types
@@ -101,6 +102,7 @@ export type {
   LaylaApiEvent_onSTTListeningStarted,
   LaylaApiEvent_onSTTSpeechRecognized,
   LaylaApiEvent_onSTTListeningStopped,
+  LaylaApiEvent_onExecuteSqlResponse,
 } from './protocol';
 export { SENTIMENT_THRESHOLDS } from './protocol';
 
@@ -172,6 +174,10 @@ export type {
   BackgroundAudioFinished,
   BackgroundAudioFinishedListener,
 } from './resources/background-audio';
+
+// Database resource surface.
+export { DB } from './resources/db';
+export type { ExecuteSqlResult } from './resources/db';
 
 // Contextual mini-app surface.
 export { Contextual } from './resources/contextual';

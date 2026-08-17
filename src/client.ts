@@ -16,6 +16,7 @@ import { TTS } from './resources/tts';
 import { STT } from './resources/stt';
 import { Contextual } from './resources/contextual';
 import { BackgroundAudio } from './resources/background-audio';
+import { DB } from './resources/db';
 
 export interface LaylaSDKOptions {
   /** Reserved for future use (e.g. default model). */
@@ -34,6 +35,7 @@ export class LaylaSDK {
   readonly stt = new STT();
   readonly contextual = new Contextual();
   readonly backgroundAudio = new BackgroundAudio();
+  readonly db = new DB();
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   constructor(_options: LaylaSDKOptions = {}) {}
