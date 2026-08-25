@@ -34,7 +34,9 @@ class OneShotRequest<T> implements BridgeSink {
   ) {
     // Avoid an unhandled rejection if the caller aborts and never awaits.
     this.deferred.promise.catch(() => undefined);
-    this.job = { message: command, sink: this };
+    // A one-shot serialises within the lane of the event that answers it, so
+    // requests waiting on different response events run concurrently.
+    this.job = { message: command, sink: this, laneKey: responseEvent };
   }
 
   get promise(): Promise<T> {

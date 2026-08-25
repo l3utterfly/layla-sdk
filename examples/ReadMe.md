@@ -25,3 +25,9 @@ Use this example to see how a mini-app can keep local interaction context, pass 
 A swipe-style character generator demonstrating image generation and creating new characters.
 
 Use this example to see how a mini-app can generate images, build Character Card V2 data, and save newly created characters back into Layla.
+
+## `diagnostics`
+
+A test harness that exercises **every** public SDK endpoint plus the per-lane concurrency behaviour, reporting pass / fail / skip for each.
+
+Use this as the one-shot sanity check when the SDK changes: run it in a browser against the mock (`npm run dev`), or `npm run build` a single-file `dist/index.html` and copy it to the host to verify the real protocol implementation. Keep it updated as new endpoints are added.

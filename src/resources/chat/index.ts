@@ -131,6 +131,9 @@ class Completions {
         data: messages.map(toLaylaChatMessage),
       },
       sink: stream,
+      // All chat generations share the `on_message*` event shape, so they
+      // serialise within a single lane; other surfaces run alongside them.
+      laneKey: 'on_message_end',
     });
     return stream;
   }

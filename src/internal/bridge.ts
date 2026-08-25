@@ -3,18 +3,30 @@
  * ------------------
  * The single low-level transport over the WebView message channel.
  *
- * Owns one global `message` listener and serialises requests, because the
- * current protocol has no request id to correlate concurrent jobs. Every job —
- * chat completions and one-shot requests alike — flows through the same queue
- * and single active slot, so a one-shot waits behind an in-flight generation
- * rather than racing it.
+ * Owns one global `message` listener and serialises requests *per lane* rather
+ * than globally. A lane is keyed by the response event a request waits for, so
+ * every distinct surface/operation (chat `on_message_end`, db
+ * `on_execute_sql_response`, tts `on_get_tts_voices_response`, ...) gets its own
+ * queue and its own single active slot. Requests in different lanes run
+ * concurrently; requests that would produce the *same* response event (e.g. two
+ * chat generations) still serialise, because the host cannot tell two identical
+ * response streams apart on its own.
  *
- * The bridge is intentionally event-agnostic: it routes every parsed event to
- * the active job's sink and lets the sink say when it's done. The only event it
- * special-cases is `on_error`, which terminates any job. New request/response
- * shapes therefore need NO changes here. If you add an `id` field to both
- * `LaylaApiMessage` and `LaylaApiEvent`, this is the one place that would change
- * to support true concurrency.
+ * To correlate concurrent jobs the bridge stamps every outbound message with an
+ * internal `id` (top-level wire field, never surfaced to callers) and routes an
+ * inbound event straight to the job whose id it echoes. This is what makes
+ * `on_error` — which carries no event-type of its own — attributable to the
+ * exact request that failed while other lanes are in flight.
+ *
+ * Back-compat: a host that does not yet echo `id` produces id-less events. The
+ * bridge falls back to offering such an event to each lane's active sink (the
+ * owning sink recognises its response event; every other sink no-ops), and an
+ * id-less `on_error` fails all active lanes, since it cannot be attributed.
+ *
+ * The bridge is intentionally event-agnostic: it routes every parsed event to a
+ * job's sink and lets the sink say when it's done. The only event it
+ * special-cases is `on_error`, which terminates a job. New request/response
+ * shapes therefore need NO changes here.
  */
 
 import { LaylaError, LaylaBridgeUnavailableError } from '../errors';
@@ -51,6 +63,22 @@ export interface BridgeSink {
 export interface BridgeJob {
   message: LaylaApiRequest;
   sink: BridgeSink;
+  /**
+   * The lane this job serialises within, keyed by the response event it waits
+   * for (one-shot: its `responseEvent`; streaming: `on_message_end`). Jobs in
+   * different lanes run concurrently.
+   */
+  laneKey: string;
+  /**
+   * Internal correlation id, assigned by the bridge at enqueue time and stamped
+   * onto the outbound wire message. Never exposed to SDK callers.
+   */
+  id?: string;
+}
+
+interface Lane {
+  queue: BridgeJob[];
+  active: BridgeJob | null;
 }
 
 export class LaylaBridge {
@@ -61,9 +89,28 @@ export class LaylaBridge {
     return LaylaBridge.instance;
   }
 
-  private queue: BridgeJob[] = [];
-  private active: BridgeJob | null = null;
+  /** One independent queue + active slot per response-event lane. */
+  private lanes = new Map<string, Lane>();
+  /** In-flight jobs by their correlation id, for precise inbound routing. */
+  private inflight = new Map<string, BridgeJob>();
   private listening = false;
+  private idSeq = 0;
+
+  private genId(): string {
+    // Monotonic within the session; only ever compared for equality, never
+    // parsed. A per-session counter is enough to correlate concurrent jobs.
+    this.idSeq += 1;
+    return `req-${this.idSeq}`;
+  }
+
+  private lane(key: string): Lane {
+    let lane = this.lanes.get(key);
+    if (!lane) {
+      lane = { queue: [], active: null };
+      this.lanes.set(key, lane);
+    }
+    return lane;
+  }
 
   private ensureListening(): void {
     if (this.listening || typeof window === 'undefined') return;
@@ -79,7 +126,7 @@ export class LaylaBridge {
     const raw = event.data;
     if (typeof raw !== 'string') return;
 
-    let parsed: Partial<LaylaApiEvent>;
+    let parsed: Partial<LaylaApiEvent> & { id?: string };
     try {
       parsed = JSON.parse(raw);
     } catch {
@@ -87,24 +134,52 @@ export class LaylaBridge {
     }
     if (!parsed || typeof parsed.event !== 'string') return;
 
-    const job = this.active;
-    if (!job) return; // stray event with nothing in flight
-
-    if (parsed.event === 'on_error') {
-      const data = (parsed as LaylaApiEvent_onError).data;
-      job.sink.fail(new LaylaError(data?.message || 'Layla model error'));
-      this.finishActive();
+    // Precise path: the host echoed our correlation id, so route straight to
+    // the one job that owns it — including on_error, which has no event-type of
+    // its own to route by.
+    if (typeof parsed.id === 'string') {
+      const job = this.inflight.get(parsed.id);
+      if (!job) return; // stray/duplicate; the job already finished
+      this.deliver(job, parsed as LaylaApiEvent);
       return;
     }
 
-    // Generic dispatch: the sink decides what to do and whether it's terminal.
-    if (job.sink.accept(parsed as LaylaApiEvent)) this.finishActive();
+    // Fallback path: an id-less host. Offer the event to each lane's active
+    // sink; the owner recognises its response event and every other sink
+    // no-ops. An id-less error can't be attributed, so fail all active lanes.
+    if (parsed.event === 'on_error') {
+      this.failAllActive(
+        new LaylaError(
+          (parsed as LaylaApiEvent_onError).data?.message || 'Layla model error',
+        ),
+      );
+      return;
+    }
+    for (const lane of this.lanes.values()) {
+      const job = lane.active;
+      if (job && job.sink.accept(parsed as LaylaApiEvent)) {
+        this.finishJob(job);
+        break;
+      }
+    }
   };
+
+  /** Route one id-matched event to its job and free the lane if it terminates. */
+  private deliver(job: BridgeJob, parsed: LaylaApiEvent): void {
+    if (parsed.event === 'on_error') {
+      const data = (parsed as LaylaApiEvent_onError).data;
+      job.sink.fail(new LaylaError(data?.message || 'Layla model error'));
+      this.finishJob(job);
+      return;
+    }
+    if (job.sink.accept(parsed)) this.finishJob(job);
+  }
 
   enqueue(job: BridgeJob): void {
     this.ensureListening();
-    this.queue.push(job);
-    this.pump();
+    job.id = this.genId();
+    this.lane(job.laneKey).queue.push(job);
+    this.pump(job.laneKey);
   }
 
   /**
@@ -117,51 +192,82 @@ export class LaylaBridge {
    *   sends the request's terminating event (`on_message_end` /
    *   `on_get_characters_response` / `on_error`). Holding the slot until then
    *   keeps any trailing event attributed to the (already-closed) sink — which
-   *   swallows it — instead of leaking into the next request.
+   *   swallows it — instead of leaking into the next request in that lane.
    */
   cancel(sink: BridgeSink): void {
-    const remaining = this.queue.filter((job) => job.sink !== sink);
-    if (remaining.length !== this.queue.length) {
-      this.queue = remaining;
-      return; // was queued; nothing was ever sent to the host
-    }
-    if (this.active && this.active.sink === sink) {
-      const stop = sink.cancelMessage?.();
-      if (stop) this.post(stop);
+    for (const lane of this.lanes.values()) {
+      const remaining = lane.queue.filter((job) => job.sink !== sink);
+      if (remaining.length !== lane.queue.length) {
+        lane.queue = remaining;
+        return; // was queued; nothing was ever sent to the host
+      }
+      if (lane.active && lane.active.sink === sink) {
+        const job = lane.active;
+        const stop = sink.cancelMessage?.();
+        if (stop) this.post(stop, job.id);
+        return;
+      }
     }
     // Otherwise the sink already finished — nothing to do.
   }
 
-  private finishActive(): void {
-    this.active = null;
-    this.pump();
+  private failAllActive(err: Error): void {
+    for (const lane of this.lanes.values()) {
+      const job = lane.active;
+      if (!job) continue;
+      job.sink.fail(err);
+      this.finishJob(job);
+    }
   }
 
-  private pump(): void {
-    if (this.active) return;
-    const next = this.queue.shift();
-    if (!next) return;
-    if (next.sink.isClosed()) {
-      // Aborted before its turn came up.
-      this.pump();
+  private finishJob(job: BridgeJob): void {
+    if (job.id) this.inflight.delete(job.id);
+    const lane = this.lanes.get(job.laneKey);
+    if (!lane) return;
+    if (lane.active === job) lane.active = null;
+    if (!lane.active && lane.queue.length === 0) {
+      this.lanes.delete(job.laneKey); // don't let idle lanes accumulate
+    }
+    this.pump(job.laneKey);
+  }
+
+  private pump(laneKey: string): void {
+    const lane = this.lanes.get(laneKey);
+    if (!lane || lane.active) return;
+    const next = lane.queue.shift();
+    if (!next) {
+      if (lane.queue.length === 0) this.lanes.delete(laneKey);
       return;
     }
-    this.active = next;
+    if (next.sink.isClosed()) {
+      // Aborted before its turn came up.
+      this.pump(laneKey);
+      return;
+    }
+    lane.active = next;
+    if (next.id) this.inflight.set(next.id, next);
     this.send(next);
   }
 
   private send(job: BridgeJob): void {
-    if (!this.post(job.message)) {
-      this.active = null;
+    if (!this.post(job.message, job.id)) {
+      if (job.id) this.inflight.delete(job.id);
+      const lane = this.lanes.get(job.laneKey);
+      if (lane && lane.active === job) lane.active = null;
       job.sink.fail(new LaylaBridgeUnavailableError());
-      this.pump();
+      this.pump(job.laneKey);
     }
   }
 
-  /** Post a message to the host. Returns false if the bridge isn't present. */
-  private post(message: LaylaApiRequest): boolean {
+  /**
+   * Post a message to the host, stamping it with its correlation `id` so the
+   * host can echo it back on the answering events. Returns false if the bridge
+   * isn't present.
+   */
+  private post(message: LaylaApiRequest, id?: string): boolean {
     if (typeof window === 'undefined' || !window.ReactNativeWebView) return false;
-    window.ReactNativeWebView.postMessage(JSON.stringify(message));
+    const wire = id ? { ...message, id } : message;
+    window.ReactNativeWebView.postMessage(JSON.stringify(wire));
     return true;
   }
 }

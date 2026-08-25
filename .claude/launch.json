@@ -15,6 +15,21 @@
         "--strictPort"
       ],
       "port": 5199
+    },
+    {
+      "name": "diagnostics",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "examples/diagnostics",
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "5200",
+        "--strictPort"
+      ],
+      "port": 5200
     }
   ]
 }

@@ -145,6 +145,9 @@ export class Images {
           },
         },
         sink: sink,
+        // Progress streams in on `on_generate_image_progress` and terminates on
+        // `on_generate_image_response`; serialise image generations in that lane.
+        laneKey: 'on_generate_image_response',
       });
 
       return sink;
