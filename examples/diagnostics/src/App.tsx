@@ -49,6 +49,12 @@ interface Check {
   /** One line describing what this proves. */
   desc: string;
   weight: Weight;
+  /**
+   * Exempt this check from the runner's watchdog. Set on endpoints that are
+   * designed to run for a long time (on-device generation), where a fixed
+   * deadline would produce false failures.
+   */
+  noTimeout?: boolean;
   /** Resolve with a detail string, throw to fail, throw Skip to skip. */
   run: (ctx: CheckCtx) => Promise<string>;
 }
@@ -678,7 +684,7 @@ const groups: Group[] = [
   {
     id: "media",
     title: "Media & devices (heavy)",
-    blurb: "TTS synthesis/playback, image generation, microphone, background audio. Not run by default.",
+    blurb: "TTS synthesis/playback, image generation, music generation, microphone, background audio. Not run by default.",
     checks: [
       {
         id: "tts.getVoices",
@@ -696,11 +702,12 @@ const groups: Group[] = [
         name: "tts.generateVoiceToFile",
         desc: "Synthesises audio without playback.",
         weight: "heavy",
+        noTimeout: true,
         run: async ({ layla }) => {
-          const r = await withTimeout(
-            layla.tts.generateVoiceToFile(null, "Diagnostics voice test.", false),
-            60_000,
-            "generateVoiceToFile",
+          const r = await layla.tts.generateVoiceToFile(
+            null,
+            "Diagnostics voice test.",
+            false,
           );
           const size =
             "audio_data_base64" in r
@@ -714,11 +721,11 @@ const groups: Group[] = [
         name: "tts.generateVoice + stopSpeaking",
         desc: "Plays synthesised audio, then stops it.",
         weight: "heavy",
+        noTimeout: true,
         run: async ({ layla }) => {
-          const speaking = withTimeout(
-            layla.tts.generateVoice(null, "Diagnostics playback test."),
-            60_000,
-            "generateVoice",
+          const speaking = layla.tts.generateVoice(
+            null,
+            "Diagnostics playback test.",
           );
           await delay(300);
           await layla.tts.stopSpeaking();
@@ -742,21 +749,40 @@ const groups: Group[] = [
         name: "images.generateImage (+progress)",
         desc: "Generates an image and receives progress callbacks.",
         weight: "heavy",
+        noTimeout: true,
         run: async ({ layla }) => {
           let progress = 0;
-          const src = await withTimeout(
-            layla.images.generateImage(
-              "a small friendly robot, test render",
-              () => {
-                progress += 1;
-              },
-            ),
-            120_000,
-            "generateImage",
+          const src = await layla.images.generateImage(
+            "a small friendly robot, test render",
+            () => {
+              progress += 1;
+            },
           );
           return src
             ? `image (${src.length} chars), ${progress} progress events`
             : `no image returned, ${progress} progress events`;
+        },
+      },
+      {
+        id: "acestep.generate",
+        name: "acestep.generateMusic (+progress)",
+        desc: "Generates music with Ace-Step and receives progress callbacks.",
+        weight: "heavy",
+        noTimeout: true,
+        run: async ({ layla }) => {
+          let progress = 0;
+          let lastProgress = 0;
+          const src = await layla.acestep.generateMusic(
+            "a short upbeat chiptune loop, test render",
+            (p) => {
+              progress += 1;
+              lastProgress = p;
+            },
+          );
+          const pct = Math.round(lastProgress * 100);
+          return src
+            ? `audio (${src.length} chars), ${progress} progress events (last ${pct}%)`
+            : `no audio returned, ${progress} progress events (last ${pct}%)`;
         },
       },
       {
@@ -884,7 +910,9 @@ export default function App() {
     setResults((r) => ({ ...r, [check.id]: { status: "running" } }));
     const t0 = performance.now();
     try {
-      const detail = await withTimeout(check.run(ctx), 45_000, check.name);
+      const detail = check.noTimeout
+        ? await check.run(ctx)
+        : await withTimeout(check.run(ctx), 45_000, check.name);
       const res: Result = {
         status: "pass",
         ms: performance.now() - t0,

@@ -1,43 +1,27 @@
 :root {
-  --text: #4b4557;
-  --text-h: #08060d;
-  --text-soft: #8a8593;
-  --bg: #fbfbfc;
-  --panel: #ffffff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --ok: #16a34a;
-  --bad: #dc2626;
-  --warn: #d97706;
-  --mock: #2563eb;
+  /* Diagnostics always renders in a dark theme, regardless of the OS setting. */
+  --text: #c3c0cb;
+  --text-h: #f3f4f6;
+  --text-soft: #7f7b88;
+  --bg: #121218;
+  --panel: #1a1b22;
+  --border: #2b2d38;
+  --code-bg: #23242d;
+  --accent: #c084fc;
+  --ok: #4ade80;
+  --bad: #f87171;
+  --warn: #fbbf24;
+  --mock: #60a5fa;
 
   --sans: system-ui, "Segoe UI", Roboto, sans-serif;
   --mono: ui-monospace, "SF Mono", Consolas, monospace;
 
   font: 15px/1.5 var(--sans);
-  color-scheme: light dark;
+  color-scheme: dark;
   color: var(--text);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #c3c0cb;
-    --text-h: #f3f4f6;
-    --text-soft: #7f7b88;
-    --bg: #121218;
-    --panel: #1a1b22;
-    --border: #2b2d38;
-    --code-bg: #23242d;
-    --accent: #c084fc;
-    --ok: #4ade80;
-    --bad: #f87171;
-    --warn: #fbbf24;
-    --mock: #60a5fa;
-  }
 }
 
 * {
