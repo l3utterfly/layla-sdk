@@ -747,18 +747,29 @@ const groups: Group[] = [
       {
         id: "tts.generateVoice",
         name: "tts.generateVoice + stopSpeaking",
-        desc: "Plays synthesised audio, then stops it.",
+        desc: "Plays synthesised audio, then stops it — and the in-flight generateVoice must settle too.",
         weight: "heavy",
         noTimeout: true,
         run: async ({ layla }) => {
-          const speaking = layla.tts.generateVoice(
-            null,
-            "Diagnostics playback test.",
-          );
+          let settled = false;
+          const speaking = layla.tts
+            .generateVoice(null, "Diagnostics playback test.")
+            .then(() => {
+              settled = true;
+            });
           await delay(300);
-          await layla.tts.stopSpeaking();
-          await speaking.catch(() => undefined);
-          return "played and stopped";
+          await withTimeout(layla.tts.stopSpeaking(), 5_000, "stopSpeaking");
+          // stopSpeaking must also terminate the in-flight generateVoice, not
+          // just the host's audio. The host emits a single on_finished_speaking
+          // with no correlatable id; if the bridge drops it, this promise never
+          // resolves and the check would hang — so bound the wait and assert.
+          await withTimeout(
+            speaking,
+            5_000,
+            "generateVoice to settle after stopSpeaking",
+          );
+          assert(settled, "generateVoice did not settle after stopSpeaking");
+          return "played, stopped, and generateVoice settled";
         },
       },
       {

@@ -23,6 +23,15 @@
  * owning sink recognises its response event; every other sink no-ops), and an
  * id-less `on_error` fails all active lanes, since it cannot be attributed.
  *
+ * The same fallback also catches an id-*bearing* event that correlates to no
+ * in-flight job. Some host notifications carry no meaningful id to echo —
+ * notably `on_finished_speaking`, which the host may emit in response to a
+ * bridge-bypassing `stop_speaking` (see resources/tts.ts). Such an event still
+ * has to terminate the `generate_voice` request waiting on it, so an unmatched
+ * id is treated like an id-less event rather than dropped. An unattributable
+ * `on_error` is the exception: it is swallowed, so it cannot knock out lanes it
+ * was never about.
+ *
  * The bridge is intentionally event-agnostic: it routes every parsed event to a
  * job's sink and lets the sink say when it's done. The only event it
  * special-cases is `on_error`, which terminates a job. New request/response
@@ -139,14 +148,23 @@ export class LaylaBridge {
     // its own to route by.
     if (typeof parsed.id === 'string') {
       const job = this.inflight.get(parsed.id);
-      if (!job) return; // stray/duplicate; the job already finished
-      this.deliver(job, parsed as LaylaApiEvent);
-      return;
+      if (job) {
+        this.deliver(job, parsed as LaylaApiEvent);
+        return;
+      }
+      // The id matches no in-flight job. For a stray/duplicate error this is a
+      // genuine no-op — and it must not fail unrelated lanes — so swallow it.
+      // Any other event, though, may be an uncorrelated host notification (e.g.
+      // an `on_finished_speaking` triggered by a bridge-bypassing stop) that
+      // still has to terminate the request waiting on it, so fall through to
+      // the name-matched fallback below rather than dropping it.
+      if (parsed.event === 'on_error') return;
     }
 
-    // Fallback path: an id-less host. Offer the event to each lane's active
-    // sink; the owner recognises its response event and every other sink
-    // no-ops. An id-less error can't be attributed, so fail all active lanes.
+    // Fallback path: an id-less host, or an id-bearing event that correlates to
+    // no in-flight job. Offer the event to each lane's active sink; the owner
+    // recognises its response event and every other sink no-ops. An id-less
+    // error can't be attributed, so fail all active lanes.
     if (parsed.event === 'on_error') {
       this.failAllActive(
         new LaylaError(
