@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   LaylaSDK,
   LaylaAbortError,
@@ -41,6 +41,12 @@ interface CheckCtx {
   sessionId: string;
   /** Cross-check cache (e.g. a character id resolved once and reused). */
   shared: { characters?: LaylaCharacter[] };
+  /**
+   * Aborts when the user stops the run. Checks may forward it to the SDK (e.g.
+   * as a stream `signal`) so long-running work is cancelled promptly; the runner
+   * also races every check against it so the UI never waits on a stopped check.
+   */
+  signal: AbortSignal;
 }
 
 interface Check {
@@ -78,6 +84,28 @@ class SkipError extends Error {}
 const skip = (why: string): never => {
   throw new SkipError(why);
 };
+
+/** Thrown by `abortable` when the user stops the run mid-check. */
+class StopError extends Error {}
+
+/** Reject with StopError as soon as `signal` aborts, else follow `p`. */
+function abortable<T>(p: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(new StopError("stopped"));
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(new StopError("stopped"));
+    signal.addEventListener("abort", onAbort, { once: true });
+    p.then(
+      (v) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(v);
+      },
+      (e) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(e);
+      },
+    );
+  });
+}
 function assert(cond: unknown, message: string): asserts cond {
   if (!cond) throw new Error(message);
 }
@@ -857,6 +885,10 @@ export default function App() {
   const [results, setResults] = useState<Record<string, Result>>({});
   const [includeHeavy, setIncludeHeavy] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(
+    null,
+  );
+  const abortRef = useRef<AbortController | null>(null);
 
   // The dev mock installs asynchronously (dynamic import in main.tsx), so
   // re-check the environment briefly after mount instead of once at render.
@@ -896,23 +928,17 @@ export default function App() {
     return c;
   }, [results, allChecks]);
 
-  async function runOne(check: Check): Promise<Result> {
-    const ctx: CheckCtx = {
-      layla,
-      mock: mockHandle(),
-      sessionId,
-      shared: {},
-    };
-    return runWithCtx(check, ctx);
-  }
-
   async function runWithCtx(check: Check, ctx: CheckCtx): Promise<Result> {
     setResults((r) => ({ ...r, [check.id]: { status: "running" } }));
     const t0 = performance.now();
     try {
-      const detail = check.noTimeout
-        ? await check.run(ctx)
-        : await withTimeout(check.run(ctx), 45_000, check.name);
+      const work = check.noTimeout
+        ? check.run(ctx)
+        : withTimeout(check.run(ctx), 45_000, check.name);
+      // Race against the stop signal so a stopped check releases the runner
+      // immediately, even if its underlying SDK call keeps settling in the
+      // background.
+      const detail = await abortable(work, ctx.signal);
       const res: Result = {
         status: "pass",
         ms: performance.now() - t0,
@@ -921,6 +947,12 @@ export default function App() {
       setResults((r) => ({ ...r, [check.id]: res }));
       return res;
     } catch (e) {
+      if (e instanceof StopError) {
+        // Not a failure — the user stopped the run. Leave the check un-run so
+        // it reads as idle and can be run again.
+        setResults((r) => ({ ...r, [check.id]: { status: "idle" } }));
+        return { status: "idle" };
+      }
       const isSkip = e instanceof SkipError;
       const res: Result = {
         status: isSkip ? "skip" : "fail",
@@ -933,15 +965,36 @@ export default function App() {
   }
 
   async function runMany(checks: Check[]) {
+    if (checks.length === 0 || busy) return;
+    const controller = new AbortController();
+    abortRef.current = controller;
     setBusy(true);
+    setProgress({ done: 0, total: checks.length });
     // Shared context so e.g. a character list fetched once is reused, but each
     // check still runs sequentially for a stable, readable report.
-    const ctx: CheckCtx = { layla, mock: mockHandle(), sessionId, shared: {} };
-    for (const check of checks) {
-      await runWithCtx(check, ctx);
+    const ctx: CheckCtx = {
+      layla,
+      mock: mockHandle(),
+      sessionId,
+      shared: {},
+      signal: controller.signal,
+    };
+    try {
+      for (let i = 0; i < checks.length; i += 1) {
+        if (controller.signal.aborted) break;
+        await runWithCtx(checks[i], ctx);
+        setProgress({ done: i + 1, total: checks.length });
+      }
+    } finally {
+      setBusy(false);
+      setProgress(null);
+      abortRef.current = null;
     }
-    setBusy(false);
   }
+
+  const runOne = (check: Check) => runMany([check]);
+
+  const stop = () => abortRef.current?.abort();
 
   const runAll = () =>
     runMany(allChecks.filter((c) => includeHeavy || c.weight !== "heavy"));
@@ -973,6 +1026,11 @@ export default function App() {
           >
             Rerun failures
           </button>
+          {busy && (
+            <button className="stop-btn" onClick={stop}>
+              Stop
+            </button>
+          )}
           <label className="heavy-toggle">
             <input
               type="checkbox"
@@ -988,6 +1046,23 @@ export default function App() {
             {allChecks.length} run
           </span>
         </div>
+        {busy && progress && (
+          <div className="diag-progress" role="status" aria-live="polite">
+            <div className="diag-progress-track">
+              <div
+                className="diag-progress-fill"
+                style={{
+                  width: `${
+                    progress.total ? (progress.done / progress.total) * 100 : 0
+                  }%`,
+                }}
+              />
+            </div>
+            <span className="diag-progress-label">
+              Running… {progress.done}/{progress.total}
+            </span>
+          </div>
+        )}
       </header>
 
       {groups.map((group) => (

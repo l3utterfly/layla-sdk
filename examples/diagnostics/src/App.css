@@ -77,6 +77,46 @@ button:disabled {
   cursor: not-allowed;
 }
 
+.stop-btn {
+  color: var(--bad);
+  border-color: color-mix(in srgb, var(--bad) 45%, transparent);
+  background: color-mix(in srgb, var(--bad) 10%, transparent);
+}
+.stop-btn:hover:not(:disabled) {
+  border-color: var(--bad);
+  background: color-mix(in srgb, var(--bad) 16%, transparent);
+}
+
+/* progress --------------------------------------------------------------- */
+
+.diag-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 10px;
+  margin-top: -2px;
+}
+.diag-progress-track {
+  flex: 1;
+  height: 5px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--border);
+}
+.diag-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+.diag-progress-label {
+  flex: none;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
 .heavy-toggle {
   display: inline-flex;
   align-items: center;
