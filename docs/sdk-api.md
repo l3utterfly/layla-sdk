@@ -1168,16 +1168,15 @@ try {
 
 ## `layla.acestep.generateMusic(prompt, onProgress, lyrics?, duration?, options?)`
 
-Generates music with the on-device Ace-Step model. Progress updates are reported through the callback. The returned value is a ready-to-use audio source string (a base64 data URI), or `null` if the host does not return audio.
+Generates music with the on-device Ace-Step model. Progress updates are reported through the callback, which receives `progress` (a number between 0 and 1) and a human-readable `status` string. The returned value is a ready-to-use audio source string (a base64 data URI), or `null` if the host does not return audio.
 
 ```ts
 const audioSrc = await layla.acestep.generateMusic(
   'A dreamy lo-fi hip-hop beat with warm vinyl crackle',
-  (status, step, totalSteps) => {
+  (progress, status) => {
     setProgress({
+      progress,
       status,
-      step,
-      totalSteps,
     });
   },
 );

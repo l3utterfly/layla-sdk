@@ -687,9 +687,8 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
       emit({
         event: 'on_ace_step_generate_progress',
         data: {
+          progress: step / totalSteps,
           status: `Generating music... (${step}/${totalSteps})`,
-          steps: step,
-          total_steps: totalSteps,
         },
       });
     }

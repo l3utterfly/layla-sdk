@@ -675,13 +675,15 @@ if (imageSrc) imageElement.src = imageSrc;
 Use `layla.acestep.generateMusic(prompt, onProgress, lyrics?, duration?, options?)`
 to generate music with the on-device Ace-Step model. It resolves to a
 ready-to-use audio source string (a base64 data URI) when successful, or `null`
-when the host does not return audio. Progress is reported through the callback.
+when the host does not return audio. Progress is reported through the callback,
+which receives `progress` (a number between 0 and 1) and a human-readable
+`status` string.
 
 ```ts
 const audioSrc = await layla.acestep.generateMusic(
   'A dreamy lo-fi hip-hop beat with warm vinyl crackle',
-  (status, step, totalSteps) => {
-    setProgress({ status, step, totalSteps });
+  (progress, status) => {
+    setProgress({ progress, status });
   },
 );
 
@@ -696,7 +698,7 @@ progress state, and support aborting with an `AbortController` signal:
 ```ts
 const audioSrc = await layla.acestep.generateMusic(
   'An upbeat indie-pop anthem',
-  (status, step, totalSteps) => setProgress({ status, step, totalSteps }),
+  (progress, status) => setProgress({ progress, status }),
   'We are running through the city lights tonight', // lyrics
   60, // duration in seconds — omit to use the host default
   { signal: controller.signal },

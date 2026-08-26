@@ -15,7 +15,7 @@ import { LaylaAbortError } from '..';
 
 type Listener =
   ((audio_data_base64: string | null) => void) |
-  ((status: string, step: number, total_step: number) => void);
+  ((progress: number, status: string) => void);
 
 class AceStepBridgeSink implements BridgeSink {
   private listeners: Record<string, Listener[]> = {};
@@ -38,7 +38,7 @@ class AceStepBridgeSink implements BridgeSink {
       case 'on_ace_step_generate_progress':
         for (const l of this.listeners['on_ace_step_generate_progress'] ?? []) {
           try {
-            l(event.data.status, event.data.steps, event.data.total_steps);
+            (l as any)(event.data.progress, event.data.status);
           } catch { }
         }
 
@@ -88,7 +88,8 @@ export class AceStep {
    * null if the host does not return audio.
    *
    * Progress updates are reported through the `onProgress` callback while the
-   * host works.
+   * host works. `progress` is a number between 0 and 1, and `status` is a
+   * human-readable description of the current step.
    *
    * Pass `lyrics` to steer the vocals, and `duration` (in seconds) to control
    * the length of the generated music. When `duration` is omitted the host uses
@@ -96,7 +97,7 @@ export class AceStep {
    */
   generateMusic(
     prompt: string,
-    onProgress: (status: string, step: number, total_step: number) => void,
+    onProgress: (progress: number, status: string) => void,
     lyrics?: string,
     duration?: number,
     options?: RequestOptions
@@ -142,8 +143,8 @@ export class AceStep {
         resolve(audio_data_base64);
       });
 
-      sink.on('on_ace_step_generate_progress', (status, step, total_step) => {
-        onProgress(status, step, total_step);
+      sink.on('on_ace_step_generate_progress', (progress, status) => {
+        onProgress(progress, status);
       });
 
       // Handle failure (e.g., abort)
