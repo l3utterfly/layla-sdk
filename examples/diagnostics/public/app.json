@@ -1,0 +1,7 @@
+{
+  "title": "Layla SDK Diagnostics",
+  "tagline": "Verify every Layla SDK surface in one run.",
+  "description": "Run a complete diagnostics suite against the Layla SDK and native host bridge. Check chat, characters, memories, personas, sentiment, files, database access, contextual events, text-to-speech, image and music generation, microphone input, background audio, and per-lane concurrency. Safe checks run by default, while heavier generation and audio checks remain opt-in.",
+  "iconUri": "icon.png",
+  "backgroundImgUri": "thumbnail.png"
+}

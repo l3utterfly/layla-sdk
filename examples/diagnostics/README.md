@@ -12,10 +12,12 @@ the other examples.
 - **In a browser (`npm run dev`)** — there's no native host, so `main.tsx`
   installs the browser mock, which answers every endpoint. The whole suite goes
   green with no host involved. Good for checking the SDK and this app itself.
-- **On the host** — `npm run build` produces a single self-contained
-  `dist/index.html` (via `vite-plugin-singlefile`). Copy that one file to the
-  host and load it in the Layla WebView. The same App now drives the **real**
-  bridge, so it verifies the host's protocol implementation.
+- **On the host** — `npm run build` produces an importable mini-app in `dist/`.
+  Its `index.html` is self-contained (via `vite-plugin-singlefile`), while
+  `app.json`, `icon.png`, and `thumbnail.png` provide the Layla metadata and
+  artwork. Zip the *contents* of `dist/` at the archive root and import it into
+  Layla. The same app then drives the **real** bridge, so it verifies the host's
+  protocol implementation.
 
 The banner in the toolbar shows which environment was detected: *Browser mock*,
 *Native host bridge*, or *No bridge detected*.
