@@ -1166,6 +1166,74 @@ try {
 }
 ```
 
+## `layla.acestep.generateMusic(prompt, onProgress, lyrics?, duration?, options?)`
+
+Generates music with the on-device Ace-Step model. Progress updates are reported through the callback. The returned value is a ready-to-use audio source string (a base64 data URI), or `null` if the host does not return audio.
+
+```ts
+const audioSrc = await layla.acestep.generateMusic(
+  'A dreamy lo-fi hip-hop beat with warm vinyl crackle',
+  (status, step, totalSteps) => {
+    setProgress({
+      status,
+      step,
+      totalSteps,
+    });
+  },
+);
+
+if (audioSrc) {
+  audioElement.src = audioSrc;
+}
+```
+
+Pass `lyrics` to steer the vocals of the generated track.
+
+```ts
+const audioSrc = await layla.acestep.generateMusic(
+  'An upbeat indie-pop anthem',
+  onProgress,
+  'We are running through the city lights tonight',
+);
+```
+
+Pass `duration` (in seconds) to control the length of the generated music. When omitted, the host uses its default length. `lyrics` and `duration` come before the options argument, so pass `undefined` for the ones you are not using:
+
+```ts
+const audioSrc = await layla.acestep.generateMusic(
+  'A calm ambient soundscape',
+  onProgress,
+  undefined, // lyrics
+  60, // duration in seconds
+);
+```
+
+Use an abort signal when the UI can cancel music generation:
+
+```ts
+const controller = new AbortController();
+
+const musicPromise = layla.acestep.generateMusic(
+  prompt,
+  onProgress,
+  undefined,
+  undefined,
+  { signal: controller.signal },
+);
+
+controller.abort();
+
+try {
+  await musicPromise;
+} catch (error) {
+  if (error instanceof LaylaAbortError) {
+    return;
+  }
+
+  throw error;
+}
+```
+
 ## `layla.utils.saveFile(filename, contentBase64, share?, options?)`
 
 Saves raw base64-encoded content as a file. Do not include a data URI prefix.
@@ -1223,7 +1291,7 @@ await layla.utils.readFile('hello.txt', {
 
 ## Abort Signals
 
-Chat, character requests, classifier requests, and image generation can be cancelled from the mini-app.
+Chat, character requests, classifier requests, image generation, and music generation can be cancelled from the mini-app.
 
 ```ts
 const controller = new AbortController();
@@ -1699,6 +1767,9 @@ Useful exported types include:
 - `LaylaApiSTTStartListening`
 - `LaylaApiSTTStopListening`
 - `LaylaApiExecuteSql`
+- `LaylaApiAceStepGenerate`
+- `LaylaApiEvent_onAceStepGenerateResponse`
+- `LaylaApiEvent_onAceStepGenerateProgress`
 - `LaylaApiStartBackgroundAudioPlayer`
 - `LaylaApiStopBackgroundAudioPlayer`
 - `LaylaApiPauseBackgroundAudioPlayer`
@@ -1762,6 +1833,7 @@ The TypeScript source is the source of truth for current signatures:
 - `src/resources/characters.ts`
 - `src/resources/classifier.ts`
 - `src/resources/images.ts`
+- `src/resources/acestep.ts`
 - `src/resources/memories.ts`
 - `src/resources/personas.ts`
 - `src/resources/tts.ts`

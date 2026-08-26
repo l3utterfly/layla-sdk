@@ -1,6 +1,6 @@
 ---
 name: layla-sdk
-description: Use the @layla-network/sdk package in third-party Layla mini-apps and WebView apps. Covers the public API surface for creating a Layla client, contextual character-chat execution state and events, OpenAI-shaped chat completions and streams including reasoning deltas, inference engine selection, paginated character listing, chat sessions, session history, message saves, scheduled chat messages, memories, personas, TTS voices, playback and audio-file generation, speech-to-text microphone input and events, background audio controls and events, character images, sentiment analysis, image generation progress/results, private per-mini-app sqlite database queries, file saving, abort handling, SDK errors, exported TypeScript types, and runtime expectations inside the Layla WebView.
+description: Use the @layla-network/sdk package in third-party Layla mini-apps and WebView apps. Covers the public API surface for creating a Layla client, contextual character-chat execution state and events, OpenAI-shaped chat completions and streams including reasoning deltas, inference engine selection, paginated character listing, chat sessions, session history, message saves, scheduled chat messages, memories, personas, TTS voices, playback and audio-file generation, speech-to-text microphone input and events, background audio controls and events, character images, sentiment analysis, image generation progress/results, music generation progress/results with the Ace-Step model, private per-mini-app sqlite database queries, file saving, abort handling, SDK errors, exported TypeScript types, and runtime expectations inside the Layla WebView.
 ---
 
 # Layla SDK
@@ -89,6 +89,7 @@ await layla.characters.getImage(characterId);
 await layla.characters.update(character);
 await layla.classifier.getSentiment('This is a happy message.');
 await layla.images.generateImage(prompt, onProgress);
+await layla.acestep.generateMusic(prompt, onProgress);
 await layla.contextual.getExecutionContext();
 await layla.chat.completions.create({ messages });
 await layla.chat.getInferenceEngines();
@@ -667,6 +668,39 @@ Character images follow the same convention:
 ```ts
 const imageSrc = await layla.characters.getImage(character.id);
 if (imageSrc) imageElement.src = imageSrc;
+```
+
+## Music Generation (Ace-Step)
+
+Use `layla.acestep.generateMusic(prompt, onProgress, lyrics?, duration?, options?)`
+to generate music with the on-device Ace-Step model. It resolves to a
+ready-to-use audio source string (a base64 data URI) when successful, or `null`
+when the host does not return audio. Progress is reported through the callback.
+
+```ts
+const audioSrc = await layla.acestep.generateMusic(
+  'A dreamy lo-fi hip-hop beat with warm vinyl crackle',
+  (status, step, totalSteps) => {
+    setProgress({ status, step, totalSteps });
+  },
+);
+
+if (audioSrc) audioElement.src = audioSrc;
+```
+
+Pass `lyrics` to steer the vocals, and `duration` (in seconds) to control the
+track length. Both come before the options argument, so pass `undefined` for the
+ones you are not using. Music generation can be slow on device, so always show a
+progress state, and support aborting with an `AbortController` signal:
+
+```ts
+const audioSrc = await layla.acestep.generateMusic(
+  'An upbeat indie-pop anthem',
+  (status, step, totalSteps) => setProgress({ status, step, totalSteps }),
+  'We are running through the city lights tonight', // lyrics
+  60, // duration in seconds — omit to use the host default
+  { signal: controller.signal },
+);
 ```
 
 ## Utilities

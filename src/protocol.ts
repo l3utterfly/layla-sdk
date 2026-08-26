@@ -603,6 +603,20 @@ export interface LaylaApiExecuteSql {
 }
 
 /**
+ * Ask the host to generate music using the Ace-Step music generation model.
+ * The host should respond with an `on_ace_step_generate_response` event containing the generated music base64 data (including the data URI prefix), or 'on_error' if there was an error during the generation process.
+ * The host may emit progress events during the generation process, such as `on_ace_step_generate_progress`, to indicate the current status of the music generation.
+ */
+export interface LaylaApiAceStepGenerate {
+  cmd: 'ace_step_generate';
+  data: {
+    prompt: string;
+    lyrics?: string;
+    duration?: number; // optional duration in seconds for the generated music (default is 30 seconds)
+  }
+}
+
+/**
  * A request command (anything that opens a job and expects events back).
  * Add new one-shot commands here. `cancel` is not a request — it's a control
  * signal for an already-open job — so it lives outside this union.
@@ -642,7 +656,8 @@ export type BaseApiRequest =
   | LaylaApiGetImageGenerationModels
   | LaylaApiSTTStartListening
   | LaylaApiSTTStopListening
-  | LaylaApiExecuteSql;
+  | LaylaApiExecuteSql
+  | LaylaApiAceStepGenerate;
 
 /* ---- RN -> Web events ------------------------------------------------------ */
 
@@ -1044,6 +1059,13 @@ export interface LaylaApiEvent_onSTTListeningStopped {
   data: null; // no additional data is needed for this event
 }
 
+/**
+ * The response for an `execute_sql` request, containing the results of the executed SQL query.
+ * This event is emitted by the host after successfully executing the SQL query against the local sqlite database.
+ * The `rows` field contains the rows returned by the query (empty for write operations), where each row is represented as a column->value map.
+ * The `rowsAffected` field indicates the number of rows changed by an INSERT/UPDATE/DELETE operation.
+ * The `insertId` field provides the row ID of the last inserted row (0 when not applicable).
+ */
 export interface LaylaApiEvent_onExecuteSqlResponse {
   event: 'on_execute_sql_response';
   data: {
@@ -1053,6 +1075,18 @@ export interface LaylaApiEvent_onExecuteSqlResponse {
     rowsAffected: number;
     /** Row id of the last inserted row (0 when not applicable). */
     insertId: number;
+  };
+}
+
+/**
+ * The response for an `ace_step_generate` request, containing the generated music audio data encoded in base64 (including the data URI prefix).
+ * This event is emitted by the host after successfully generating music using the Ace-Step music generation model.
+ */
+export interface LaylaApiEvent_onAceStepGenerateResponse {
+  event: 'on_ace_step_generate_response';
+  data: {
+    audio_data_base64: string; // the generated music audio data encoded in base64 (including the data URI prefix)
+    message?: string; // optional message providing additional information about the generation operation (e.g., error details if there was an error)
   };
 }
 
@@ -1094,4 +1128,5 @@ export type BaseApiEvent =
   | LaylaApiEvent_onSTTListeningStarted
   | LaylaApiEvent_onSTTSpeechRecognized
   | LaylaApiEvent_onSTTListeningStopped
-  | LaylaApiEvent_onExecuteSqlResponse;
+  | LaylaApiEvent_onExecuteSqlResponse
+  | LaylaApiEvent_onAceStepGenerateResponse;

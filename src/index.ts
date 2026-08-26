@@ -62,6 +62,7 @@ export type {
   LaylaApiSTTStartListening,
   LaylaApiSTTStopListening,
   LaylaApiExecuteSql,
+  LaylaApiAceStepGenerate,
   LaylaApiCancel,
 
   // event types
@@ -103,6 +104,7 @@ export type {
   LaylaApiEvent_onSTTSpeechRecognized,
   LaylaApiEvent_onSTTListeningStopped,
   LaylaApiEvent_onExecuteSqlResponse,
+  LaylaApiEvent_onAceStepGenerateResponse,
 } from './protocol';
 export { SENTIMENT_THRESHOLDS } from './protocol';
 
@@ -111,6 +113,7 @@ export type { LaylaApiRequest, LaylaApiEvent } from './interface';
 export type {
   LaylaApiEvent_onMsg,
   LaylaApiEvent_onGenerateImageProgress,
+  LaylaApiEvent_onAceStepGenerateProgress,
 } from './typescript-protocol';
 
 // Errors.
@@ -140,6 +143,9 @@ export type {
 // Image resource surface.
 export { Images } from './resources/images';
 export type { LaylaImageGenerationModel } from './resources/images';
+
+// Ace-Step music generation resource surface.
+export { AceStep } from './resources/acestep';
 
 // Utility resource surface.
 export { Utils } from './resources/utils';

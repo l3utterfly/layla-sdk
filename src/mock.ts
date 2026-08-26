@@ -669,6 +669,40 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     });
   }
 
+  async function handleAceStepGenerate(_: {
+    prompt: string;
+    lyrics?: string;
+    duration?: number;
+  }): Promise<void> {
+    await delay(latencyMs);
+    if (shouldError()) {
+      emitError('Simulated music generation error');
+      return;
+    }
+
+    // Simulate progress events
+    const totalSteps = 5;
+    for (let step = 1; step <= totalSteps; step++) {
+      await delay(latencyMs);
+      emit({
+        event: 'on_ace_step_generate_progress',
+        data: {
+          status: `Generating music... (${step}/${totalSteps})`,
+          steps: step,
+          total_steps: totalSteps,
+        },
+      });
+    }
+
+    // Emit the final music response (using a tiny placeholder WAV for the mock)
+    emit({
+      event: 'on_ace_step_generate_response',
+      data: {
+        audio_data_base64: mockVoiceAudioDataUri,
+      },
+    });
+  }
+
   async function handleUpdateCharacter(data: {
     character_id: string;
     character_data: TavernCardV2;
@@ -1405,6 +1439,9 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
           break;
         case 'get_image_generation_models':
           void handleGetImageGenerationModels();
+          break;
+        case 'ace_step_generate':
+          void handleAceStepGenerate(msg.data);
           break;
         case 'update_character':
           void handleUpdateCharacter(msg.data);
