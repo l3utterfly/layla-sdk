@@ -5,7 +5,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'agents/layla-sdk/**'
+      - '.agents/layla-sdk/**'
       - 'docs/sdk-api.md'
       - 'docs/mini-apps-overview.md'
       - '.github/workflows/package-agent-skill.yml'
@@ -31,7 +31,7 @@ jobs:
 
       - name: Validate skill package inputs
         run: |
-          test -f agents/layla-sdk/SKILL.md
+          test -f .agents/layla-sdk/SKILL.md
           test -f docs/sdk-api.md
           test -f docs/mini-apps-overview.md
 
@@ -40,7 +40,7 @@ jobs:
         run: |
           ZIP_NAME="layla-sdk-agent-skill-v${{ steps.ver.outputs.version }}.zip"
           mkdir -p "$RUNNER_TEMP/layla-sdk-agent-skill"
-          cp -R agents/layla-sdk "$RUNNER_TEMP/layla-sdk-agent-skill/layla-sdk"
+          cp -R .agents/layla-sdk "$RUNNER_TEMP/layla-sdk-agent-skill/layla-sdk"
           mkdir -p "$RUNNER_TEMP/layla-sdk-agent-skill/layla-sdk/references"
           cp docs/sdk-api.md "$RUNNER_TEMP/layla-sdk-agent-skill/layla-sdk/references/sdk-api.md"
           cp docs/mini-apps-overview.md "$RUNNER_TEMP/layla-sdk-agent-skill/layla-sdk/references/mini-apps-overview.md"
