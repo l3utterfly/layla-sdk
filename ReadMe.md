@@ -13,7 +13,7 @@
 
 ## Project Links
 
-- [Docs](docs/) - mini-app packaging guidance and the SDK API reference.
+- [Docs](.agents/layla-sdk/references/) - mini-app packaging guidance and the SDK API reference.
 - [SDK source](src/) - the TypeScript source for `@layla-network/sdk`.
 - [Examples](examples/) - sample Layla mini-apps showing chat, chess, tarot, and character generation workflows.
 - [Agent skill](https://github.com/l3utterfly/layla-sdk/releases?q=agent+skill&expanded=true) - a packaged skill that helps other coding agents understand how to create Layla mini-apps with this SDK.
@@ -69,8 +69,8 @@ Each release contains:
 
 ## Learn More
 
-- Read the [mini-apps overview](docs/mini-apps-overview.md) to understand app packaging, metadata, and the Layla WebView runtime.
-- Read the [SDK API reference](docs/sdk-api.md) for imports, contextual execution state and chat events, chat completions, streaming, inference engine selection, chat sessions, session history, message saves, scheduled chat messages, memory list/top/save APIs, personas, TTS playback and audio-file generation, speech-to-text microphone input and events, background audio controls and events, characters, image generation, music generation, a private per-mini-app sqlite database, file utilities, abort handling, and errors.
+- Read the [mini-apps overview](.agents/layla-sdk/references/mini-apps-overview.md) to understand app packaging, metadata, and the Layla WebView runtime.
+- Read the [SDK API reference](.agents/layla-sdk/references/sdk-api.md) for imports, contextual execution state and chat events, chat completions, streaming, inference engine selection, chat sessions, session history, message saves, scheduled chat messages, memory list/top/save APIs, personas, TTS playback and audio-file generation, speech-to-text microphone input and events, background audio controls and events, characters, image generation, music generation, a private per-mini-app sqlite database, file utilities, abort handling, and errors.
 - Browse the [examples guide](examples/ReadMe.md) to choose a starting mini-app.
 
 ## Layla App

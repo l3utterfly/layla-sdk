@@ -6,8 +6,6 @@ on:
     branches: [main]
     paths:
       - '.agents/layla-sdk/**'
-      - 'docs/sdk-api.md'
-      - 'docs/mini-apps-overview.md'
       - '.github/workflows/package-agent-skill.yml'
 
 permissions:
@@ -32,8 +30,8 @@ jobs:
       - name: Validate skill package inputs
         run: |
           test -f .agents/layla-sdk/SKILL.md
-          test -f docs/sdk-api.md
-          test -f docs/mini-apps-overview.md
+          test -f .agents/layla-sdk/references/sdk-api.md
+          test -f .agents/layla-sdk/references/mini-apps-overview.md
 
       - name: Package skill zip
         id: package
@@ -41,9 +39,6 @@ jobs:
           ZIP_NAME="layla-sdk-agent-skill-v${{ steps.ver.outputs.version }}.zip"
           mkdir -p "$RUNNER_TEMP/layla-sdk-agent-skill"
           cp -R .agents/layla-sdk "$RUNNER_TEMP/layla-sdk-agent-skill/layla-sdk"
-          mkdir -p "$RUNNER_TEMP/layla-sdk-agent-skill/layla-sdk/references"
-          cp docs/sdk-api.md "$RUNNER_TEMP/layla-sdk-agent-skill/layla-sdk/references/sdk-api.md"
-          cp docs/mini-apps-overview.md "$RUNNER_TEMP/layla-sdk-agent-skill/layla-sdk/references/mini-apps-overview.md"
           cd "$RUNNER_TEMP/layla-sdk-agent-skill"
           zip -r "$GITHUB_WORKSPACE/$ZIP_NAME" layla-sdk
           echo "zip_name=$ZIP_NAME" >> "$GITHUB_OUTPUT"
