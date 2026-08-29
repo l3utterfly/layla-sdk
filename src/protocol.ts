@@ -617,6 +617,30 @@ export interface LaylaApiAceStepGenerate {
 }
 
 /**
+ * Ask the host to list the contents of a directory in the app's private storage.
+ * The host should respond with an `on_list_dir_response` event containing an array of file and directory names in the specified path, or 'on_error' if there was an error accessing the directory.
+ * The path is relative to the app's private storage directory, and the host ensures that the request does not access files outside of this directory for security reasons.
+ */
+export interface LaylaApiListDir {
+  cmd: 'list_dir';
+  data: {
+    path: string;   // the directory path to list, relative to the app's private directory
+  };
+}
+
+/**
+ * Ask the host to delete a file or directory in the app's private storage.
+ * The host should respond with an `on_delete_file_or_dir_response` event indicating whether the deletion was successful or if there was an error during the deletion process.
+ * The path is relative to the app's private storage directory, and the host ensures that the request does not delete files outside of this directory for security reasons.
+ */
+export interface LaylaApiDeleteFileOrDir {
+  cmd: 'delete_file_or_dir';
+  data: {
+    path: string;   // the path of the file or directory to delete, relative to the app's private directory
+  };
+}
+
+/**
  * A request command (anything that opens a job and expects events back).
  * Add new one-shot commands here. `cancel` is not a request — it's a control
  * signal for an already-open job — so it lives outside this union.
@@ -657,7 +681,9 @@ export type BaseApiRequest =
   | LaylaApiSTTStartListening
   | LaylaApiSTTStopListening
   | LaylaApiExecuteSql
-  | LaylaApiAceStepGenerate;
+  | LaylaApiAceStepGenerate
+  | LaylaApiListDir
+  | LaylaApiDeleteFileOrDir;
 
 /* ---- RN -> Web events ------------------------------------------------------ */
 
@@ -1090,6 +1116,29 @@ export interface LaylaApiEvent_onAceStepGenerateResponse {
   };
 }
 
+/**
+ * The response for a `list_dir` request, containing an array of file and directory entries in the specified path.
+ * This event is emitted by the host after successfully listing the contents of a directory in the app's private storage.
+ * Each entry includes the relative path of the directory/file and a boolean indicating whether it is a directory or a file. You can recursively call `list_dir` on any directory entries to explore the directory tree.
+ */
+export interface LaylaApiEvent_onListDirResponse {
+  event: 'on_list_dir_response';
+  data: {
+    path: string; // the relative path of the directory/file relative to the app's private storage directory
+    is_dir: boolean; // true if the path is a directory, false if it is a file
+  }[];
+}
+
+/**
+ * The response for a `delete_file_or_dir` request, indicating the deletion of the specified file or directory was successful.
+ * This event is emitted by the host after successfully deleting a file or directory in the app's private storage.
+ * The `data` field is null because no additional information is needed for this event. If there was an error during the deletion process, the host should emit an `on_error` event instead of this event.
+ */
+export interface LaylaApiEvent_onDeleteFileOrDirResponse {
+  event: 'on_delete_file_or_dir_response';
+  data: null; // no additional data is needed for this event
+}
+
 export type BaseApiEvent =
   | LaylaApiEvent_onMsgEnd
   | LaylaApiEvent_onError
@@ -1129,4 +1178,6 @@ export type BaseApiEvent =
   | LaylaApiEvent_onSTTSpeechRecognized
   | LaylaApiEvent_onSTTListeningStopped
   | LaylaApiEvent_onExecuteSqlResponse
-  | LaylaApiEvent_onAceStepGenerateResponse;
+  | LaylaApiEvent_onAceStepGenerateResponse
+  | LaylaApiEvent_onListDirResponse
+  | LaylaApiEvent_onDeleteFileOrDirResponse;

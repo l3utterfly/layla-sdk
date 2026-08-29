@@ -121,6 +121,8 @@ await layla.backgroundAudio.stop();
 await layla.db.executeSql(query, params);
 await layla.utils.saveFile(filename, contentBase64, share);
 await layla.utils.readFile(filename);
+await layla.utils.listDir(path);
+await layla.utils.deleteFileOrDir(path);
 ```
 
 Read `references/sdk-api.md` before using a method signature that is not shown here.
@@ -744,6 +746,30 @@ if (read.content_base64) {
 With the browser mock installed, `saveFile` stores the content in browser
 `localStorage` (keyed by the relative path) and `readFile` reads it back.
 Passing `share: true` also downloads the content as a `Blob`.
+
+Use `layla.utils.listDir(path, options?)` to enumerate a directory and
+`layla.utils.deleteFileOrDir(path, options?)` to remove a file or directory.
+`path` is relative to the private directory (pass `''` for the root) and is
+confined to it, like `saveFile`/`readFile`. `listDir` resolves with an array of
+`{ path, is_dir }` entries — recurse into any entry whose `is_dir` is `true` to
+walk the tree. `deleteFileOrDir` resolves with `null` once the host confirms the
+deletion, and removes a directory's contents along with it.
+
+```ts
+const entries = await layla.utils.listDir('logs');
+for (const entry of entries) {
+  if (entry.is_dir) {
+    await layla.utils.listDir(entry.path); // recurse
+  }
+}
+
+await layla.utils.deleteFileOrDir('logs/notes.txt');
+await layla.utils.deleteFileOrDir('logs'); // whole folder
+```
+
+With the browser mock installed, both operate over the same
+`localStorage`-backed store, deriving a virtual directory tree from the stored
+file paths.
 
 ## Abort Handling
 

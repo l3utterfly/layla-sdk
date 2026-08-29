@@ -867,6 +867,72 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     });
   }
 
+  const normalizeDirPath = (path: string): string =>
+    path.replace(/^[./]+/, '').replace(/\/+$/, '');
+
+  // The browser mock has no real filesystem: files live flat in localStorage
+  // keyed by their full path. We derive a virtual directory tree from those
+  // keys so `list_dir` can report immediate children (files and directories).
+  function storedFilePaths(): string[] {
+    const paths: string[] = [];
+    for (let index = 0; index < window.localStorage.length; index++) {
+      const key = window.localStorage.key(index);
+      if (key && key.startsWith(mockFileStoragePrefix)) {
+        paths.push(key.slice(mockFileStoragePrefix.length));
+      }
+    }
+    return paths;
+  }
+
+  async function handleListDir(data: { path: string }): Promise<void> {
+    await delay(latencyMs);
+    if (shouldError()) {
+      emitError('Simulated list directory error');
+      return;
+    }
+
+    const prefix = normalizeDirPath(data.path);
+    const base = prefix === '' ? '' : `${prefix}/`;
+    const seen = new Map<string, boolean>();
+
+    for (const filePath of storedFilePaths()) {
+      if (base !== '' && !filePath.startsWith(base)) continue;
+      const remainder = filePath.slice(base.length);
+      if (remainder === '') continue;
+      const slash = remainder.indexOf('/');
+      if (slash === -1) {
+        seen.set(`${base}${remainder}`, false);
+      } else {
+        seen.set(`${base}${remainder.slice(0, slash)}`, true);
+      }
+    }
+
+    emit({
+      event: 'on_list_dir_response',
+      data: Array.from(seen, ([path, is_dir]) => ({ path, is_dir })),
+    });
+  }
+
+  async function handleDeleteFileOrDir(data: { path: string }): Promise<void> {
+    await delay(latencyMs);
+    if (shouldError()) {
+      emitError('Simulated delete error');
+      return;
+    }
+
+    const target = normalizeDirPath(data.path);
+    try {
+      for (const filePath of storedFilePaths()) {
+        if (filePath === target || filePath.startsWith(`${target}/`)) {
+          window.localStorage.removeItem(mockFileStorageKey(filePath));
+        }
+      }
+      emit({ event: 'on_delete_file_or_dir_response', data: null });
+    } catch (error) {
+      emitError(storageErrorMessage(error));
+    }
+  }
+
   async function handleGetMemories(data: {
     character_id: string;
     offset: number;
@@ -1459,6 +1525,12 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
           break;
         case 'read_file':
           void handleReadFile(msg.data);
+          break;
+        case 'list_dir':
+          void handleListDir(msg.data);
+          break;
+        case 'delete_file_or_dir':
+          void handleDeleteFileOrDir(msg.data);
           break;
         case 'get_memories':
           void handleGetMemories(msg.data);

@@ -1301,6 +1301,64 @@ await layla.utils.readFile('hello.txt', {
 });
 ```
 
+## `layla.utils.listDir(path, options?)`
+
+Lists the contents of a directory inside the mini-app's private directory.
+Resolves with an array of entries, each `{ path, is_dir }`, where `path` is the
+entry's path relative to the private directory and `is_dir` is `true` for
+subdirectories. Recurse into any entry whose `is_dir` is `true` to walk the
+tree.
+
+`path` is relative to the private directory; pass `''` (or `'.'`) for the root.
+Paths are confined to that directory: leading slashes are ignored and `..`
+segments that would escape the app folder are rejected. The host emits
+`on_error` if the directory cannot be read.
+
+```ts
+const entries: ListDirResult = await layla.utils.listDir('logs');
+
+for (const entry of entries) {
+  if (entry.is_dir) {
+    const children = await layla.utils.listDir(entry.path);
+    // ...recurse
+  } else {
+    const file = await layla.utils.readFile(entry.path);
+    // ...
+  }
+}
+```
+
+Pass an abort signal as the second argument:
+
+```ts
+await layla.utils.listDir('logs', { signal: controller.signal });
+```
+
+## `layla.utils.deleteFileOrDir(path, options?)`
+
+Deletes a file or directory inside the mini-app's private directory. Deleting a
+directory removes its contents as well. Resolves once the host confirms the
+deletion (the result is `null`), or rejects on error/abort.
+
+`path` is relative to the private directory. Paths are confined to that
+directory: leading slashes are ignored and `..` segments that would escape the
+app folder are rejected. The host emits `on_error` if the deletion fails.
+
+```ts
+await layla.utils.deleteFileOrDir('logs/2026-08-29.txt');
+
+// Remove a whole folder and everything under it:
+await layla.utils.deleteFileOrDir('logs');
+```
+
+Pass an abort signal as the second argument:
+
+```ts
+await layla.utils.deleteFileOrDir('logs/hello.txt', {
+  signal: controller.signal,
+});
+```
+
 ## Abort Signals
 
 Chat, character requests, classifier requests, image generation, and music generation can be cancelled from the mini-app.
@@ -1696,6 +1754,9 @@ const result = await layla.utils.readFile('hello.txt');
 Files saved through `layla.utils.saveFile(...)` with `share: false` are stored
 in browser `localStorage`, so later `layla.utils.readFile(...)` calls can read
 them on the same origin. Files downloaded with `share: true` are not stored.
+`layla.utils.listDir(...)` and `layla.utils.deleteFileOrDir(...)` operate over
+this same `localStorage`-backed store, deriving a virtual directory tree from
+the stored file paths.
 
 The returned handle can uninstall the mock.
 
@@ -1816,8 +1877,14 @@ Useful exported types include:
 - `LaylaApiEvent_onSaveFileResponse`
 - `LaylaApiReadFile`
 - `LaylaApiEvent_onReadFileResponse`
+- `LaylaApiListDir`
+- `LaylaApiEvent_onListDirResponse`
+- `LaylaApiDeleteFileOrDir`
+- `LaylaApiEvent_onDeleteFileOrDirResponse`
 - `ReadFileResult`
 - `SaveFileResult`
+- `ListDirResult`
+- `DeleteFileOrDirResult`
 - `LaylaCharacter`
 - `TavernCardV2`
 - `SentimentValues`

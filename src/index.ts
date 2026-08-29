@@ -63,6 +63,8 @@ export type {
   LaylaApiSTTStopListening,
   LaylaApiExecuteSql,
   LaylaApiAceStepGenerate,
+  LaylaApiListDir,
+  LaylaApiDeleteFileOrDir,
   LaylaApiCancel,
 
   // event types
@@ -105,6 +107,8 @@ export type {
   LaylaApiEvent_onSTTListeningStopped,
   LaylaApiEvent_onExecuteSqlResponse,
   LaylaApiEvent_onAceStepGenerateResponse,
+  LaylaApiEvent_onListDirResponse,
+  LaylaApiEvent_onDeleteFileOrDirResponse,
 } from './protocol';
 export { SENTIMENT_THRESHOLDS } from './protocol';
 
@@ -149,7 +153,12 @@ export { AceStep } from './resources/acestep';
 
 // Utility resource surface.
 export { Utils } from './resources/utils';
-export type { ReadFileResult, SaveFileResult } from './resources/utils';
+export type {
+  ReadFileResult,
+  SaveFileResult,
+  ListDirResult,
+  DeleteFileOrDirResult,
+} from './resources/utils';
 
 // Memory resource surface.
 export { Memories } from './resources/memories';
