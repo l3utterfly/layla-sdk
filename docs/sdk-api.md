@@ -1239,10 +1239,17 @@ Saves raw base64-encoded content as a file. Do not include a data URI prefix.
 Set `share` to `true` to ask the native host to open its share sheet after
 saving. It defaults to `false`.
 
+`filename` may be a plain name or a relative path that includes folders (for
+example `logs/2026-08-29.txt`). The host resolves it inside the mini-app's
+private directory, creating any missing parent folders before writing. Paths are
+confined to that directory: leading slashes are ignored and `..` segments that
+would escape the app folder are rejected, so pass a relative path rather than an
+absolute one.
+
 ```ts
 const contentBase64 = btoa('Hello from Layla.');
 const result = await layla.utils.saveFile(
-  'hello.txt',
+  'logs/hello.txt',
   contentBase64,
   true,
 );
@@ -1270,8 +1277,14 @@ Reads a file from the mini-app's private directory. The returned
 `content_base64` includes a data URI prefix when the host finds the file, or
 `null` when the file cannot be read.
 
+`filename` may be a plain name or a relative path that includes folders (for
+example `logs/hello.txt`), matching the path passed to
+`layla.utils.saveFile(...)`. Paths are resolved inside the mini-app's private
+directory: leading slashes are ignored and `..` segments that would escape the
+app folder are rejected.
+
 ```ts
-const result = await layla.utils.readFile('hello.txt');
+const result = await layla.utils.readFile('logs/hello.txt');
 
 if (result.content_base64) {
   downloadLink.href = result.content_base64;

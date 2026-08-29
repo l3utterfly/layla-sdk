@@ -1,6 +1,6 @@
 ---
 name: layla-sdk
-description: Use the @layla-network/sdk package in third-party Layla mini-apps and WebView apps. Covers the public API surface for creating a Layla client, contextual character-chat execution state and events, OpenAI-shaped chat completions and streams including reasoning deltas, inference engine selection, paginated character listing, chat sessions, session history, message saves, scheduled chat messages, memories, personas, TTS voices, playback and audio-file generation, speech-to-text microphone input and events, background audio controls and events, character images, sentiment analysis, image generation progress/results, music generation progress/results with the Ace-Step model, private per-mini-app sqlite database queries, file saving, abort handling, SDK errors, exported TypeScript types, and runtime expectations inside the Layla WebView.
+description: Use the @layla-network/sdk package in third-party Layla mini-apps and WebView apps. Covers the public API surface for creating a Layla client, contextual character-chat execution state and events, OpenAI-shaped chat completions and streams including reasoning deltas, inference engine selection, paginated character listing, chat sessions, session history, message saves, scheduled chat messages, memories, personas, TTS voices, playback and audio-file generation, speech-to-text microphone input and events, background audio controls and events, character images, sentiment analysis, image generation progress/results, music generation progress/results with the Ace-Step model, private per-mini-app sqlite database queries, file saving, abort handling, SDK errors, exported TypeScript types, runtime expectations inside the Layla WebView, and task.js background task scripts that run periodically in the host's QuickJS runtime with the SDK preloaded as a global.
 ---
 
 # Layla SDK
@@ -20,6 +20,8 @@ If the bundled reference appears stale and internet access is available, check t
 ## Runtime Rules
 
 Run SDK calls inside the Layla WebView. The host injects the React Native WebView bridge. If that bridge is unavailable, SDK requests reject with `LaylaBridgeUnavailableError`.
+
+The one non-WebView environment is `task.js`: an optional background task script at the mini-app root that the host runs in a QuickJS runtime with the SDK already injected as a global `layla` instance. See "Background Tasks (task.js)" below.
 
 Do not use this SDK as an ordinary browser HTTP client. There is no API key, base URL, or fetch endpoint to configure. The SDK sends bridge messages to the Layla host.
 
@@ -118,6 +120,7 @@ await layla.backgroundAudio.skip();
 await layla.backgroundAudio.stop();
 await layla.db.executeSql(query, params);
 await layla.utils.saveFile(filename, contentBase64, share);
+await layla.utils.readFile(filename);
 ```
 
 Read `references/sdk-api.md` before using a method signature that is not shown here.
@@ -708,11 +711,22 @@ const audioSrc = await layla.acestep.generateMusic(
 ## Utilities
 
 Use `layla.utils.saveFile(filename, contentBase64, share?, options?)` to save
-base64-encoded content through the host. Omit the data URI prefix.
+base64-encoded content through the host, and
+`layla.utils.readFile(filename, options?)` to read it back. Both operate on the
+mini-app's private files. Omit the data URI prefix when passing content to
+`saveFile`; `readFile` returns `content_base64` with a data URI prefix (or
+`null` when the file cannot be read).
+
+`filename` may be a plain name or a relative path that includes folders (for
+example `logs/run.txt`). The host resolves it inside the mini-app's private
+directory and creates any missing parent folders on save. Paths stay inside that
+directory: leading slashes are ignored and `..` segments that would escape the
+app folder are rejected, so pass a relative path rather than an absolute one.
+Read a file back with the same relative path you saved it under.
 
 ```ts
 const result = await layla.utils.saveFile(
-  'notes.txt',
+  'logs/notes.txt',
   btoa('Saved from a Layla mini-app.'),
   true,
 );
@@ -720,10 +734,16 @@ const result = await layla.utils.saveFile(
 if (!result.success) {
   throw new Error(result.message ?? 'Unable to save file');
 }
+
+const read = await layla.utils.readFile('logs/notes.txt');
+if (read.content_base64) {
+  fileLink.href = read.content_base64;
+}
 ```
 
-With the browser mock installed, this stores the content in browser
-`localStorage`. Passing `share: true` also downloads the content as a `Blob`.
+With the browser mock installed, `saveFile` stores the content in browser
+`localStorage` (keyed by the relative path) and `readFile` reads it back.
+Passing `share: true` also downloads the content as a `Blob`.
 
 ## Abort Handling
 
@@ -777,10 +797,118 @@ At minimum, a packaged mini-app folder should include:
 - `app.json`
 - `index.html` or `index.url`
 - any referenced icons, images, or assets
+- optionally `task.js` for a background task (see below)
 
-When distributing a mini-app as a zip, `app.json`, `index.html` or `index.url`, and referenced assets must be at the root of the zip file. Do not wrap them in an extra parent folder.
+When distributing a mini-app as a zip, `app.json`, `index.html` or `index.url`, and referenced assets must be at the root of the zip file. Do not wrap them in an extra parent folder. `task.js`, when present, must also be at the zip root.
 
 Use `index.html` for a self-contained local app. Use `index.url` for an externally hosted app.
+
+## Background Tasks (task.js)
+
+A mini-app can ship an optional `task.js` file at its root (next to `app.json`).
+The Layla host scans each installed mini-app folder for `task.js`; when it
+exists, the app appears in Layla's Task Manager, which executes the script
+periodically in the background and lets the user run it manually, enable or
+disable it, and inspect each run's output and logs.
+
+### Execution model
+
+`task.js` does not run in the WebView. The host evaluates it in an isolated
+QuickJS runtime that it creates for the run and destroys when the script
+settles. Before your script is evaluated, the host bootstraps the runtime with
+a WebView compatibility shim plus the full `@layla-network/sdk` bundle (matched
+to the host's SDK version), so these globals are ready immediately:
+
+- `layla` — a ready-to-use SDK client instance
+- `Layla` — the client class
+- `LaylaError`, `LaylaAbortError`, `LaylaBridgeUnavailableError`
+
+Do not use `import`, `require`, or a bundler in `task.js`. It is a plain script
+with no module system; call `layla.*` directly. Under the hood the shim maps
+`window.ReactNativeWebView.postMessage` and window `message` events onto the
+QuickJS message channel, and the host wires a per-app API service to the
+runtime, so every `layla.*` method uses the same protocol and behaves the same
+as in the WebView.
+
+### Script shape, output, and logs
+
+The host evaluates `task.js` as a **classic script**, not a module, so
+**top-level `await` is a syntax error** (it surfaces as `expecting ';'` at the
+first top-level `await`). To use `await`, wrap the async body in an async IIFE
+and let the returned promise be the completion value:
+
+```js
+// Completion value — the returned promise resolves to the run's output.
+(async () => {
+  const characters = await layla.characters.list(0, 5);
+  return `Found ${characters.length} characters.`;
+})();
+```
+
+The script's completion value (its last expression) is recorded as the run's
+output; if the script completes with a promise, the host awaits it and records
+the resolved value — which is why the async-IIFE pattern above works. Make the
+completion value JSON-serializable — a value that fails JSON serialization (for
+example an object with function members) fails the run.
+
+`console.log`, `console.info`, `console.debug`, `console.warn`, and
+`console.error` are buffered inside the runtime and shown in the Task Manager's
+execution log after the run finishes — they do not stream live. A thrown error
+or rejected top-level promise marks the run as failed; the error message and
+stack become the output, and logs buffered before the failure are still kept.
+
+The host records each run's success, duration, timestamp, output, and logs per
+mini-app.
+
+### Environment constraints
+
+The QuickJS runtime is not a browser:
+
+- No DOM, `document`, `fetch`, `XMLHttpRequest`, or `localStorage`.
+- No timers — `setTimeout` and `setInterval` do not exist, so do not poll or
+  sleep; SDK promises are the only way to wait.
+- `Promise`, `async`/`await`, `queueMicrotask`, and `JSON` work normally.
+
+Each run starts a fresh runtime, so no global state survives between runs.
+Persist state with `layla.db.executeSql(...)` — the task shares the mini-app's
+private sqlite database, which is also the way to hand results to the WebView
+UI for the next launch.
+
+### What to call from a task
+
+Prefer headless-friendly APIs: non-streaming chat completions, `layla.db`,
+`layla.memories`, `layla.chat.saveChatMessage`,
+`layla.chat.scheduleChatMessage`, `layla.classifier.getSentiment`, and
+`layla.characters`. Avoid UI- and device-interaction flows (TTS playback,
+speech-to-text, background audio) in a background task. Do not rely on
+long-lived event subscriptions such as `layla.contextual.on(...)` — the run
+ends when the script's completion value settles, so listeners do not outlive
+the script.
+
+### Example
+
+```js
+// task.js — no imports; the host injects `layla` before this runs.
+// Wrap awaited work in an async IIFE: top-level `await` is a syntax error here.
+console.log('Digest task starting.');
+
+// Completion value — the returned promise resolves to the run's output.
+(async () => {
+  const characters = await layla.characters.list(0, 5);
+
+  await layla.db.executeSql(
+    'CREATE TABLE IF NOT EXISTS task_runs (id INTEGER PRIMARY KEY, ran_at INTEGER, character_count INTEGER)',
+  );
+  await layla.db.executeSql(
+    'INSERT INTO task_runs (ran_at, character_count) VALUES (?, ?)',
+    [Date.now(), characters.length],
+  );
+
+  console.log(`Recorded ${characters.length} characters.`);
+
+  return `Digest complete: ${characters.length} characters.`;
+})();
+```
 
 ## Compatibility Guidance
 

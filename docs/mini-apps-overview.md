@@ -12,6 +12,7 @@ Inside Layla, each imported mini-app is stored in its own folder. The folder nam
 app-name-generated-slug/
   app.json
   index.html
+  task.js        (optional background task)
   icon.png
   other-assets...
 ```
@@ -86,6 +87,26 @@ This format is useful when:
 
 The hosted page still runs inside Layla's WebView and should follow the same SDK and bridge expectations.
 
+## Background Tasks (task.js)
+
+A mini-app can optionally include a `task.js` file at its root. The Layla host
+scans installed mini-app folders for it; when present, the app appears in
+Layla's Task Manager, which runs the script periodically in the background and
+lets the user trigger it manually and inspect each run's output and logs.
+
+`task.js` does not run in the WebView. The host evaluates it in an isolated
+QuickJS runtime with the SDK preinjected as a global `layla` instance, so the
+script calls `layla.*` immediately with no imports and no bundling. Top-level
+`await` is supported, `console.*` output is buffered into the run's log, and
+the script's completion value (its last expression, awaited if it is a
+promise) is recorded as the run's output. There is no DOM, `fetch`,
+`localStorage`, or timer support, and no state survives between runs — use
+`layla.db.executeSql(...)` (the mini-app's private database, shared with the
+WebView app) to persist results.
+
+See the "Background Tasks (task.js)" section of the skill for the full
+execution model, constraints, and an example script.
+
 ## How the SDK Fits In
 
 The SDK wraps the WebView messaging layer so mini-app authors do not need to call `postMessage` or listen for raw message events directly.
@@ -152,7 +173,8 @@ Typical import checklist:
 - Include `app.json`.
 - Include either `index.html` or `index.url`.
 - Include any referenced icons or assets.
-- Put `app.json`, `index.html` or `index.url`, and referenced assets at the root of the zip file when distributing a zipped mini-app.
+- Include `task.js` at the root when the mini-app ships a background task.
+- Put `app.json`, `index.html` or `index.url`, `task.js` when used, and referenced assets at the root of the zip file when distributing a zipped mini-app.
 - Make sure asset paths match the files in the mini-app folder.
 - Make sure `index.url` contains only the URL when using a hosted app.
 - Make sure `index.html` is self-contained when using a packaged app.
