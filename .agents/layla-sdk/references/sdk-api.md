@@ -1766,6 +1766,78 @@ mock.emitBackgroundAudioStatus({
 mock.emitBackgroundAudioFinished();
 ```
 
+Fully replace the built-in background-audio simulation with the `backgroundAudio`
+factory to drive real playback (for example an `HTMLAudioElement`) from the mock
+host. The factory is called once with an emitter and returns a controller that
+receives each fire-and-forget command; you own the queue, the playhead, and when
+each event fires:
+
+```ts
+installLaylaMock({
+  backgroundAudio: (emitter) => {
+    const el = new Audio();
+    let queue: string[] = [];
+    let index = 0;
+
+    const play = () => {
+      el.src = queue[index];
+      void el.play();
+    };
+
+    el.addEventListener('timeupdate', () =>
+      emitter.emitStatus({
+        playing: !el.paused,
+        currentIndex: index,
+        currentTime: el.currentTime,
+        duration: Number.isFinite(el.duration) ? el.duration : 0,
+        isLoaded: el.readyState >= 1,
+      }),
+    );
+    el.addEventListener('ended', () => {
+      const previousIndex = index;
+      if (++index < queue.length) {
+        emitter.emitTrackChanged({ currentIndex: index, previousIndex });
+        play();
+      } else {
+        emitter.emitFinished();
+      }
+    });
+
+    return {
+      start: ({ queueAudioFiles }) => {
+        queue = queueAudioFiles;
+        index = 0;
+        play();
+      },
+      stop: () => {
+        el.pause();
+        el.removeAttribute('src');
+      },
+      pause: () => el.pause(),
+      resume: () => void el.play(),
+      skip: ({ index: to }) => {
+        const previousIndex = index;
+        index = to ?? index + 1;
+        if (index >= queue.length) return;
+        emitter.emitTrackChanged({ currentIndex: index, previousIndex });
+        play();
+      },
+    };
+  },
+});
+
+await layla.backgroundAudio.start(['intro.mp3', 'chapter-1.mp3']);
+```
+
+The controller's methods map one-to-one to `layla.backgroundAudio.start/stop/
+pause/resume/skip` (all fire-and-forget, so they return `void`). The `start`
+request also carries the optional `metadata` passed to `start(...)`. Emit
+`status`, `trackChanged`, and `finished` through the emitter to reach the app's
+`backgroundAudio.on(...)` listeners. When the mock is uninstalled it calls the
+controller's `stop()` once so it can release its audio resources. When
+`backgroundAudio` is omitted, the mock simulates a ticking playhead that
+auto-advances the queue and emits `finished` when it runs out.
+
 Fully override the private-file surface with the `saveFile`, `readFile`,
 `listDir`, and `deleteFileOrDir` handlers. Back all four with a single store to
 get a coherent mock filesystem:

@@ -1,6 +1,6 @@
 {
   "name": "@layla-network/sdk",
-  "version": "7.4.3",
+  "version": "7.4.4",
   "description": "Layla custom mini-apps SDK",
   "type": "module",
   "main": "./dist/index.cjs",

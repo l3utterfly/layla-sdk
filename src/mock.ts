@@ -37,6 +37,7 @@ import type {
   LaylaApiEvent_onReadFileResponse,
   LaylaApiEvent_onListDirResponse,
   LaylaApiEvent_onSTTSpeechRecognized,
+  LaylaApiStartBackgroundAudioPlayer,
   LaylaCharacter,
   LaylaChatHistoryEntry,
   LaylaChatMessage,
@@ -87,6 +88,48 @@ type MockAceStepGenerateResult =
 
 type MockAceStepGenerateProgress =
   LaylaApiEvent_onAceStepGenerateProgress['data'];
+
+type MockBackgroundAudioStatus =
+  LaylaApiEvent_onBackgroundAudioStatus['data'];
+
+type MockBackgroundAudioTrackChanged =
+  LaylaApiEvent_onBackgroundAudioTrackChanged['data'];
+
+type MockStartBackgroundAudioRequest =
+  LaylaApiStartBackgroundAudioPlayer['data'];
+
+/**
+ * Emits background-audio events to the SDK from a custom mock player supplied
+ * via {@link LaylaMockOptions.backgroundAudio}. Each method dispatches the same
+ * host->web event the real Layla host would.
+ */
+export interface LaylaMockBackgroundAudioEmitter {
+  /** Emit an `on_background_audio_status` update (playhead, playing flag, etc). */
+  emitStatus(data: MockBackgroundAudioStatus): void;
+  /** Emit an `on_background_audio_track_changed` event. */
+  emitTrackChanged(data: MockBackgroundAudioTrackChanged): void;
+  /** Emit `on_background_audio_finished` (queue ended, player released). */
+  emitFinished(): void;
+}
+
+/**
+ * A custom background-audio player supplied via
+ * {@link LaylaMockOptions.backgroundAudio}. The mock routes each fire-and-forget
+ * background-audio command to the matching method; drive playback however you
+ * like and report state through the emitter passed to the factory.
+ */
+export interface LaylaMockBackgroundAudioController {
+  /** Handle `backgroundAudio.start(queueAudioFiles, metadata)`. */
+  start(request: MockStartBackgroundAudioRequest): void;
+  /** Handle `backgroundAudio.stop()`. Also called once on mock uninstall. */
+  stop(): void;
+  /** Handle `backgroundAudio.pause()`. */
+  pause(): void;
+  /** Handle `backgroundAudio.resume()`. */
+  resume(): void;
+  /** Handle `backgroundAudio.skip(index)`; `index` is omitted for "next". */
+  skip(request: { index?: number }): void;
+}
 
 export interface LaylaMockOptions {
   /**
@@ -209,6 +252,19 @@ export interface LaylaMockOptions {
     request: { prompt: string; lyrics?: string; duration?: number },
     reportProgress: (progress: MockAceStepGenerateProgress) => void,
   ) => MockAceStepGenerateResult | Promise<MockAceStepGenerateResult>;
+  /**
+   * Fully replace the built-in background-audio simulation. The factory is
+   * called once with an {@link LaylaMockBackgroundAudioEmitter} and returns a
+   * {@link LaylaMockBackgroundAudioController} whose methods receive each
+   * fire-and-forget background-audio command (`start`, `stop`, `pause`,
+   * `resume`, `skip`). Use it to back the player with a real audio source (e.g.
+   * an `HTMLAudioElement`) and emit `status`, `trackChanged`, and `finished`
+   * events yourself. When omitted, the mock simulates a ticking playhead that
+   * auto-advances the queue.
+   */
+  backgroundAudio?: (
+    emitter: LaylaMockBackgroundAudioEmitter,
+  ) => LaylaMockBackgroundAudioController;
   /** Delay before the first event of a response (simulated latency). Default 150ms. */
   latencyMs?: number;
   /** Delay between streamed tokens. Default 40ms. */
@@ -588,6 +644,18 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     session_id: null,
   };
   let selectedInferenceEngine: string | null = null;
+
+  const customBackgroundAudio: LaylaMockBackgroundAudioController | null =
+    options.backgroundAudio
+      ? options.backgroundAudio({
+          emitStatus: (data) =>
+            emit({ event: 'on_background_audio_status', data }),
+          emitTrackChanged: (data) =>
+            emit({ event: 'on_background_audio_track_changed', data }),
+          emitFinished: () =>
+            emit({ event: 'on_background_audio_finished', data: null }),
+        })
+      : null;
 
   async function getChatHistoryEntries(data: {
     session_id: string;
@@ -1507,9 +1575,14 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     }, mockAudioTickMs);
   }
 
-  function handleStartBackgroundAudioPlayer(data: {
-    queueAudioFiles: string[];
-  }): void {
+  function handleStartBackgroundAudioPlayer(
+    data: MockStartBackgroundAudioRequest,
+  ): void {
+    if (customBackgroundAudio) {
+      customBackgroundAudio.start(data);
+      return;
+    }
+
     if (data.queueAudioFiles.length === 0) {
       stopBackgroundTicking();
       backgroundAudio = null;
@@ -1530,11 +1603,19 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
   }
 
   function handleStopBackgroundAudioPlayer(): void {
+    if (customBackgroundAudio) {
+      customBackgroundAudio.stop();
+      return;
+    }
     stopBackgroundTicking();
     backgroundAudio = null;
   }
 
   function handlePauseBackgroundAudioPlayer(): void {
+    if (customBackgroundAudio) {
+      customBackgroundAudio.pause();
+      return;
+    }
     if (!backgroundAudio) return;
     backgroundAudio.playing = false;
     stopBackgroundTicking();
@@ -1542,6 +1623,10 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
   }
 
   function handleResumeBackgroundAudioPlayer(): void {
+    if (customBackgroundAudio) {
+      customBackgroundAudio.resume();
+      return;
+    }
     if (!backgroundAudio) return;
     backgroundAudio.playing = true;
     queueMicrotask(() => {
@@ -1551,6 +1636,10 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
   }
 
   function handleSkipBackgroundAudioTrack(data: { index?: number }): void {
+    if (customBackgroundAudio) {
+      customBackgroundAudio.skip(data);
+      return;
+    }
     if (!backgroundAudio) return;
 
     const previousIndex = backgroundAudio.currentIndex;
@@ -1779,6 +1868,13 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
       installed = false;
       if (current) current.cancelled = true;
       if (currentSpeech) currentSpeech.cancelled = true;
+      if (customBackgroundAudio) {
+        try {
+          customBackgroundAudio.stop();
+        } catch (error) {
+          log('custom background audio stop() threw during uninstall', error);
+        }
+      }
       stopBackgroundTicking();
       backgroundAudio = null;
       if (previous) window.ReactNativeWebView = previous;
