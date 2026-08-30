@@ -1576,6 +1576,33 @@ every query resolves to an empty result
 your own results, or to back the mock with an in-browser SQL engine such as
 sql.js for realistic local testing.
 
+Customize Ace-Step music generation, including the progress it streams:
+
+```ts
+installLaylaMock({
+  aceStepGenerate: async ({ prompt, lyrics, duration }, reportProgress) => {
+    for (let step = 1; step <= 4; step++) {
+      reportProgress({ progress: step / 4, status: `Composing (${step}/4)` });
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    return { audio_data_base64: 'data:audio/wav;base64,UklGRi...' };
+  },
+});
+
+const audio = await layla.acestep.generateMusic(
+  'lofi beats to test to',
+  (progress, status) => console.log(progress, status),
+);
+```
+
+The handler receives the `{ prompt, lyrics, duration }` request and a
+`reportProgress` function that emits `on_ace_step_generate_progress` events
+(each with `progress` 0..1 and a `status` string) to the app's `onProgress`
+callback. Return the final result (`audio_data_base64`, which should include a
+data URI prefix, plus an optional `message`); it may be async. When the handler
+is omitted, the mock streams five canned progress ticks and returns a tiny
+placeholder WAV data URI.
+
 Customize mock session history with static transcript data:
 
 ```ts
@@ -1739,24 +1766,57 @@ mock.emitBackgroundAudioStatus({
 mock.emitBackgroundAudioFinished();
 ```
 
-Customize mock private files with static base64 data or data URIs:
+Fully override the private-file surface with the `saveFile`, `readFile`,
+`listDir`, and `deleteFileOrDir` handlers. Back all four with a single store to
+get a coherent mock filesystem:
 
 ```ts
+const store = new Map<string, string>();
+
 installLaylaMock({
-  files: {
-    'hello.txt': 'data:text/plain;base64,SGVsbG8gZnJvbSBMYXlsYS4=',
+  saveFile: ({ filename, contentBase64, share }) => {
+    store.set(filename, contentBase64);
+    return { filename, success: true };
+  },
+  readFile: ({ filename }) => {
+    const contentBase64 = store.get(filename);
+    return contentBase64 === undefined
+      ? { filename, content_base64: null, message: 'Not found.' }
+      : { filename, content_base64: `data:application/octet-stream;base64,${contentBase64}` };
+  },
+  listDir: ({ path }) =>
+    [...store.keys()]
+      .filter((key) => key.startsWith(path))
+      .map((key) => ({ path: key, is_dir: false })),
+  deleteFileOrDir: ({ path }) => {
+    for (const key of store.keys()) {
+      if (key === path || key.startsWith(`${path}/`)) store.delete(key);
+    }
   },
 });
 
+await layla.utils.saveFile('hello.txt', 'SGVsbG8gZnJvbSBMYXlsYS4=');
 const result = await layla.utils.readFile('hello.txt');
+const entries = await layla.utils.listDir('');
+await layla.utils.deleteFileOrDir('hello.txt');
 ```
 
-Files saved through `layla.utils.saveFile(...)` with `share: false` are stored
-in browser `localStorage`, so later `layla.utils.readFile(...)` calls can read
-them on the same origin. Files downloaded with `share: true` are not stored.
-`layla.utils.listDir(...)` and `layla.utils.deleteFileOrDir(...)` operate over
-this same `localStorage`-backed store, deriving a virtual directory tree from
-the stored file paths.
+All four handlers may be async, so you can back them with any store you like (an
+in-memory map, IndexedDB, a remote fixture server, etc.), and control
+success/error results per call. `readFile` should return `content_base64` with a
+data URI prefix (or `null`, with an optional `message`, to simulate a missing or
+unreadable file), mirroring the real host. `deleteFileOrDir` performs the
+deletion and returns nothing; throw from it to simulate a failure (the mock
+emits `on_error` with the thrown message).
+
+When these handlers are omitted, the mock falls back to browser `localStorage`:
+files saved through `layla.utils.saveFile(...)` with `share: false` are stored
+there, so later `layla.utils.readFile(...)` calls can read them on the same
+origin, while files downloaded with `share: true` are not stored.
+`layla.utils.listDir(...)` and `layla.utils.deleteFileOrDir(...)` then operate
+over this same `localStorage`-backed store, deriving a virtual directory tree
+from the stored file paths. Each handler is independent — override only the ones
+you need and the rest keep the `localStorage` default.
 
 The returned handle can uninstall the mock.
 

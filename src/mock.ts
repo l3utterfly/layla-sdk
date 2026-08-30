@@ -32,6 +32,10 @@ import type {
   LaylaApiEvent_onGetChatSessionsResponse,
   LaylaApiEvent_onExecuteSqlResponse,
   LaylaApiEvent_onGetImageGenerationModelsResponse,
+  LaylaApiEvent_onAceStepGenerateResponse,
+  LaylaApiEvent_onSaveFileResponse,
+  LaylaApiEvent_onReadFileResponse,
+  LaylaApiEvent_onListDirResponse,
   LaylaApiEvent_onSTTSpeechRecognized,
   LaylaCharacter,
   LaylaChatHistoryEntry,
@@ -43,6 +47,7 @@ import type {
   LaylaExecutionContext,
   TavernCardV2,
 } from './protocol';
+import type { LaylaApiEvent_onAceStepGenerateProgress } from './typescript-protocol';
 import { makeMockChatHistory } from './mock-data/chat-history';
 
 type MockReply =
@@ -61,8 +66,6 @@ type MockMemorySource =
 
 type MockPersonaSource = Record<string, LaylaPersona>;
 
-type MockFileSource = Record<string, string>;
-
 type MockScheduledChatMessageSource = LaylaScheduledChatMessage[];
 
 type MockChatSession =
@@ -72,6 +75,18 @@ type MockImageGenerationModel =
   LaylaApiEvent_onGetImageGenerationModelsResponse['data'][number];
 
 type MockExecuteSqlResult = LaylaApiEvent_onExecuteSqlResponse['data'];
+
+type MockSaveFileResult = LaylaApiEvent_onSaveFileResponse['data'];
+
+type MockReadFileResult = LaylaApiEvent_onReadFileResponse['data'];
+
+type MockListDirResult = LaylaApiEvent_onListDirResponse['data'];
+
+type MockAceStepGenerateResult =
+  LaylaApiEvent_onAceStepGenerateResponse['data'];
+
+type MockAceStepGenerateProgress =
+  LaylaApiEvent_onAceStepGenerateProgress['data'];
 
 export interface LaylaMockOptions {
   /**
@@ -100,10 +115,46 @@ export interface LaylaMockOptions {
   /** Character-specific personas keyed by character id. */
   personas?: MockPersonaSource;
   /**
-   * Initial private app files used by `utils.readFile`.
-   * Values may be raw base64 strings or ready-to-use data URIs.
+   * Handle `utils.saveFile(filename, contentBase64, share)` calls. Return the
+   * result the mock should reply with (`filename`, `success`, optional
+   * `message`). May be async, so you can back it with your own store. When
+   * omitted, the mock stores files in browser `localStorage` (and triggers a
+   * browser download when `share` is true).
    */
-  files?: MockFileSource;
+  saveFile?: (request: {
+    filename: string;
+    contentBase64: string;
+    share: boolean;
+  }) => MockSaveFileResult | Promise<MockSaveFileResult>;
+  /**
+   * Handle `utils.readFile(filename)` calls. Return the result the mock should
+   * reply with; set `content_base64` to `null` (with an optional `message`) to
+   * simulate a missing/unreadable file. `content_base64` should include a data
+   * URI prefix, mirroring the real host. May be async. When omitted, the mock
+   * reads from browser `localStorage`.
+   */
+  readFile?: (request: {
+    filename: string;
+  }) => MockReadFileResult | Promise<MockReadFileResult>;
+  /**
+   * Handle `utils.listDir(path)` calls. Return the directory entries the mock
+   * should reply with (each with a `path` relative to the app's private
+   * directory and an `is_dir` flag). May be async. When omitted, the mock lists
+   * the browser `localStorage`-backed store. Provide this alongside
+   * {@link LaylaMockOptions.saveFile}/{@link LaylaMockOptions.readFile} to back
+   * every file operation with the same custom store.
+   */
+  listDir?: (request: {
+    path: string;
+  }) => MockListDirResult | Promise<MockListDirResult>;
+  /**
+   * Handle `utils.deleteFileOrDir(path)` calls. Perform the deletion in your own
+   * store; the mock replies with the success response once it resolves. Throw to
+   * simulate a failure (the mock emits `on_error` with the thrown message). May
+   * be async. When omitted, the mock deletes from the browser `localStorage`
+   * store.
+   */
+  deleteFileOrDir?: (request: { path: string }) => void | Promise<void>;
   /**
    * Initial scheduled chat messages used by scheduled-message APIs.
    */
@@ -145,6 +196,19 @@ export interface LaylaMockOptions {
     query: string,
     params: unknown[],
   ) => MockExecuteSqlResult | Promise<MockExecuteSqlResult>;
+  /**
+   * Handle `acestep.generateMusic(prompt, onProgress, lyrics, duration)` calls.
+   * Return the final result the mock replies with (`audio_data_base64`, which
+   * should include a data URI prefix, and an optional `message`). Call the
+   * provided `reportProgress` to drive `on_ace_step_generate_progress` events
+   * (each with `progress` 0..1 and a `status` string) before resolving. May be
+   * async. When omitted, the mock streams five canned progress ticks and returns
+   * a tiny placeholder WAV data URI.
+   */
+  aceStepGenerate?: (
+    request: { prompt: string; lyrics?: string; duration?: number },
+    reportProgress: (progress: MockAceStepGenerateProgress) => void,
+  ) => MockAceStepGenerateResult | Promise<MockAceStepGenerateResult>;
   /** Delay before the first event of a response (simulated latency). Default 150ms. */
   latencyMs?: number;
   /** Delay between streamed tokens. Default 40ms. */
@@ -524,13 +588,6 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     session_id: null,
   };
   let selectedInferenceEngine: string | null = null;
-  try {
-    for (const [filename, contentBase64] of Object.entries(options.files ?? {})) {
-      writeStoredFile(filename, contentBase64);
-    }
-  } catch (error) {
-    log('unable to seed mock files in localStorage', error);
-  }
 
   async function getChatHistoryEntries(data: {
     session_id: string;
@@ -669,7 +726,7 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     });
   }
 
-  async function handleAceStepGenerate(_: {
+  async function handleAceStepGenerate(data: {
     prompt: string;
     lyrics?: string;
     duration?: number;
@@ -677,6 +734,20 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     await delay(latencyMs);
     if (shouldError()) {
       emitError('Simulated music generation error');
+      return;
+    }
+
+    if (options.aceStepGenerate) {
+      const result = await options.aceStepGenerate(
+        {
+          prompt: data.prompt,
+          lyrics: data.lyrics,
+          duration: data.duration,
+        },
+        (progress) =>
+          emit({ event: 'on_ace_step_generate_progress', data: progress }),
+      );
+      emit({ event: 'on_ace_step_generate_response', data: result });
       return;
     }
 
@@ -799,6 +870,16 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
       return;
     }
 
+    if (options.saveFile) {
+      const result = await options.saveFile({
+        filename: data.filename,
+        contentBase64: data.content_base64,
+        share: data.share,
+      });
+      emit({ event: 'on_save_file_response', data: result });
+      return;
+    }
+
     try {
       const bytes = base64ToBytes(data.content_base64);
 
@@ -842,6 +923,12 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     await delay(latencyMs);
     if (shouldError()) {
       emitError('Simulated file read error');
+      return;
+    }
+
+    if (options.readFile) {
+      const result = await options.readFile({ filename: data.filename });
+      emit({ event: 'on_read_file_response', data: result });
       return;
     }
 
@@ -891,6 +978,12 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
       return;
     }
 
+    if (options.listDir) {
+      const result = await options.listDir({ path: data.path });
+      emit({ event: 'on_list_dir_response', data: result });
+      return;
+    }
+
     const prefix = normalizeDirPath(data.path);
     const base = prefix === '' ? '' : `${prefix}/`;
     const seen = new Map<string, boolean>();
@@ -917,6 +1010,20 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     await delay(latencyMs);
     if (shouldError()) {
       emitError('Simulated delete error');
+      return;
+    }
+
+    if (options.deleteFileOrDir) {
+      try {
+        await options.deleteFileOrDir({ path: data.path });
+        emit({ event: 'on_delete_file_or_dir_response', data: null });
+      } catch (error) {
+        emitError(
+          error instanceof Error
+            ? error.message
+            : 'Unable to delete file or directory.',
+        );
+      }
       return;
     }
 
