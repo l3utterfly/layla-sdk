@@ -1,6 +1,6 @@
 ---
 name: layla-sdk
-description: Use the @layla-network/sdk package in third-party Layla mini-apps and WebView apps. Covers the public API surface for creating a Layla client, contextual character-chat execution state and events, OpenAI-shaped chat completions and streams including reasoning deltas, inference engine selection, paginated character listing, chat sessions, session history, message saves, scheduled chat messages, memories, personas, TTS voices, playback and audio-file generation, speech-to-text microphone input and events, background audio controls and events, character images, sentiment analysis, image generation progress/results, music generation progress/results with the Ace-Step model, private per-mini-app sqlite database queries, file saving, abort handling, SDK errors, exported TypeScript types, runtime expectations inside the Layla WebView, and task.js background task scripts that run periodically in the host's QuickJS runtime with the SDK preloaded as a global.
+description: Use the @layla-network/sdk package in third-party Layla mini-apps and WebView apps. Covers the public API surface for creating a Layla client, contextual character-chat execution state and events, OpenAI-shaped chat completions and streams including reasoning deltas, inference engine selection, paginated character listing, chat sessions, session history, message saves, scheduled chat messages, memories, personas, TTS voices, playback and audio-file generation, speech-to-text microphone input and events, background audio controls and events, character images, sentiment analysis, image generation progress/results, music generation progress/results with the Ace-Step model, the raw Ace-Step passes for prompt enrichment, rendering, track analysis and VAE encode/decode, private per-mini-app sqlite database queries, file saving, abort handling, SDK errors, exported TypeScript types, runtime expectations inside the Layla WebView, and task.js background task scripts that run periodically in the host's QuickJS runtime with the SDK preloaded as a global.
 ---
 
 # Layla SDK
@@ -92,6 +92,11 @@ await layla.characters.update(character);
 await layla.classifier.getSentiment('This is a happy message.');
 await layla.images.generateImage(prompt, onProgress);
 await layla.acestep.generateMusic(prompt, onProgress);
+await layla.acestep.lm(request);
+await layla.acestep.synth(request);
+await layla.acestep.understand({ audioBase64 });
+await layla.acestep.vaeEncode(audioBase64);
+await layla.acestep.vaeDecode(latentsBase64);
 await layla.contextual.getExecutionContext();
 await layla.chat.completions.create({ messages });
 await layla.chat.getInferenceEngines();
@@ -678,17 +683,18 @@ if (imageSrc) imageElement.src = imageSrc;
 ## Music Generation (Ace-Step)
 
 Use `layla.acestep.generateMusic(prompt, onProgress, lyrics?, duration?, options?)`
-to generate music with the on-device Ace-Step model. It resolves to a
-ready-to-use audio source string (a base64 data URI) when successful, or `null`
-when the host does not return audio. Progress is reported through the callback,
-which receives `progress` (a number between 0 and 1) and a human-readable
-`status` string.
+to generate music with the on-device Ace-Step model. This is the one-call
+pipeline: the host runs the LM pass and the synth pass back to back. It resolves
+to a ready-to-use audio source string (a base64 data URI) when successful, or
+`null` when the host does not return audio. Progress is reported through the
+callback, which receives `progress` (0..1 across the whole request), a `status`
+string naming the current phase, and `current`/`total` within that phase.
 
 ```ts
 const audioSrc = await layla.acestep.generateMusic(
   'A dreamy lo-fi hip-hop beat with warm vinyl crackle',
-  (progress, status) => {
-    setProgress({ progress, status });
+  (progress, status, current, total) => {
+    setProgress({ progress, status, current, total });
   },
 );
 
@@ -709,6 +715,63 @@ const audioSrc = await layla.acestep.generateMusic(
   { signal: controller.signal },
 );
 ```
+
+### Raw Ace-Step passes
+
+Prefer `generateMusic` for "prompt in, track out". Reach for the raw passes only
+when the mini-app needs the intermediate artefacts. Each takes an options object
+extending `RequestOptions`, so `signal` and an `onProgress` listener go in the
+same place:
+
+- `layla.acestep.lm(request, options?)` — enriches one request into metadata,
+  lyrics and `audio_codes` without rendering audio. Resolves with one enriched
+  request per batch variant (`lm_batch_size`, default 1); each can go straight
+  into `synth()`. `request.caption` is required.
+- `layla.acestep.synth(request, options?)` — renders one request into audio.
+  Resolves with `audio_data_base64` (data URI prefix included), the resolved
+  `seed`, `sample_rate` (always 48000), `num_samples`, `duration_seconds`, and
+  the `request` as rendered. `options` takes `useGpu`, `useFlashAttn`,
+  `vaeTileSize`.
+- `layla.acestep.understand(source, options?)` — analyzes an existing track and
+  resolves with a `request` holding its caption, lyrics, metadata and
+  `audio_codes`, ready to hand to `synth()`. Pass exactly one source:
+  `{ audioBase64 }` (WAV or MP3, max 10 minutes) or `{ latentsBase64 }` from an
+  earlier encode. Set `returnLatents` to get the latents back too.
+- `layla.acestep.vaeEncode(audioBase64, options?)` /
+  `layla.acestep.vaeDecode(latentsBase64, options?)` — the VAE on its own.
+  Latents are raw f32 `[T, 64]` bytes, base64 encoded, and are interchangeable
+  across the whole raw surface, so an expensive encode is done once and reused.
+
+```ts
+// Show the user several takes, then render the one they pick.
+const takes = await layla.acestep.lm(
+  { caption: 'A dreamy lo-fi hip-hop beat', duration: 60, lm_batch_size: 3 },
+  { onProgress: ({ status, current, total }) => setProgress({ status, current, total }) },
+);
+
+const rendered = await layla.acestep.synth(takes[chosen], { useGpu: true });
+audioElement.src = rendered.audio_data_base64;
+```
+
+```ts
+// Cover an existing track in a new style.
+const analysis = await layla.acestep.understand({ audioBase64: uploaded });
+const cover = await layla.acestep.synth({
+  ...analysis.request,
+  caption: 'the same song as an acoustic ballad',
+});
+```
+
+`synth()` writes nothing to storage — pass `audio_data_base64` to
+`layla.utils.saveFile()` to keep it. All Ace-Step commands share one bridge
+lane, so they queue behind each other rather than running two heavy passes at
+once.
+
+Progress arrives as an `AceStepProgress` (`{ progress, status, current, total }`)
+on every Ace-Step command. `progress` is a 0..1 fraction of the whole request,
+but it is `null` on every raw pass — a single pass has no defined share of a
+larger whole — so drive a bar from `current`/`total` there, and show a spinner
+when `total <= 1`.
 
 ## Utilities
 

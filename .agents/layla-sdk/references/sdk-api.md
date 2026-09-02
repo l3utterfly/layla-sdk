@@ -90,6 +90,17 @@ import LaylaSDK, {
   type LaylaApiEvent_onSaveFileResponse,
   type LaylaApiEvent_onReadFileResponse,
   type LaylaCharacter,
+  type AceStepRequest,
+  type AceStepProgress,
+  type AceStepProgressListener,
+  type AceStepLmOptions,
+  type AceStepSynthOptions,
+  type AceStepSynthResult,
+  type AceStepUnderstandOptions,
+  type AceStepUnderstandResult,
+  type AceStepUnderstandSource,
+  type AceStepVaeOptions,
+  type AceStepVaeResult,
   type MemoryListOptions,
   type ReadFileResult,
   type SaveFileResult,
@@ -1168,7 +1179,9 @@ try {
 
 ## `layla.acestep.generateMusic(prompt, onProgress, lyrics?, duration?, options?)`
 
-Generates music with the on-device Ace-Step model. Progress updates are reported through the callback, which receives `progress` (a number between 0 and 1) and a human-readable `status` string. The returned value is a ready-to-use audio source string (a base64 data URI), or `null` if the host does not return audio.
+Generates music with the on-device Ace-Step model. This is the one-call pipeline: the host runs the LM pass and the synth pass back to back. The returned value is a ready-to-use audio source string (a base64 data URI), or `null` if the host does not return audio.
+
+Progress updates are reported through the callback, which receives `progress` (a number between 0 and 1 across the whole request), a `status` string naming the current phase, and `current`/`total` giving the position inside that phase. `current`/`total` restart whenever `status` changes, and a `total` of `1` or less marks a phase with no meaningful fraction. Drive a single progress bar from `progress`; use `status` and `current`/`total` for the detail line.
 
 ```ts
 const audioSrc = await layla.acestep.generateMusic(
@@ -1232,6 +1245,208 @@ try {
   throw error;
 }
 ```
+
+## Raw Ace-Step passes
+
+`generateMusic` hides the pipeline. The raw commands expose each stage on its
+own, for mini-apps that need the intermediate artefacts: the enriched metadata
+and lyrics before anything is rendered, an analysis of an existing track, or
+latents to reuse.
+
+Every raw pass takes an options object that extends `RequestOptions`, so
+`signal` and an `onProgress` listener go in the same place:
+
+```ts
+const requests = await layla.acestep.lm(
+  { caption: 'dreamy lo-fi hip-hop', lm_batch_size: 3 },
+  {
+    onProgress: ({ status, current, total }) =>
+      setProgress({ status, current, total }),
+    signal: controller.signal,
+  },
+);
+```
+
+All Ace-Step commands share one bridge lane, so calls queue behind each other
+rather than asking the host to run two heavy passes at once.
+
+### `AceStepRequest`
+
+One request object carries the style prompt and every knob the model exposes.
+Field names match the wire protocol, and unknown fields are passed through
+untouched — which is what lets an enriched request come back from `lm()` or
+`understand()` and go straight into `synth()`.
+
+| Field | Meaning |
+| --- | --- |
+| `caption` | Style / genre / mood prompt. Required by `lm()` and `synth()`. |
+| `lyrics` | Lyrics to sing. |
+| `audio_codes` | Python-compatible code string (`"3101,11837,..."`); empty means text2music. |
+| `bpm`, `keyscale`, `timesignature`, `vocal_language` | Musical metadata. |
+| `duration` | Target track length in seconds. |
+| `seed` | Fixed seed; `-1` or unset for a random one. |
+| `lm_mode` | LM pass mode: `'generate'` (default), `'inspire'`, `'format'`. |
+| `lm_batch_size` | Enriched variants the LM pass produces (1..9). |
+| `lm_temperature`, `lm_cfg_scale`, `lm_top_p`, `lm_top_k`, `lm_negative_prompt`, `lm_seed` | LM sampling. |
+| `use_cot_caption` | Chain-of-thought captioning on the LM pass. |
+| `inference_steps` | DiT steps (turbo ~8, sft ~50). `0`/unset auto-detects. |
+| `guidance_scale`, `shift` | DiT guidance. |
+| `solver` | DiT solver: `'euler'`, `'sde'`, `'dpm3m'`, `'stork4'`. |
+| `output_format` | `'mp3'`, `'wav16'`, `'wav24'`, `'wav32'`. A bare `'wav'` is rejected. |
+| `mp3_bitrate`, `peak_clip` | Output container settings. |
+
+Every field is optional. Unset fields fall back to the model's own defaults, so
+set only what you want to override.
+
+### `layla.acestep.lm(request, options?)`
+
+Runs the LM pass on its own — the first half of `generateMusic`. Enriches one
+request into metadata and lyrics (plus `audio_codes` in the default `'generate'`
+mode) without rendering any audio. `request.caption` is required.
+
+Resolves with one enriched request per batch variant (`lm_batch_size`, default
+1). Each is a full `AceStepRequest` that can be handed straight to `synth()`, so
+a mini-app can show several takes and let the user pick one to render.
+
+```ts
+const [take] = await layla.acestep.lm({
+  caption: 'A dreamy lo-fi hip-hop beat with warm vinyl crackle',
+  duration: 60,
+});
+
+console.log(take.lyrics, take.bpm, take.keyscale);
+```
+
+`options` accepts `onProgress`, `signal`, and `useGpu` (accepted for symmetry —
+the LM pass always runs on the CPU).
+
+### `layla.acestep.synth(request, options?)`
+
+Runs the synth pass on its own — the second half of `generateMusic`. Runs
+Text-Encoder, DiT and VAE and resolves with the rendered track inline:
+
+```ts
+const result = await layla.acestep.synth(take, {
+  useGpu: true,
+  onProgress: ({ status, current, total }) => setProgress({ status, current, total }),
+});
+
+audioElement.src = result.audio_data_base64;
+console.log(result.seed, result.duration_seconds, result.sample_rate); // 48000
+```
+
+The result carries `audio_data_base64` (including its data URI prefix), the
+resolved `seed` so the same run can be reproduced, `sample_rate` (always 48000),
+`num_samples` per channel, `duration_seconds`, and the `request` as actually
+rendered.
+
+`request.caption` is required, and the returned container follows
+`request.output_format`. Nothing is written to the app's storage — pass
+`audio_data_base64` to `layla.utils.saveFile()` to keep it.
+
+`options` accepts `onProgress`, `signal`, `useGpu` (OpenCL on Android, with CPU
+fallback), `useFlashAttn`, and `vaeTileSize`.
+
+### `layla.acestep.understand(source, options?)`
+
+Analyzes an existing track by running the reverse pipeline (VAE encode -> FSQ
+tokenize -> LM). Resolves with what the track "is" — caption, lyrics, metadata
+and `audio_codes` — as a `request` that can be handed straight to `synth()` to
+re-render, cover or continue it.
+
+Give exactly one source: `audioBase64` (WAV or MP3, any sample rate, max 10
+minutes; the data URI prefix is optional), or `latentsBase64` from an earlier
+`vaeEncode()` or `understand()` call, which skips the VAE encode and is much
+faster on an already-analyzed track.
+
+```ts
+const analysis = await layla.acestep.understand(
+  { audioBase64: uploadedTrack },
+  { returnLatents: true },
+);
+
+console.log(analysis.request.caption, analysis.duration_seconds);
+
+// Re-render it in a different style, reusing the analysis.
+const cover = await layla.acestep.synth({
+  ...analysis.request,
+  caption: 'the same song as an acoustic ballad',
+});
+```
+
+`latents_base64` is `null` unless `returnLatents` was set and the source was
+audio; `latent_frames` is `0` when no latents came back.
+
+`options` accepts `onProgress`, `signal`, `returnLatents`, `useFlashAttn`,
+`vaeTileSize`, `useGpu` (accepted for symmetry — every understand stage runs on
+the CPU), and a `request` holding sampling params only (`lm_temperature`,
+`lm_top_p`, `lm_top_k`, `lm_seed`). Understand samples colder than generation:
+left unset, temperature and top_p become 0.3 / 1.0.
+
+### `layla.acestep.vaeEncode(audioBase64, options?)` and `layla.acestep.vaeDecode(latentsBase64, options?)`
+
+Runs the VAE on its own, in either direction. Latents are raw f32 `[T, 64]`
+time-major bytes with no header, base64 encoded. That format is shared across
+the whole raw surface: what `vaeEncode()` returns is accepted by `vaeDecode()`
+and by `understand()`'s `latentsBase64`, so an expensive encode is done once and
+reused.
+
+```ts
+const encoded = await layla.acestep.vaeEncode(uploadedTrack);
+console.log(encoded.direction, encoded.latent_frames); // 'encode'
+
+const decoded = await layla.acestep.vaeDecode(encoded.latents_base64, {
+  request: { output_format: 'wav24' },
+});
+audioElement.src = decoded.audio_data_base64;
+```
+
+Both resolve with the same result shape. `direction` reports which way the pass
+travelled; on `'encode'`, `latents_base64` and `latent_frames` are set and the
+audio side is `null`; on `'decode'`, `audio_data_base64` and `num_samples` are
+set and the latents side is `null`. `vaeDecode` accepts up to 15000 frames (10
+minutes).
+
+`options` accepts `onProgress`, `signal`, `vaeTileSize`, `useGpu` (accepted for
+symmetry — the VAE is pinned to the CPU today), and a `request` read on decode
+for `output_format`, `mp3_bitrate` and `peak_clip`.
+
+### Progress on Ace-Step commands
+
+Every Ace-Step command streams the same progress event, surfaced as an
+`AceStepProgress`:
+
+```ts
+interface AceStepProgress {
+  progress: number | null; // 0..1 across the whole request; null on raw passes
+  status: string;          // phase label, e.g. 'Loading models'
+  current: number;         // position within the current phase
+  total: number;           // units in the current phase (<= 1 when indeterminate)
+}
+```
+
+`progress` is a fraction of the whole request — monotonic, and the right thing
+to drive a single bar from. It is only available where the host can weigh the
+phases against each other, which it can for `generateMusic` because that runs a
+fixed LM -> synth pipeline. Each raw command is a single pass with no defined
+share of a larger whole, so they report `progress: null`; derive a bar from
+`current`/`total` there instead.
+
+`current`/`total` restart whenever `status` changes. A `total` of `1` or less
+marks a one-shot phase with no meaningful fraction, where `current === total`
+means it finished.
+
+```ts
+function toPercent({ progress, current, total }: AceStepProgress): number | null {
+  if (progress !== null) return Math.round(progress * 100);
+  if (total > 1) return Math.round((current / total) * 100);
+  return null; // indeterminate — show a spinner
+}
+```
+
+Note that `generateMusic`'s callback stays positional
+(`(progress, status, current, total)`), while the raw passes take an
+`onProgress` listener that receives one `AceStepProgress` object.
 
 ## `layla.utils.saveFile(filename, contentBase64, share?, options?)`
 
@@ -1597,11 +1812,46 @@ const audio = await layla.acestep.generateMusic(
 
 The handler receives the `{ prompt, lyrics, duration }` request and a
 `reportProgress` function that emits `on_ace_step_generate_progress` events
-(each with `progress` 0..1 and a `status` string) to the app's `onProgress`
-callback. Return the final result (`audio_data_base64`, which should include a
-data URI prefix, plus an optional `message`); it may be async. When the handler
-is omitted, the mock streams five canned progress ticks and returns a tiny
-placeholder WAV data URI.
+(each with `progress` 0..1, a `status` string, and `current`/`total` within that
+phase) to the app's `onProgress` callback. Return the final result
+(`audio_data_base64`, which should include a data URI prefix, plus an optional
+`message`); it may be async. When the handler is omitted, the mock streams five
+canned progress ticks and returns a tiny placeholder WAV data URI.
+
+The raw Ace-Step passes have their own handlers: `aceStepLm`, `aceStepSynth`,
+`aceStepUnderstand`, and `aceStepVae` (both `vaeEncode` and `vaeDecode` arrive
+there — set `direction` in the result to say which way the pass travelled). Each
+receives the command's `data` and the same `reportProgress` function, and each
+may be async:
+
+```ts
+installLaylaMock({
+  aceStepLm: async ({ request }, reportProgress) => {
+    reportProgress({ progress: null, status: 'Enriching prompt', current: 1, total: 1 });
+    return {
+      requests: [
+        { ...request, lyrics: '[verse]\nmock lyrics', bpm: 96, audio_codes: '3101,11837' },
+      ],
+    };
+  },
+  aceStepSynth: async ({ request }) => ({
+    audio_data_base64: 'data:audio/wav;base64,UklGRi...',
+    seed: 1234,
+    sample_rate: 48000,
+    num_samples: 48000 * (request.duration ?? 30),
+    duration_seconds: request.duration ?? 30,
+    request: { ...request, seed: 1234 },
+  }),
+});
+```
+
+A raw pass reports `progress: null`, so mock handlers should too if they want to
+match the real host. When these handlers are omitted, the mock streams three
+canned ticks per pass and returns canned results: `aceStepLm` echoes the request
+back with placeholder lyrics and audio codes once per `lm_batch_size`,
+`aceStepSynth` returns a tiny placeholder WAV, `aceStepUnderstand` returns a
+canned analysis (with placeholder latents when `return_latents` was set), and
+`aceStepVae` picks the direction from whichever input was supplied.
 
 Customize mock session history with static transcript data:
 
@@ -1973,8 +2223,17 @@ Useful exported types include:
 - `LaylaApiSTTStopListening`
 - `LaylaApiExecuteSql`
 - `LaylaApiAceStepGenerate`
+- `LaylaApiAceStepRequest`
+- `LaylaApiAceStepLm`
+- `LaylaApiAceStepSynth`
+- `LaylaApiAceStepUnderstand`
+- `LaylaApiAceStepVae`
 - `LaylaApiEvent_onAceStepGenerateResponse`
 - `LaylaApiEvent_onAceStepGenerateProgress`
+- `LaylaApiEvent_onAceStepLmResponse`
+- `LaylaApiEvent_onAceStepSynthResponse`
+- `LaylaApiEvent_onAceStepUnderstandResponse`
+- `LaylaApiEvent_onAceStepVaeResponse`
 - `LaylaApiStartBackgroundAudioPlayer`
 - `LaylaApiStopBackgroundAudioPlayer`
 - `LaylaApiPauseBackgroundAudioPlayer`
@@ -2017,6 +2276,18 @@ Useful exported types include:
 - `SaveFileResult`
 - `ListDirResult`
 - `DeleteFileOrDirResult`
+- `AceStepRequest`
+- `AceStepProgress`
+- `AceStepProgressListener`
+- `AceStepPassOptions`
+- `AceStepLmOptions`
+- `AceStepSynthOptions`
+- `AceStepSynthResult`
+- `AceStepUnderstandOptions`
+- `AceStepUnderstandResult`
+- `AceStepUnderstandSource`
+- `AceStepVaeOptions`
+- `AceStepVaeResult`
 - `LaylaCharacter`
 - `TavernCardV2`
 - `SentimentValues`

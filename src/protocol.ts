@@ -605,7 +605,7 @@ export interface LaylaApiExecuteSql {
 /**
  * Ask the host to generate music using the Ace-Step music generation model.
  * The host should respond with an `on_ace_step_generate_response` event containing the generated music base64 data (including the data URI prefix), or 'on_error' if there was an error during the generation process.
- * The host may emit progress events during the generation process, such as `on_ace_step_generate_progress`, to indicate the current status of the music generation.
+ * The host emits `on_ace_step_generate_progress` events during the generation process to indicate the current status of the music generation.
  */
 export interface LaylaApiAceStepGenerate {
   cmd: 'ace_step_generate';
@@ -614,6 +614,186 @@ export interface LaylaApiAceStepGenerate {
     lyrics?: string;
     duration?: number; // optional duration in seconds for the generated music (default is 30 seconds)
   }
+}
+
+/**
+ * One raw ACE-Step request. Mirrors the engine's own `AceRequest`, and is the
+ * shape passed to and returned from every `ace_step_*` raw command below.
+ *
+ * Every field is optional except `caption`, which the `ace_step_lm` and
+ * `ace_step_synth` passes require; `ace_step_understand` and `ace_step_vae` read
+ * only the handful of fields noted on each command and accept an empty object.
+ * Unset fields fall back to the model's own defaults, so a caller only sets what
+ * it wants to override. Unknown fields are passed through untouched, which is
+ * what lets an enriched request returned by `ace_step_lm` or
+ * `ace_step_understand` be handed straight back to `ace_step_synth`.
+ */
+export interface LaylaApiAceStepRequest {
+  /** Style / genre / mood prompt. Required by the lm and synth passes. */
+  caption?: string;
+  lyrics?: string;
+  /** Python-compatible code string ("3101,11837,..."); empty means text2music. */
+  audio_codes?: string;
+  bpm?: number;
+  /** Target track length in seconds. */
+  duration?: number;
+  keyscale?: string;
+  timesignature?: string;
+  vocal_language?: string;
+  /** Fixed seed; -1 (or unset) for a random one. */
+  seed?: number;
+  /** LM pass mode: 'generate' (default) | 'inspire' | 'format'. */
+  lm_mode?: string;
+  /** Number of enriched variants the lm pass produces (1..9). */
+  lm_batch_size?: number;
+  lm_temperature?: number;
+  lm_cfg_scale?: number;
+  lm_top_p?: number;
+  lm_top_k?: number;
+  lm_negative_prompt?: string;
+  lm_seed?: number;
+  use_cot_caption?: boolean;
+  /** DiT inference steps (turbo ~8, sft ~50). 0/unset auto-detects. */
+  inference_steps?: number;
+  guidance_scale?: number;
+  shift?: number;
+  /** DiT solver: 'euler' | 'sde' | 'dpm3m' | 'stork4'. */
+  solver?: string;
+  task_type?: string;
+  track?: string;
+  /** 'mp3' | 'wav16' | 'wav24' | 'wav32'. A bare 'wav' is rejected. */
+  output_format?: string;
+  mp3_bitrate?: number;
+  peak_clip?: number;
+  [key: string]: unknown;
+}
+
+/**
+ * Ask the host to run the ACE-Step LM pass on its own — the raw equivalent of the
+ * engine's `/lm` endpoint, and the first half of what `ace_step_generate` does.
+ * Enriches one request into metadata + lyrics (+ audio_codes in 'generate' mode)
+ * without rendering any audio; feed a result into `ace_step_synth` to render it.
+ *
+ * The host should respond with an `on_ace_step_lm_response` event, or 'on_error'
+ * if the pass failed. `on_ace_step_generate_progress` events are emitted while
+ * it runs.
+ */
+export interface LaylaApiAceStepLm {
+  cmd: 'ace_step_lm';
+  data: {
+    /** Request to enrich. `caption` is required. */
+    request: LaylaApiAceStepRequest;
+    /** Accepted for symmetry — the LM pass always runs on CPU. */
+    use_gpu?: boolean;
+  };
+}
+
+/**
+ * Ask the host to run the ACE-Step synth pass on its own — the raw equivalent of
+ * the engine's `/synth` endpoint, and the second half of `ace_step_generate`.
+ * Runs Text-Encoder + DiT + VAE and returns the rendered track inline.
+ *
+ * The container follows `request.output_format` ('mp3' | 'wav16' | 'wav24' |
+ * 'wav32'; a bare 'wav' is rejected). Nothing is written to the app's storage —
+ * pass the returned data to `save_file` to keep it.
+ *
+ * The host should respond with an `on_ace_step_synth_response` event, or
+ * 'on_error' if the pass failed. `on_ace_step_generate_progress` events are
+ * emitted while it runs.
+ */
+export interface LaylaApiAceStepSynth {
+  cmd: 'ace_step_synth';
+  data: {
+    /** Request to render — normally one entry from an `ace_step_lm` response.
+     *  `caption` is required. */
+    request: LaylaApiAceStepRequest;
+    /** Run the DiT on the GPU (OpenCL on Android) with CPU fallback. */
+    use_gpu?: boolean;
+    /** Flash attention for the synth pass (trades quality for speed on CPU). */
+    use_flash_attn?: boolean;
+    /** Latent frames per VAE decode tile; lower cuts peak memory. */
+    vae_tile_size?: number;
+  };
+}
+
+/**
+ * Ask the host to analyze an existing track — the raw equivalent of the engine's
+ * `/understand` endpoint. Runs the reverse pipeline (VAE encode -> FSQ tokenize
+ * -> LM) and returns what the track "is": caption, lyrics, metadata and
+ * audio_codes, as a request that can be handed straight to `ace_step_synth` to
+ * re-render, cover or continue it.
+ *
+ * Provide exactly one source: `audio_data_base64`, or `src_latents_base64` from
+ * a previous `ace_step_vae` encode / `ace_step_understand` call (which skips the
+ * VAE encode entirely and is much faster on an already-analyzed track). Latents
+ * win when both are given.
+ *
+ * The host should respond with an `on_ace_step_understand_response` event, or
+ * 'on_error' if the pass failed. `on_ace_step_generate_progress` events are
+ * emitted while it runs.
+ */
+export interface LaylaApiAceStepUnderstand {
+  cmd: 'ace_step_understand';
+  data: {
+    /** Track to analyze (WAV or MP3, any sample rate, max 10 minutes), base64
+     *  encoded. The data URI prefix is optional; the format is detected from the
+     *  bytes, not from any declared mime type. */
+    audio_data_base64?: string;
+    /** Pre-encoded latents to analyze instead, base64 encoded. */
+    src_latents_base64?: string;
+    /** Return the encoded latents alongside the result so a later call can skip
+     *  the VAE encode. Off by default: latents are large, and most callers only
+     *  want the analysis. Ignored when `src_latents_base64` supplied the source —
+     *  the bytes would be the ones just passed in. */
+    return_latents?: boolean;
+    /** Sampling params only (lm_temperature, lm_top_p, lm_top_k, lm_seed).
+     *  Understand samples colder than generation: left unset, temperature and
+     *  top_p become 0.3 / 1.0. */
+    request?: LaylaApiAceStepRequest;
+    /** Accepted for symmetry — every understand stage runs on CPU. */
+    use_gpu?: boolean;
+    /** Flash attention for the LM stage. */
+    use_flash_attn?: boolean;
+    /** Latent frames per VAE encode tile. */
+    vae_tile_size?: number;
+  };
+}
+
+/**
+ * Ask the host to run the ACE-Step VAE on its own — the raw equivalent of the
+ * engine's `/vae` endpoint. Like that endpoint, this single command travels in
+ * whichever direction the input implies, so provide exactly one of:
+ *
+ *   audio_data_base64  encode: audio in, latents out
+ *   latents_base64     decode: latents in, audio out
+ *
+ * Latents are raw f32 [T, 64] time-major bytes with no header. That format is
+ * shared across the whole raw surface: what an encode returns is accepted by
+ * this command's decode direction and by `ace_step_understand`'s
+ * `src_latents_base64`, so an expensive encode is done once and reused.
+ *
+ * The host should respond with an `on_ace_step_vae_response` event, or
+ * 'on_error' if the pass failed. `on_ace_step_generate_progress` events are
+ * emitted while it runs.
+ */
+export interface LaylaApiAceStepVae {
+  cmd: 'ace_step_vae';
+  data: {
+    /** Audio to encode (WAV or MP3, any sample rate, max 10 minutes), base64
+     *  encoded. Mutually exclusive with `latents_base64`. */
+    audio_data_base64?: string;
+    /** Latents to decode (max 15000 frames / 10 minutes), base64 encoded.
+     *  Mutually exclusive with `audio_data_base64`. */
+    latents_base64?: string;
+    /** Read on the decode direction for `output_format` (which also picks the
+     *  returned container), `mp3_bitrate` and `peak_clip`. The encode direction
+     *  reads nothing from it. */
+    request?: LaylaApiAceStepRequest;
+    /** Accepted for symmetry — the VAE is pinned to CPU today. */
+    use_gpu?: boolean;
+    /** Latent frames per VAE tile; lower cuts peak memory. */
+    vae_tile_size?: number;
+  };
 }
 
 /**
@@ -682,6 +862,10 @@ export type BaseApiRequest =
   | LaylaApiSTTStopListening
   | LaylaApiExecuteSql
   | LaylaApiAceStepGenerate
+  | LaylaApiAceStepLm
+  | LaylaApiAceStepSynth
+  | LaylaApiAceStepUnderstand
+  | LaylaApiAceStepVae
   | LaylaApiListDir
   | LaylaApiDeleteFileOrDir;
 
@@ -1117,6 +1301,72 @@ export interface LaylaApiEvent_onAceStepGenerateResponse {
 }
 
 /**
+ * The response for an `ace_step_lm` request, containing the enriched request(s).
+ * One entry per batch variant (`lm_batch_size`, default 1). Each entry is a full
+ * request carrying the original caption plus the LM's metadata, lyrics and — in
+ * 'generate' mode — audio_codes, and can be passed straight to `ace_step_synth`.
+ */
+export interface LaylaApiEvent_onAceStepLmResponse {
+  event: 'on_ace_step_lm_response';
+  data: {
+    requests: LaylaApiAceStepRequest[];
+  };
+}
+
+/**
+ * The response for an `ace_step_synth` request, carrying the rendered track.
+ * `request` is the request as actually rendered, with the seed resolved, so the
+ * same run can be reproduced. Pass `audio_data_base64` to `save_file` to keep
+ * the audio, or straight back into `ace_step_understand` / `ace_step_vae`.
+ */
+export interface LaylaApiEvent_onAceStepSynthResponse {
+  event: 'on_ace_step_synth_response';
+  data: {
+    audio_data_base64: string; // rendered audio, including the data URI prefix
+    seed: number; // the resolved seed, so a run can be reproduced
+    sample_rate: number; // always 48000
+    num_samples: number; // per channel
+    duration_seconds: number;
+    request: LaylaApiAceStepRequest; // the request as rendered
+  };
+}
+
+/**
+ * The response for an `ace_step_understand` request, describing the analyzed
+ * track. `request` carries the caption, lyrics, metadata and audio_codes the LM
+ * derived, ready to hand to `ace_step_synth`. `latents_base64` is null unless
+ * `return_latents` was set and the source was audio.
+ */
+export interface LaylaApiEvent_onAceStepUnderstandResponse {
+  event: 'on_ace_step_understand_response';
+  data: {
+    request: LaylaApiAceStepRequest;
+    latents_base64: string | null; // including the data URI prefix; null when not returned
+    latent_frames: number; // 0 when no latents were returned
+    duration_seconds: number;
+  };
+}
+
+/**
+ * The response for an `ace_step_vae` request. `direction` reports which way the
+ * pass actually travelled, decided by which input was supplied. On 'encode',
+ * `latents_base64` and `latent_frames` are set; on 'decode', `audio_data_base64`
+ * and `num_samples` are set. The unused side of each pair is null.
+ */
+export interface LaylaApiEvent_onAceStepVaeResponse {
+  event: 'on_ace_step_vae_response';
+  data: {
+    direction: 'encode' | 'decode';
+    latents_base64: string | null; // encode only; including the data URI prefix
+    audio_data_base64: string | null; // decode only; including the data URI prefix
+    sample_rate: number; // always 48000
+    duration_seconds: number;
+    latent_frames: number | null; // encode only; null on decode
+    num_samples: number | null; // decode only (per channel); null on encode
+  };
+}
+
+/**
  * The response for a `list_dir` request, containing an array of file and directory entries in the specified path.
  * This event is emitted by the host after successfully listing the contents of a directory in the app's private storage.
  * Each entry includes the relative path of the directory/file and a boolean indicating whether it is a directory or a file. You can recursively call `list_dir` on any directory entries to explore the directory tree.
@@ -1179,5 +1429,9 @@ export type BaseApiEvent =
   | LaylaApiEvent_onSTTListeningStopped
   | LaylaApiEvent_onExecuteSqlResponse
   | LaylaApiEvent_onAceStepGenerateResponse
+  | LaylaApiEvent_onAceStepLmResponse
+  | LaylaApiEvent_onAceStepSynthResponse
+  | LaylaApiEvent_onAceStepUnderstandResponse
+  | LaylaApiEvent_onAceStepVaeResponse
   | LaylaApiEvent_onListDirResponse
   | LaylaApiEvent_onDeleteFileOrDirResponse;

@@ -63,6 +63,11 @@ export type {
   LaylaApiSTTStopListening,
   LaylaApiExecuteSql,
   LaylaApiAceStepGenerate,
+  LaylaApiAceStepRequest,
+  LaylaApiAceStepLm,
+  LaylaApiAceStepSynth,
+  LaylaApiAceStepUnderstand,
+  LaylaApiAceStepVae,
   LaylaApiListDir,
   LaylaApiDeleteFileOrDir,
   LaylaApiCancel,
@@ -107,6 +112,10 @@ export type {
   LaylaApiEvent_onSTTListeningStopped,
   LaylaApiEvent_onExecuteSqlResponse,
   LaylaApiEvent_onAceStepGenerateResponse,
+  LaylaApiEvent_onAceStepLmResponse,
+  LaylaApiEvent_onAceStepSynthResponse,
+  LaylaApiEvent_onAceStepUnderstandResponse,
+  LaylaApiEvent_onAceStepVaeResponse,
   LaylaApiEvent_onListDirResponse,
   LaylaApiEvent_onDeleteFileOrDirResponse,
 } from './protocol';
@@ -150,6 +159,20 @@ export type { LaylaImageGenerationModel } from './resources/images';
 
 // Ace-Step music generation resource surface.
 export { AceStep } from './resources/acestep';
+export type {
+  AceStepRequest,
+  AceStepProgress,
+  AceStepProgressListener,
+  AceStepPassOptions,
+  AceStepLmOptions,
+  AceStepSynthOptions,
+  AceStepSynthResult,
+  AceStepUnderstandOptions,
+  AceStepUnderstandResult,
+  AceStepUnderstandSource,
+  AceStepVaeOptions,
+  AceStepVaeResult,
+} from './resources/acestep';
 
 // Utility resource surface.
 export { Utils } from './resources/utils';

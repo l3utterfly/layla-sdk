@@ -33,6 +33,15 @@ import type {
   LaylaApiEvent_onExecuteSqlResponse,
   LaylaApiEvent_onGetImageGenerationModelsResponse,
   LaylaApiEvent_onAceStepGenerateResponse,
+  LaylaApiEvent_onAceStepLmResponse,
+  LaylaApiEvent_onAceStepSynthResponse,
+  LaylaApiEvent_onAceStepUnderstandResponse,
+  LaylaApiEvent_onAceStepVaeResponse,
+  LaylaApiAceStepRequest,
+  LaylaApiAceStepLm,
+  LaylaApiAceStepSynth,
+  LaylaApiAceStepUnderstand,
+  LaylaApiAceStepVae,
   LaylaApiEvent_onSaveFileResponse,
   LaylaApiEvent_onReadFileResponse,
   LaylaApiEvent_onListDirResponse,
@@ -88,6 +97,17 @@ type MockAceStepGenerateResult =
 
 type MockAceStepGenerateProgress =
   LaylaApiEvent_onAceStepGenerateProgress['data'];
+
+type MockAceStepRequest = LaylaApiAceStepRequest;
+
+type MockAceStepLmResult = LaylaApiEvent_onAceStepLmResponse['data'];
+
+type MockAceStepSynthResult = LaylaApiEvent_onAceStepSynthResponse['data'];
+
+type MockAceStepUnderstandResult =
+  LaylaApiEvent_onAceStepUnderstandResponse['data'];
+
+type MockAceStepVaeResult = LaylaApiEvent_onAceStepVaeResponse['data'];
 
 type MockBackgroundAudioStatus =
   LaylaApiEvent_onBackgroundAudioStatus['data'];
@@ -244,14 +264,60 @@ export interface LaylaMockOptions {
    * Return the final result the mock replies with (`audio_data_base64`, which
    * should include a data URI prefix, and an optional `message`). Call the
    * provided `reportProgress` to drive `on_ace_step_generate_progress` events
-   * (each with `progress` 0..1 and a `status` string) before resolving. May be
-   * async. When omitted, the mock streams five canned progress ticks and returns
-   * a tiny placeholder WAV data URI.
+   * (each with `progress` 0..1, a `status` string, and `current`/`total` within
+   * that phase) before resolving. May be async. When omitted, the mock streams
+   * five canned progress ticks and returns a tiny placeholder WAV data URI.
    */
   aceStepGenerate?: (
     request: { prompt: string; lyrics?: string; duration?: number },
     reportProgress: (progress: MockAceStepGenerateProgress) => void,
   ) => MockAceStepGenerateResult | Promise<MockAceStepGenerateResult>;
+  /**
+   * Handle `acestep.lm(request, options)` calls. Return the enriched
+   * `requests` the mock replies with — one per batch variant. Call
+   * `reportProgress` to drive `on_ace_step_generate_progress` events first (a
+   * raw pass reports `progress: null`, so drive a bar from `current`/`total`).
+   * May be async. When omitted, the mock echoes the request back with canned
+   * lyrics and audio codes, once per `lm_batch_size`.
+   */
+  aceStepLm?: (
+    request: LaylaApiAceStepLm['data'],
+    reportProgress: (progress: MockAceStepGenerateProgress) => void,
+  ) => MockAceStepLmResult | Promise<MockAceStepLmResult>;
+  /**
+   * Handle `acestep.synth(request, options)` calls. Return the rendered track
+   * (`audio_data_base64` including its data URI prefix, the resolved `seed`,
+   * `sample_rate`, `num_samples`, `duration_seconds` and the `request` as
+   * rendered). Call `reportProgress` to drive progress events first. May be
+   * async. When omitted, the mock returns a tiny placeholder WAV data URI.
+   */
+  aceStepSynth?: (
+    request: LaylaApiAceStepSynth['data'],
+    reportProgress: (progress: MockAceStepGenerateProgress) => void,
+  ) => MockAceStepSynthResult | Promise<MockAceStepSynthResult>;
+  /**
+   * Handle `acestep.understand(source, options)` calls. Return the analysis
+   * (`request` carrying the derived caption/lyrics/metadata, plus optional
+   * `latents_base64`). Call `reportProgress` to drive progress events first.
+   * May be async. When omitted, the mock returns a canned analysis, with
+   * placeholder latents when `return_latents` was set.
+   */
+  aceStepUnderstand?: (
+    request: LaylaApiAceStepUnderstand['data'],
+    reportProgress: (progress: MockAceStepGenerateProgress) => void,
+  ) => MockAceStepUnderstandResult | Promise<MockAceStepUnderstandResult>;
+  /**
+   * Handle `acestep.vaeEncode(audio, options)` and
+   * `acestep.vaeDecode(latents, options)` calls — both arrive here, and
+   * `direction` in the result reports which way the pass travelled. Call
+   * `reportProgress` to drive progress events first. May be async. When
+   * omitted, the mock picks the direction from whichever input was supplied
+   * and returns placeholder latents or a placeholder WAV.
+   */
+  aceStepVae?: (
+    request: LaylaApiAceStepVae['data'],
+    reportProgress: (progress: MockAceStepGenerateProgress) => void,
+  ) => MockAceStepVaeResult | Promise<MockAceStepVaeResult>;
   /**
    * Fully replace the built-in background-audio simulation. The factory is
    * called once with an {@link LaylaMockBackgroundAudioEmitter} and returns a
@@ -313,6 +379,15 @@ const mockFileStoragePrefix = '@layla-network/sdk:mock:file:';
 const mockVoiceAudioDataUri =
   'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
 const mockVoiceFilename = 'mock-voice.wav';
+// Ace-Step always renders at 48kHz. The mock invents a short fixed track length
+// and a tiny latents blob so the raw passes have something to hand back.
+const mockAceStepSampleRate = 48000;
+const mockAceStepDurationSec = 30;
+const mockAceStepLatentFrames = 4;
+const mockAceStepAudioCodes = '3101,11837,2048,904';
+const mockAceStepLatentsDataUri =
+  'data:application/octet-stream;base64,AAAAAAAAAAAAAAAAAAAAAA==';
+const MOCK_ACE_STEP_LYRICS = '[verse]\nMock lyrics for a mock song';
 // The real host reports each track's true audio duration and ticks status
 // roughly once per second. The mock invents a short fixed duration and ticks a
 // little faster so a queue plays through quickly and the scrubber stays smooth.
@@ -827,7 +902,9 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
         event: 'on_ace_step_generate_progress',
         data: {
           progress: step / totalSteps,
-          status: `Generating music... (${step}/${totalSteps})`,
+          status: 'Generating music',
+          current: step,
+          total: totalSteps,
         },
       });
     }
@@ -837,6 +914,179 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
       event: 'on_ace_step_generate_response',
       data: {
         audio_data_base64: mockVoiceAudioDataUri,
+      },
+    });
+  }
+
+  /**
+   * Stream a few canned ticks for one raw Ace-Step pass. A raw pass has no
+   * defined share of a larger whole, so `progress` stays null and only
+   * `current`/`total` move — exactly what the real host does.
+   */
+  async function emitAceStepPassProgress(status: string): Promise<void> {
+    const total = 3;
+    for (let current = 1; current <= total; current++) {
+      await delay(latencyMs);
+      emit({
+        event: 'on_ace_step_generate_progress',
+        data: { progress: null, status, current, total },
+      });
+    }
+  }
+
+  const reportAceStepProgress = (progress: MockAceStepGenerateProgress) =>
+    emit({ event: 'on_ace_step_generate_progress', data: progress });
+
+  async function handleAceStepLm(
+    data: LaylaApiAceStepLm['data'],
+  ): Promise<void> {
+    await delay(latencyMs);
+    if (shouldError()) {
+      emitError('Simulated Ace-Step LM error');
+      return;
+    }
+
+    if (options.aceStepLm) {
+      const result = await options.aceStepLm(data, reportAceStepProgress);
+      emit({ event: 'on_ace_step_lm_response', data: result });
+      return;
+    }
+
+    await emitAceStepPassProgress('Enriching prompt');
+
+    const request = data.request ?? {};
+    const batch = Math.max(1, Math.min(9, request.lm_batch_size ?? 1));
+    const requests: MockAceStepRequest[] = [];
+    for (let i = 0; i < batch; i++) {
+      requests.push({
+        ...request,
+        lyrics: request.lyrics ?? MOCK_ACE_STEP_LYRICS,
+        audio_codes: request.audio_codes ?? mockAceStepAudioCodes,
+        bpm: request.bpm ?? 120,
+        keyscale: request.keyscale ?? 'C major',
+        timesignature: request.timesignature ?? '4/4',
+        duration: request.duration ?? mockAceStepDurationSec,
+        seed:
+          request.seed !== undefined && request.seed >= 0
+            ? request.seed
+            : 1234 + i,
+      });
+    }
+
+    emit({ event: 'on_ace_step_lm_response', data: { requests } });
+  }
+
+  async function handleAceStepSynth(
+    data: LaylaApiAceStepSynth['data'],
+  ): Promise<void> {
+    await delay(latencyMs);
+    if (shouldError()) {
+      emitError('Simulated Ace-Step synth error');
+      return;
+    }
+
+    if (options.aceStepSynth) {
+      const result = await options.aceStepSynth(data, reportAceStepProgress);
+      emit({ event: 'on_ace_step_synth_response', data: result });
+      return;
+    }
+
+    await emitAceStepPassProgress('Rendering audio');
+
+    const request = data.request ?? {};
+    const seed =
+      request.seed !== undefined && request.seed >= 0 ? request.seed : 4321;
+    const durationSeconds = request.duration ?? mockAceStepDurationSec;
+
+    emit({
+      event: 'on_ace_step_synth_response',
+      data: {
+        audio_data_base64: mockVoiceAudioDataUri,
+        seed,
+        sample_rate: mockAceStepSampleRate,
+        num_samples: Math.round(durationSeconds * mockAceStepSampleRate),
+        duration_seconds: durationSeconds,
+        request: { ...request, seed },
+      },
+    });
+  }
+
+  async function handleAceStepUnderstand(
+    data: LaylaApiAceStepUnderstand['data'],
+  ): Promise<void> {
+    await delay(latencyMs);
+    if (shouldError()) {
+      emitError('Simulated Ace-Step understand error');
+      return;
+    }
+
+    if (options.aceStepUnderstand) {
+      const result = await options.aceStepUnderstand(
+        data,
+        reportAceStepProgress,
+      );
+      emit({ event: 'on_ace_step_understand_response', data: result });
+      return;
+    }
+
+    await emitAceStepPassProgress('Analyzing audio');
+
+    // Latents come back only when asked for, and never when the caller supplied
+    // them — the bytes would be the ones just passed in.
+    const withLatents =
+      Boolean(data.return_latents) && !data.src_latents_base64;
+
+    emit({
+      event: 'on_ace_step_understand_response',
+      data: {
+        request: {
+          ...(data.request ?? {}),
+          caption: 'mock lo-fi hip-hop, warm vinyl crackle, mellow piano',
+          lyrics: '[instrumental]',
+          audio_codes: mockAceStepAudioCodes,
+          bpm: 84,
+          keyscale: 'F minor',
+          timesignature: '4/4',
+          duration: mockAceStepDurationSec,
+        },
+        latents_base64: withLatents ? mockAceStepLatentsDataUri : null,
+        latent_frames: withLatents ? mockAceStepLatentFrames : 0,
+        duration_seconds: mockAceStepDurationSec,
+      },
+    });
+  }
+
+  async function handleAceStepVae(
+    data: LaylaApiAceStepVae['data'],
+  ): Promise<void> {
+    await delay(latencyMs);
+    if (shouldError()) {
+      emitError('Simulated Ace-Step VAE error');
+      return;
+    }
+
+    if (options.aceStepVae) {
+      const result = await options.aceStepVae(data, reportAceStepProgress);
+      emit({ event: 'on_ace_step_vae_response', data: result });
+      return;
+    }
+
+    // The direction follows whichever input was supplied, like the real host.
+    const decode = !data.audio_data_base64 && Boolean(data.latents_base64);
+    await emitAceStepPassProgress(decode ? 'Decoding audio' : 'Encoding audio');
+
+    emit({
+      event: 'on_ace_step_vae_response',
+      data: {
+        direction: decode ? 'decode' : 'encode',
+        latents_base64: decode ? null : mockAceStepLatentsDataUri,
+        audio_data_base64: decode ? mockVoiceAudioDataUri : null,
+        sample_rate: mockAceStepSampleRate,
+        duration_seconds: mockAceStepDurationSec,
+        latent_frames: decode ? null : mockAceStepLatentFrames,
+        num_samples: decode
+          ? Math.round(mockAceStepDurationSec * mockAceStepSampleRate)
+          : null,
       },
     });
   }
@@ -1703,6 +1953,18 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
           break;
         case 'ace_step_generate':
           void handleAceStepGenerate(msg.data);
+          break;
+        case 'ace_step_lm':
+          void handleAceStepLm(msg.data);
+          break;
+        case 'ace_step_synth':
+          void handleAceStepSynth(msg.data);
+          break;
+        case 'ace_step_understand':
+          void handleAceStepUnderstand(msg.data);
+          break;
+        case 'ace_step_vae':
+          void handleAceStepVae(msg.data);
           break;
         case 'update_character':
           void handleUpdateCharacter(msg.data);
