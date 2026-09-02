@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   LaylaSDK,
   LaylaAbortError,
+  type AceStepProgress,
+  type AceStepRequest,
   type LaylaCharacter,
 } from "../../../src/index";
 import type { LaylaMockHandle } from "../../../src/mock";
@@ -40,7 +42,15 @@ interface CheckCtx {
   mock: LaylaMockHandle | null;
   sessionId: string;
   /** Cross-check cache (e.g. a character id resolved once and reused). */
-  shared: { characters?: LaylaCharacter[] };
+  shared: {
+    characters?: LaylaCharacter[];
+    /** An enriched request from the raw LM pass, rendered by the synth check. */
+    aceStepTake?: AceStepRequest;
+    /** A rendered track, reused as the source for understand/VAE. */
+    aceStepAudio?: string;
+    /** Latents from understand, reused by the understand-from-latents check. */
+    aceStepLatents?: string;
+  };
   /**
    * Aborts when the user stops the run. Checks may forward it to the SDK (e.g.
    * as a stream `signal`) so long-running work is cancelled promptly; the runner
@@ -155,6 +165,95 @@ function waitForEvent<T>(
       resolve(value);
     });
   });
+}
+
+function toBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+/**
+ * A short 16-bit PCM WAV holding a quiet 440Hz tone, as a data URI.
+ *
+ * The Ace-Step analysis passes need a real track to chew on. Preferring one the
+ * synth check just rendered keeps the run realistic, but a synthetic tone lets
+ * `understand` and the VAE round-trip be run on their own without paying for a
+ * full render first.
+ */
+function makeTestWavDataUri(seconds = 2, sampleRate = 16000): string {
+  const numSamples = Math.floor(seconds * sampleRate);
+  const bytes = new Uint8Array(44 + numSamples * 2);
+  const view = new DataView(bytes.buffer);
+  const ascii = (offset: number, text: string) => {
+    for (let i = 0; i < text.length; i += 1) {
+      view.setUint8(offset + i, text.charCodeAt(i));
+    }
+  };
+  ascii(0, "RIFF");
+  view.setUint32(4, 36 + numSamples * 2, true);
+  ascii(8, "WAVE");
+  ascii(12, "fmt ");
+  view.setUint32(16, 16, true); // PCM header size
+  view.setUint16(20, 1, true); // PCM
+  view.setUint16(22, 1, true); // mono
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true); // byte rate
+  view.setUint16(32, 2, true); // block align
+  view.setUint16(34, 16, true); // bits per sample
+  ascii(36, "data");
+  view.setUint32(40, numSamples * 2, true);
+  for (let i = 0; i < numSamples; i += 1) {
+    const sample = Math.sin((2 * Math.PI * 440 * i) / sampleRate) * 0.3;
+    view.setInt16(44 + i * 2, Math.round(sample * 0x7fff), true);
+  }
+  return `data:audio/wav;base64,${toBase64(bytes)}`;
+}
+
+/** The track the analysis passes work on: a rendered one if we have it. */
+function aceStepSourceAudio(ctx: CheckCtx): string {
+  if (ctx.shared.aceStepAudio) {
+    ctx.log("source: the track rendered by the synth check");
+    return ctx.shared.aceStepAudio;
+  }
+  ctx.log("source: a synthetic 2s 440Hz test tone (no rendered track cached)");
+  return makeTestWavDataUri();
+}
+
+const ACE_STEP_CAPTION = "A dreamy lo-fi hip-hop beat with warm vinyl crackle";
+
+/**
+ * Collect progress for one raw Ace-Step pass and assert the contract every raw
+ * command shares: ticks arrive, and `progress` is null on all of them because a
+ * single pass has no defined share of a larger whole.
+ */
+function aceStepProgressProbe(ctx: CheckCtx) {
+  const ticks: AceStepProgress[] = [];
+  return {
+    onProgress: (p: AceStepProgress) => ticks.push(p),
+    verify(): string {
+      assert(ticks.length > 0, "no on_ace_step_generate_progress events");
+      const withFraction = ticks.filter((t) => t.progress !== null);
+      assert(
+        withFraction.length === 0,
+        `a raw pass must report progress: null, got ${withFraction.length} tick(s) with a fraction`,
+      );
+      const phases = [...new Set(ticks.map((t) => t.status))];
+      ctx.log(
+        `progress: ${ticks.length} events across ${phases.length} phase(s): ${phases.join(", ")}`,
+      );
+      ctx.log(
+        ticks
+          .slice(0, 12)
+          .map((t) => `  ${t.status} ${t.current}/${t.total}`)
+          .join("\n"),
+      );
+      return `${ticks.length} progress events`;
+    },
+  };
 }
 
 async function firstCharacterId(ctx: CheckCtx): Promise<string> {
@@ -756,7 +855,7 @@ const groups: Group[] = [
   {
     id: "media",
     title: "Media & devices (heavy)",
-    blurb: "TTS synthesis/playback, image generation, music generation, microphone, background audio. Not run by default.",
+    blurb: "TTS synthesis/playback, image generation, music generation and the raw Ace-Step passes, microphone, background audio. Not run by default.",
     checks: [
       {
         id: "tts.getVoices",
@@ -849,23 +948,272 @@ const groups: Group[] = [
       {
         id: "acestep.generate",
         name: "acestep.generateMusic (+progress)",
-        desc: "Generates music with Ace-Step and receives progress callbacks.",
+        desc: "Generates music with Ace-Step end to end and receives progress callbacks carrying a whole-request fraction.",
         weight: "heavy",
         noTimeout: true,
-        run: async ({ layla }) => {
-          let progress = 0;
-          let lastProgress = 0;
-          const src = await layla.acestep.generateMusic(
+        run: async (ctx) => {
+          const ticks: AceStepProgress[] = [];
+          const src = await ctx.layla.acestep.generateMusic(
             "a short upbeat chiptune loop, test render",
-            (p) => {
-              progress += 1;
-              lastProgress = p;
+            (progress, status, current, total) =>
+              ticks.push({ progress, status, current, total }),
+            undefined,
+            undefined,
+            { signal: ctx.signal },
+          );
+          assert(ticks.length > 0, "no progress events");
+          // Unlike a raw pass, the one-call pipeline knows how its phases weigh
+          // against each other, so every tick must carry a real fraction.
+          const missing = ticks.filter(
+            (t) => typeof t.progress !== "number" || Number.isNaN(t.progress),
+          );
+          assert(
+            missing.length === 0,
+            `generateMusic must report a 0..1 fraction, got ${missing.length} tick(s) without one`,
+          );
+          const phases = [...new Set(ticks.map((t) => t.status))];
+          ctx.log(`phases: ${phases.join(", ")}`);
+          ctx.log(
+            ticks
+              .slice(0, 12)
+              .map(
+                (t) =>
+                  `  ${t.status} ${t.current}/${t.total} — ${Math.round((t.progress ?? 0) * 100)}%`,
+              )
+              .join("\n"),
+          );
+          const pct = Math.round((ticks[ticks.length - 1].progress ?? 0) * 100);
+          return src
+            ? `audio (${src.length} chars), ${ticks.length} progress events (last ${pct}%)`
+            : `no audio returned, ${ticks.length} progress events (last ${pct}%)`;
+        },
+      },
+      {
+        id: "acestep.lm",
+        name: "acestep.lm (raw LM pass)",
+        desc: "Enriches a caption into metadata, lyrics and audio codes without rendering audio.",
+        weight: "heavy",
+        noTimeout: true,
+        run: async (ctx) => {
+          const probe = aceStepProgressProbe(ctx);
+          const requests = await ctx.layla.acestep.lm(
+            { caption: ACE_STEP_CAPTION, duration: 20, lm_batch_size: 2 },
+            { onProgress: probe.onProgress, signal: ctx.signal },
+          );
+          assert(Array.isArray(requests), "expected an array of requests");
+          assert(requests.length > 0, "expected at least one enriched request");
+          const take = requests[0];
+          assert(
+            typeof take.caption === "string" && take.caption.length > 0,
+            "the enriched request lost its caption",
+          );
+          ctx.shared.aceStepTake = take;
+          ctx.log(`take 1: ${truncate(JSON.stringify(take), 400)}`);
+          const detail = probe.verify();
+          const lyrics = take.lyrics ? `${take.lyrics.length} chars` : "none";
+          return `${requests.length} variant(s), lyrics ${lyrics}, codes ${take.audio_codes ? "yes" : "no"}, ${detail}`;
+        },
+      },
+      {
+        id: "acestep.synth",
+        name: "acestep.synth (raw render)",
+        desc: "Renders one request to audio and echoes back the resolved seed. Uses the LM check's take when it ran.",
+        weight: "heavy",
+        noTimeout: true,
+        run: async (ctx) => {
+          const seed = 12345;
+          const base = ctx.shared.aceStepTake ?? {
+            caption: ACE_STEP_CAPTION,
+            duration: 20,
+          };
+          ctx.log(
+            ctx.shared.aceStepTake
+              ? "request: the enriched take from the LM check"
+              : "request: a bare caption (the LM check did not run)",
+          );
+          const probe = aceStepProgressProbe(ctx);
+          const result = await ctx.layla.acestep.synth(
+            { ...base, seed },
+            { onProgress: probe.onProgress, signal: ctx.signal },
+          );
+          assert(
+            typeof result.audio_data_base64 === "string" &&
+              result.audio_data_base64.startsWith("data:"),
+            "expected audio as a data URI",
+          );
+          assert(
+            result.sample_rate === 48000,
+            `expected a 48000Hz render, got ${result.sample_rate}`,
+          );
+          assert(result.num_samples > 0, "expected a non-empty render");
+          assert(
+            result.duration_seconds > 0,
+            "expected a positive duration_seconds",
+          );
+          assert(
+            result.seed === seed,
+            `expected the fixed seed ${seed} back, got ${result.seed}`,
+          );
+          assert(
+            result.request?.caption === base.caption,
+            "the rendered request lost its caption",
+          );
+          ctx.shared.aceStepAudio = result.audio_data_base64;
+          const detail = probe.verify();
+          return `${result.duration_seconds}s @ ${result.sample_rate}Hz, ${result.num_samples} samples, seed ${result.seed}, ${detail}`;
+        },
+      },
+      {
+        id: "acestep.understand",
+        name: "acestep.understand (+latents)",
+        desc: "Analyses a track back into a request, and returns the latents so a later pass can skip the VAE encode.",
+        weight: "heavy",
+        noTimeout: true,
+        run: async (ctx) => {
+          const probe = aceStepProgressProbe(ctx);
+          const result = await ctx.layla.acestep.understand(
+            { audioBase64: aceStepSourceAudio(ctx) },
+            {
+              returnLatents: true,
+              onProgress: probe.onProgress,
+              signal: ctx.signal,
             },
           );
-          const pct = Math.round(lastProgress * 100);
-          return src
-            ? `audio (${src.length} chars), ${progress} progress events (last ${pct}%)`
-            : `no audio returned, ${progress} progress events (last ${pct}%)`;
+          assert(result.request != null, "expected an analysed request");
+          assert(
+            typeof result.request.caption === "string" &&
+              result.request.caption.length > 0,
+            "expected a caption describing the track",
+          );
+          assert(
+            result.duration_seconds > 0,
+            "expected a positive duration_seconds",
+          );
+          assert(
+            typeof result.latents_base64 === "string" &&
+              result.latents_base64.length > 0,
+            "returnLatents was set on an audio source, so latents were expected",
+          );
+          assert(
+            result.latent_frames > 0,
+            "expected a positive latent_frames alongside the latents",
+          );
+          ctx.shared.aceStepLatents = result.latents_base64;
+          ctx.log(`caption: ${truncate(result.request.caption, 200)}`);
+          ctx.log(`request: ${truncate(JSON.stringify(result.request), 400)}`);
+          const detail = probe.verify();
+          return `"${truncate(result.request.caption, 48)}", ${result.latent_frames} latent frames, ${result.duration_seconds}s, ${detail}`;
+        },
+      },
+      {
+        id: "acestep.understandFromLatents",
+        name: "acestep.understand (from latents)",
+        desc: "Re-analyses from cached latents, skipping the VAE encode. The latents must not be echoed back.",
+        weight: "heavy",
+        noTimeout: true,
+        run: async (ctx) => {
+          const latents =
+            ctx.shared.aceStepLatents ??
+            skip("run the understand check first to cache latents");
+          const probe = aceStepProgressProbe(ctx);
+          const result = await ctx.layla.acestep.understand(
+            { latentsBase64: latents },
+            {
+              // Deliberately set: it must be ignored when latents were the
+              // source, since the bytes would be the ones just passed in.
+              returnLatents: true,
+              onProgress: probe.onProgress,
+              signal: ctx.signal,
+            },
+          );
+          assert(
+            typeof result.request?.caption === "string" &&
+              result.request.caption.length > 0,
+            "expected a caption describing the track",
+          );
+          assert(
+            result.latents_base64 === null,
+            "returnLatents must be ignored when the source was latents",
+          );
+          assert(
+            result.latent_frames === 0,
+            `expected latent_frames 0 when no latents are returned, got ${result.latent_frames}`,
+          );
+          ctx.log(`caption: ${truncate(result.request.caption, 200)}`);
+          const detail = probe.verify();
+          return `"${truncate(result.request.caption, 48)}", no latents echoed, ${detail}`;
+        },
+      },
+      {
+        id: "acestep.vaeRoundTrip",
+        name: "acestep.vaeEncode + vaeDecode",
+        desc: "Encodes a track to latents and decodes them back, checking each direction reports itself and nulls the other side.",
+        weight: "heavy",
+        noTimeout: true,
+        run: async (ctx) => {
+          const encodeProbe = aceStepProgressProbe(ctx);
+          const encoded = await ctx.layla.acestep.vaeEncode(
+            aceStepSourceAudio(ctx),
+            { onProgress: encodeProbe.onProgress, signal: ctx.signal },
+          );
+          assert(
+            encoded.direction === "encode",
+            `expected direction 'encode', got '${encoded.direction}'`,
+          );
+          assert(
+            typeof encoded.latents_base64 === "string" &&
+              encoded.latents_base64.length > 0,
+            "expected latents from the encode direction",
+          );
+          assert(
+            (encoded.latent_frames ?? 0) > 0,
+            "expected a positive latent_frames on encode",
+          );
+          assert(
+            encoded.audio_data_base64 === null && encoded.num_samples === null,
+            "the decode side of the result must be null on an encode",
+          );
+          ctx.log(
+            `encode: ${encoded.latent_frames} frames, ${encoded.duration_seconds}s`,
+          );
+          const encodeDetail = encodeProbe.verify();
+
+          const decodeProbe = aceStepProgressProbe(ctx);
+          const decoded = await ctx.layla.acestep.vaeDecode(
+            encoded.latents_base64,
+            {
+              request: { output_format: "wav24" },
+              onProgress: decodeProbe.onProgress,
+              signal: ctx.signal,
+            },
+          );
+          assert(
+            decoded.direction === "decode",
+            `expected direction 'decode', got '${decoded.direction}'`,
+          );
+          assert(
+            typeof decoded.audio_data_base64 === "string" &&
+              decoded.audio_data_base64.startsWith("data:"),
+            "expected audio as a data URI from the decode direction",
+          );
+          assert(
+            (decoded.num_samples ?? 0) > 0,
+            "expected a positive num_samples on decode",
+          );
+          assert(
+            decoded.latents_base64 === null && decoded.latent_frames === null,
+            "the encode side of the result must be null on a decode",
+          );
+          assert(
+            decoded.sample_rate === 48000,
+            `expected a 48000Hz decode, got ${decoded.sample_rate}`,
+          );
+          ctx.log(
+            `decode: ${decoded.num_samples} samples, ${decoded.duration_seconds}s`,
+          );
+          const decodeDetail = decodeProbe.verify();
+
+          return `encode ${encoded.latent_frames} frames (${encodeDetail}) -> decode ${decoded.num_samples} samples (${decodeDetail})`;
         },
       },
       {
