@@ -29,11 +29,19 @@ The banner in the toolbar shows which environment was detected: *Browser mock*,
   generation, the microphone, and the background-audio player.
 - Each check (and each group) has its own **Run** button.
 - **Rerun failures** re-runs only what failed.
+- Each check has an expandable **Log** section containing plain text. Checks can
+  write their own multiline diagnostic format; checks without custom log output
+  show their result detail there instead.
 
 Most checks have a 45s watchdog, so a missing or broken endpoint fails loudly
 instead of hanging. On-device generation endpoints (TTS synthesis, image
 generation, music generation) are designed to run for a long time, so they are
 exempt from the watchdog and run until the host responds.
+
+The Chat group also sends the same user message in two sequential completions
+with unrelated system prompts. Each prompt requires a different marker word,
+which verifies that the host replaces the active system prompt between calls.
+Its log preserves both complete responses for debugging.
 
 ## Concurrency checks
 

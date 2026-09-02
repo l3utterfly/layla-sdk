@@ -20,9 +20,18 @@ if (import.meta.env.DEV) {
       sql.match(re)?.[1]?.toLowerCase() ?? "";
 
     const handle = installLaylaMock({
-      // Echo the prompt so concurrency checks can prove no cross-talk between
-      // two simultaneous same-lane generations.
+      // Honor the required-word system prompts used by the prompt-swap check;
+      // otherwise echo the user prompt so the same-lane concurrency check can
+      // prove that simultaneous generations do not cross-talk.
       respond: (messages) => {
+        const system = messages.find((message) => message.role === "system");
+        const systemContent = system?.content;
+        if (typeof systemContent === "string") {
+          const requiredWord = ["COBALT", "MARIGOLD"].find((word) =>
+            systemContent.includes(word),
+          );
+          if (requiredWord) return `Mock response containing ${requiredWord}.`;
+        }
         const last = messages.at(-1);
         return `Reply to: "${last?.content ?? "(nothing)"}"`;
       },

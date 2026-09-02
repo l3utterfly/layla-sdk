@@ -289,6 +289,38 @@ button:disabled {
   color: var(--bad);
 }
 
+.check-log {
+  margin-top: 7px;
+  font-size: 12px;
+  color: var(--text-soft);
+}
+.check-log summary {
+  width: fit-content;
+  cursor: pointer;
+  user-select: none;
+}
+.check-log[open] summary {
+  color: var(--text-h);
+}
+.check-log pre {
+  max-height: 280px;
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--code-bg);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.status-fail .check-log pre {
+  color: var(--bad);
+}
+
 .check-run {
   flex: none;
   font-size: 12px;

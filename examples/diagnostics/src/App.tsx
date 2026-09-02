@@ -45,9 +45,13 @@ interface CheckCtx {
    * Aborts when the user stops the run. Checks may forward it to the SDK (e.g.
    * as a stream `signal`) so long-running work is cancelled promptly; the runner
    * also races every check against it so the UI never waits on a stopped check.
-   */
+  */
   signal: AbortSignal;
+  /** Append plain text to this check's expandable diagnostic log. */
+  log: (text: string) => void;
 }
+
+type SharedCheckCtx = Omit<CheckCtx, "log">;
 
 interface Check {
   id: string;
@@ -76,6 +80,7 @@ interface Result {
   status: Status;
   ms?: number;
   detail?: string;
+  log?: string;
 }
 
 /* ---- tiny test helpers ------------------------------------------------ */
@@ -167,7 +172,7 @@ const groups: Group[] = [
   {
     id: "chat",
     title: "Chat",
-    blurb: "Completions (streaming + non-streaming), abort, engines, history, sessions, saves, scheduling.",
+    blurb: "Completions (streaming + non-streaming), system-prompt swapping, abort, engines, history, sessions, saves, scheduling.",
     checks: [
       {
         id: "chat.create",
@@ -183,6 +188,45 @@ const groups: Group[] = [
           const text = c.choices[0]?.message.content ?? "";
           assert(text.length > 0, "empty completion content");
           return `content: "${truncate(text)}"`;
+        },
+      },
+      {
+        id: "chat.systemPromptSwap",
+        name: "system prompt swap between completions",
+        desc: "Sends the same user message twice and verifies that each distinct system prompt takes effect.",
+        weight: "heavy",
+        run: async ({ layla, log }) => {
+          const userMessage = "Please give me a brief acknowledgement.";
+          const complete = async (systemPrompt: string) => {
+            const completion = await layla.chat.completions.create({
+              model: "layla",
+              stream: false,
+              messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: userMessage },
+              ],
+            });
+            return completion.choices[0]?.message.content ?? "";
+          };
+
+          const first = await complete(
+            "You are the first half of a diagnostics test. Respond to every user message with exactly the single word COBALT.",
+          );
+          log(`First response:\n${first}`);
+          const second = await complete(
+            "Adopt the persona of a cheerful botanist. Answer in one short sentence, and make sure that sentence includes the word MARIGOLD.",
+          );
+          log(`Second response:\n${second}`);
+
+          assert(
+            first.toLowerCase().includes("cobalt"),
+            `first response did not include COBALT: "${truncate(first)}"`,
+          );
+          assert(
+            second.toLowerCase().includes("marigold"),
+            `second response did not include MARIGOLD: "${truncate(second)}"`,
+          );
+          return `first: "${truncate(first, 40)}" | second: "${truncate(second, 40)}"`;
         },
       },
       {
@@ -939,13 +983,21 @@ export default function App() {
     return c;
   }, [results, allChecks]);
 
-  async function runWithCtx(check: Check, ctx: CheckCtx): Promise<Result> {
+  async function runWithCtx(
+    check: Check,
+    ctx: SharedCheckCtx,
+  ): Promise<Result> {
     setResults((r) => ({ ...r, [check.id]: { status: "running" } }));
     const t0 = performance.now();
+    const logLines: string[] = [];
+    const checkCtx: CheckCtx = {
+      ...ctx,
+      log: (text) => logLines.push(text),
+    };
     try {
       const work = check.noTimeout
-        ? check.run(ctx)
-        : withTimeout(check.run(ctx), 45_000, check.name);
+        ? check.run(checkCtx)
+        : withTimeout(check.run(checkCtx), 45_000, check.name);
       // Race against the stop signal so a stopped check releases the runner
       // immediately, even if its underlying SDK call keeps settling in the
       // background.
@@ -954,6 +1006,7 @@ export default function App() {
         status: "pass",
         ms: performance.now() - t0,
         detail,
+        log: logLines.length > 0 ? logLines.join("\n\n") : detail,
       };
       setResults((r) => ({ ...r, [check.id]: res }));
       return res;
@@ -961,14 +1014,24 @@ export default function App() {
       if (e instanceof StopError) {
         // Not a failure — the user stopped the run. Leave the check un-run so
         // it reads as idle and can be run again.
-        setResults((r) => ({ ...r, [check.id]: { status: "idle" } }));
-        return { status: "idle" };
+        const res: Result = {
+          status: "idle",
+          log: [...logLines, "Stopped by user."].join("\n\n"),
+        };
+        setResults((r) => ({ ...r, [check.id]: res }));
+        return res;
       }
       const isSkip = e instanceof SkipError;
+      const detail = e instanceof Error ? e.message : String(e);
+      const diagnostic = e instanceof Error ? (e.stack ?? e.message) : String(e);
       const res: Result = {
         status: isSkip ? "skip" : "fail",
         ms: performance.now() - t0,
-        detail: e instanceof Error ? e.message : String(e),
+        detail,
+        log: [
+          ...logLines,
+          `${isSkip ? "Skipped" : "Error"}:\n${diagnostic}`,
+        ].join("\n\n"),
       };
       setResults((r) => ({ ...r, [check.id]: res }));
       return res;
@@ -983,7 +1046,7 @@ export default function App() {
     setProgress({ done: 0, total: checks.length });
     // Shared context so e.g. a character list fetched once is reused, but each
     // check still runs sequentially for a stable, readable report.
-    const ctx: CheckCtx = {
+    const ctx: SharedCheckCtx = {
       layla,
       mock: mockHandle(),
       sessionId,
@@ -1118,6 +1181,10 @@ export default function App() {
                     {res.detail && (
                       <div className="check-detail">{res.detail}</div>
                     )}
+                    <details className="check-log">
+                      <summary>Log</summary>
+                      <pre>{res.log || "No log output yet."}</pre>
+                    </details>
                   </div>
                   <button
                     className="check-run"
