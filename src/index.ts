@@ -18,6 +18,7 @@ export type {
   LaylaChatMessage,
   LaylaChatHistoryEntry,
   LaylaScheduledChatMessage,
+  LaylaScheduledNotification,
   LaylaMemory,
   LaylaPersona,
   LaylaTTSVoice,
@@ -41,6 +42,9 @@ export type {
   LaylaApiScheduledChatMessage,
   LaylaApiGetScheduledChatMessages,
   LaylaApiCancelScheduledChatMessage,
+  LaylaApiScheduleNotification,
+  LaylaApiGetScheduledNotifications,
+  LaylaApiCancelScheduledNotification,
   LaylaApiSaveFile,
   LaylaApiReadFile,
   LaylaApiGetMemories,
@@ -86,6 +90,9 @@ export type {
   LaylaApiEvent_onScheduledChatMessage,
   LaylaApiEvent_onGetScheduledChatMessagesResponse,
   LaylaApiEvent_onCancelScheduledChatMessage,
+  LaylaApiEvent_onScheduleNotificationResponse,
+  LaylaApiEvent_onGetScheduledNotificationsResponse,
+  LaylaApiEvent_onCancelScheduledNotificationResponse,
   LaylaApiEvent_onGetSentimentResponse,
   LaylaApiEvent_onSaveFileResponse,
   LaylaApiEvent_onReadFileResponse,
@@ -181,6 +188,10 @@ export type {
   SaveFileResult,
   ListDirResult,
   DeleteFileOrDirResult,
+  ScheduleNotificationParams,
+  ScheduleNotificationResult,
+  GetScheduledNotificationsResult,
+  CancelScheduledNotificationResult,
 } from './resources/utils';
 
 // Memory resource surface.

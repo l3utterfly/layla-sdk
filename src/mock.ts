@@ -53,6 +53,7 @@ import type {
   LaylaMemory,
   LaylaPersona,
   LaylaScheduledChatMessage,
+  LaylaScheduledNotification,
   LaylaTTSVoice,
   LaylaExecutionContext,
   TavernCardV2,
@@ -77,6 +78,8 @@ type MockMemorySource =
 type MockPersonaSource = Record<string, LaylaPersona>;
 
 type MockScheduledChatMessageSource = LaylaScheduledChatMessage[];
+
+type MockScheduledNotificationSource = LaylaScheduledNotification[];
 
 type MockChatSession =
   LaylaApiEvent_onGetChatSessionsResponse['data']['sessions'][number];
@@ -222,6 +225,8 @@ export interface LaylaMockOptions {
    * Initial scheduled chat messages used by scheduled-message APIs.
    */
   scheduledChatMessages?: MockScheduledChatMessageSource;
+  /** Initial pending notifications used by the utility notification APIs. */
+  scheduledNotifications?: MockScheduledNotificationSource;
   /**
    * Inference engines returned by `chat.getInferenceEngines()`.
    * Defaults to three sample engines.
@@ -708,6 +713,10 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
   const scheduledChatMessages = (options.scheduledChatMessages ?? []).map(
     (entry) => ({ ...entry }),
   );
+  const scheduledNotifications = (options.scheduledNotifications ?? []).map(
+    (entry) => ({ ...entry }),
+  );
+  let nextScheduledNotificationId = 1;
   const inferenceEngines = options.inferenceEngines ?? [
     'mock-default',
     'mock-fast',
@@ -1558,6 +1567,68 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     });
   }
 
+  async function handleScheduleNotification(data: {
+    icon: string | null;
+    message: string;
+    timestamp: number;
+  }): Promise<void> {
+    await delay(latencyMs);
+    if (shouldError()) {
+      emitError('Simulated schedule notification error');
+      return;
+    }
+
+    let id: string;
+    do {
+      id = `mock-notification-${nextScheduledNotificationId++}`;
+    } while (scheduledNotifications.some((entry) => entry.id === id));
+
+    const scheduled: LaylaScheduledNotification = { id, ...data };
+    scheduledNotifications.push(scheduled);
+    emit({ event: 'on_schedule_notification_response', data: scheduled });
+  }
+
+  async function handleGetScheduledNotifications(): Promise<void> {
+    await delay(latencyMs);
+    if (shouldError()) {
+      emitError('Simulated get scheduled notifications error');
+      return;
+    }
+
+    emit({
+      event: 'on_get_scheduled_notifications_response',
+      data: {
+        scheduled_notifications: [...scheduledNotifications].sort(
+          (a, b) => a.timestamp - b.timestamp,
+        ),
+      },
+    });
+  }
+
+  async function handleCancelScheduledNotification(data: {
+    id: string;
+  }): Promise<void> {
+    await delay(latencyMs);
+    if (shouldError()) {
+      emitError('Simulated cancel scheduled notification error');
+      return;
+    }
+
+    const existingIndex = scheduledNotifications.findIndex(
+      (entry) => entry.id === data.id,
+    );
+    if (existingIndex < 0) {
+      emitError('Scheduled notification not found in the browser mock.');
+      return;
+    }
+
+    scheduledNotifications.splice(existingIndex, 1);
+    emit({
+      event: 'on_cancel_scheduled_notification_response',
+      data: { id: data.id },
+    });
+  }
+
   async function handleGetTTSVoices(): Promise<void> {
     await delay(latencyMs);
     if (shouldError()) {
@@ -2010,6 +2081,15 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
           break;
         case 'cancel_scheduled_chat_message':
           void handleCancelScheduledChatMessage(msg.data);
+          break;
+        case 'schedule_notification':
+          void handleScheduleNotification(msg.data);
+          break;
+        case 'get_scheduled_notifications':
+          void handleGetScheduledNotifications();
+          break;
+        case 'cancel_scheduled_notification':
+          void handleCancelScheduledNotification(msg.data);
           break;
         case 'get_tts_voices':
           void handleGetTTSVoices();

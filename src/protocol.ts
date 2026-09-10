@@ -46,6 +46,14 @@ export interface LaylaScheduledChatMessage {
   message: string;
 }
 
+/** A pending notification scheduled by the calling mini-app. */
+export interface LaylaScheduledNotification {
+  id: string; // opaque ID assigned by the host; pass this to cancel_scheduled_notification
+  icon: string | null; // image path relative to the mini-app folder, or null to use the mini-app's default icon
+  message: string;
+  timestamp: number; // scheduled delivery time as a Unix timestamp in milliseconds
+}
+
 /* ---- character cards ------------------------------------------------------- */
 
 export interface LaylaCharacter {
@@ -419,6 +427,46 @@ export interface LaylaApiCancelScheduledChatMessage {
   cmd: 'cancel_scheduled_chat_message';
   data: {
     id: number; // the id of the scheduled chat message to cancel
+  };
+}
+
+/**
+ * Ask the host to schedule a one-time notification for the calling mini-app.
+ * The timestamp must be a Unix timestamp in milliseconds in the future.
+ * If `icon` is provided, it must be a relative path to an existing image within the mini-app folder (e.g., `images/reminder.png`).
+ * URLs, absolute paths, and paths that resolve outside the mini-app folder are not allowed. Null uses the mini-app's default icon.
+ * The host should respond with an `on_schedule_notification_response` event containing the scheduled notification and its assigned ID.
+ * If scheduling fails, the host should emit an `on_error` event instead.
+ */
+export interface LaylaApiScheduleNotification {
+  cmd: 'schedule_notification';
+  data: {
+    icon: string | null; // image path relative to the mini-app folder, or null to use the mini-app's default icon
+    message: string;
+    timestamp: number; // scheduled delivery time as a Unix timestamp in milliseconds; must be in the future
+  };
+}
+
+/**
+ * Ask the host for all pending notifications scheduled by the calling mini-app.
+ * Delivered and cancelled notifications are excluded. This request does not support pagination or filtering.
+ * The host should respond with an `on_get_scheduled_notifications_response` event, or `on_error` if retrieval fails.
+ */
+export interface LaylaApiGetScheduledNotifications {
+  cmd: 'get_scheduled_notifications';
+  data: null; // no additional data is needed for this request
+}
+
+/**
+ * Ask the host to cancel a pending notification by the ID returned when it was scheduled or listed.
+ * Only notifications belonging to the calling mini-app may be cancelled.
+ * The host should respond with an `on_cancel_scheduled_notification_response` event after successfully cancelling the notification.
+ * If cancellation fails, including when the ID does not identify a pending notification belonging to the calling mini-app, the host should emit an `on_error` event instead.
+ */
+export interface LaylaApiCancelScheduledNotification {
+  cmd: 'cancel_scheduled_notification';
+  data: {
+    id: string; // the host-assigned ID of the scheduled notification to cancel
   };
 }
 
@@ -844,6 +892,9 @@ export type BaseApiRequest =
   | LaylaApiScheduledChatMessage
   | LaylaApiCancelScheduledChatMessage
   | LaylaApiGetScheduledChatMessages
+  | LaylaApiScheduleNotification
+  | LaylaApiGetScheduledNotifications
+  | LaylaApiCancelScheduledNotification
   | LaylaApiGetPersona
   | LaylaApiGetTTSVoices
   | LaylaApiGenerateVoice
@@ -1058,6 +1109,38 @@ export interface LaylaApiEvent_onGetScheduledChatMessagesResponse {
   event: 'on_get_scheduled_chat_messages_response';
   data: {
     scheduled_messages: LaylaScheduledChatMessage[]; // an array of all scheduled chat messages, each containing the id, character_id, session_id, timestamp, and message content
+  };
+}
+
+/**
+ * The response for a `schedule_notification` request, containing the scheduled notification and its host-assigned ID.
+ * This event acknowledges successful scheduling; it does not indicate that the notification has been delivered.
+ */
+export interface LaylaApiEvent_onScheduleNotificationResponse {
+  event: 'on_schedule_notification_response';
+  data: LaylaScheduledNotification;
+}
+
+/**
+ * The response for a `get_scheduled_notifications` request, containing all pending notifications belonging to the calling mini-app.
+ * The array is empty when the mini-app has no pending notifications.
+ */
+export interface LaylaApiEvent_onGetScheduledNotificationsResponse {
+  event: 'on_get_scheduled_notifications_response';
+  data: {
+    scheduled_notifications: LaylaScheduledNotification[];
+  };
+}
+
+/**
+ * The response for a successful `cancel_scheduled_notification` request, containing the cancelled notification's ID.
+ * If cancellation fails, the host should emit an `on_error` event instead of this event.
+ * Cancelling a scheduled notification does not dismiss a notification that has already been delivered.
+ */
+export interface LaylaApiEvent_onCancelScheduledNotificationResponse {
+  event: 'on_cancel_scheduled_notification_response';
+  data: {
+    id: string; // the ID of the successfully cancelled notification
   };
 }
 
@@ -1408,6 +1491,9 @@ export type BaseApiEvent =
   | LaylaApiEvent_onScheduledChatMessage
   | LaylaApiEvent_onCancelScheduledChatMessage
   | LaylaApiEvent_onGetScheduledChatMessagesResponse
+  | LaylaApiEvent_onScheduleNotificationResponse
+  | LaylaApiEvent_onGetScheduledNotificationsResponse
+  | LaylaApiEvent_onCancelScheduledNotificationResponse
   | LaylaApiEvent_onGetPersonaResponse
   | LaylaApiEvent_onGetTTSVoicesResponse
   | LaylaApiEvent_onGetInferenceEnginesResponse

@@ -63,5 +63,7 @@ The **Concurrency** group covers the per-lane bridge change:
 - *Heavy* checks include chat interfaces and operations with real host side
   effects (audio playback, image generation, music generation, microphone
   access). Leave them off unless you're testing them.
-- Write checks are labelled and use `[diagnostics]` content; the scheduling check
-  cancels what it creates.
+- Write checks are labelled and use `[diagnostics]` content. The scheduled-chat
+  and scheduled-notification checks cancel what they create; the notification
+  probe uses the mini-app's bundled `icon.png` and verifies it disappears from
+  the pending list.

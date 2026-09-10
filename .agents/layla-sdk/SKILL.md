@@ -1,6 +1,6 @@
 ---
 name: layla-sdk
-description: Use the @layla-network/sdk package in third-party Layla mini-apps and WebView apps. Covers the public API surface for creating a Layla client, contextual character-chat execution state and events, OpenAI-shaped chat completions and streams including reasoning deltas, inference engine selection, paginated character listing, chat sessions, session history, message saves, scheduled chat messages, memories, personas, TTS voices, playback and audio-file generation, speech-to-text microphone input and events, background audio controls and events, character images, sentiment analysis, image generation progress/results, music generation progress/results with the Ace-Step model, the raw Ace-Step passes for prompt enrichment, rendering, track analysis and VAE encode/decode, private per-mini-app sqlite database queries, file saving, abort handling, SDK errors, exported TypeScript types, runtime expectations inside the Layla WebView, and task.js background task scripts that run periodically in the host's QuickJS runtime with the SDK preloaded as a global.
+description: Use @layla-network/sdk when building or debugging third-party Layla mini-apps, WebView integrations, or task.js background scripts. Covers the public TypeScript client for chat and contextual events, characters, scheduled chat and notifications, media, memories and personas, private sqlite and files, local mocks, errors, and runtime packaging.
 ---
 
 # Layla SDK
@@ -46,6 +46,7 @@ import LaylaSDK, {
   type LaylaChatMessage,
   type LaylaChatHistoryEntry,
   type LaylaScheduledChatMessage,
+  type LaylaScheduledNotification,
   type LaylaCharacter,
   type LaylaMemory,
   type LaylaPersona,
@@ -107,6 +108,9 @@ await layla.chat.saveChatMessage(message);
 await layla.chat.scheduleChatMessage(scheduledMessage);
 await layla.chat.getScheduledChatMessages();
 await layla.chat.cancelScheduledChatMessage(scheduledMessageId);
+await layla.utils.scheduleNotification({ message, timestamp, icon });
+await layla.utils.getScheduledNotifications();
+await layla.utils.cancelScheduledNotification(notificationId);
 await layla.memories.list(characterId);
 await layla.memories.getTopMemories(characterId);
 await layla.memories.createOrUpdate(memories);
@@ -775,6 +779,30 @@ when `total <= 1`.
 
 ## Utilities
 
+Use `layla.utils.scheduleNotification(notification, options?)` to schedule a
+one-time notification for the calling mini-app. Pass a future Unix timestamp in
+milliseconds, a message, and optionally an image path relative to the mini-app
+folder. Omit `icon` or pass `null` to use the mini-app's default icon. The
+returned `LaylaScheduledNotification` includes the opaque host-assigned `id`
+needed for cancellation.
+
+```ts
+const notification = await layla.utils.scheduleNotification({
+  message: 'Your local generation is ready.',
+  timestamp: Date.now() + 15 * 60 * 1000,
+  icon: 'images/reminder.png',
+});
+
+const pending = await layla.utils.getScheduledNotifications();
+await layla.utils.cancelScheduledNotification(notification.id);
+```
+
+`getScheduledNotifications(options?)` returns all pending notifications for
+the calling mini-app; delivered and cancelled notifications are excluded.
+`cancelScheduledNotification(id, options?)` rejects if the host cannot cancel
+that pending notification. URLs, absolute icon paths, and relative paths that
+escape the mini-app folder are not allowed.
+
 Use `layla.utils.saveFile(filename, contentBase64, share?, options?)` to save
 base64-encoded content through the host, and
 `layla.utils.readFile(filename, options?)` to read it back. Both operate on the
@@ -967,9 +995,10 @@ UI for the next launch.
 
 Prefer headless-friendly APIs: non-streaming chat completions, `layla.db`,
 `layla.memories`, `layla.chat.saveChatMessage`,
-`layla.chat.scheduleChatMessage`, `layla.classifier.getSentiment`, and
-`layla.characters`. Avoid UI- and device-interaction flows (TTS playback,
-speech-to-text, background audio) in a background task. Do not rely on
+`layla.chat.scheduleChatMessage`, `layla.utils.scheduleNotification`,
+`layla.classifier.getSentiment`, and `layla.characters`. Avoid UI- and
+device-interaction flows (TTS playback, speech-to-text, background audio) in a
+background task. Do not rely on
 long-lived event subscriptions such as `layla.contextual.on(...)` — the run
 ends when the script's completion value settles, so listeners do not outlive
 the script.

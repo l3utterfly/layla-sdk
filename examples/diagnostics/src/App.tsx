@@ -603,9 +603,70 @@ const groups: Group[] = [
   },
   {
     id: "utils",
-    title: "Utils (files)",
-    blurb: "Save then read back a private file.",
+    title: "Utils",
+    blurb: "Scheduled notifications and private files.",
     checks: [
+      {
+        id: "utils.notifications",
+        name: "scheduleNotification -> get -> cancel (write, self-cleaning)",
+        desc: "Schedules a future notification, lists it, cancels it, and confirms removal.",
+        weight: "safe",
+        run: async ({ layla, sessionId, log }) => {
+          const message = `[diagnostics] notification probe ${sessionId}`;
+          const timestamp = Date.now() + 3_600_000;
+          let scheduledId: string | null = null;
+
+          try {
+            const scheduled = await layla.utils.scheduleNotification({
+              icon: "icon.png",
+              message,
+              timestamp,
+            });
+            log(`schedule response:\n${JSON.stringify(scheduled, null, 2)}`);
+            assert(typeof scheduled.id === "string", "no notification id");
+            scheduledId = scheduled.id;
+            assert(scheduled.icon === "icon.png", "icon path did not round-trip");
+            assert(scheduled.message === message, "message did not round-trip");
+            assert(
+              scheduled.timestamp === timestamp,
+              "timestamp did not round-trip",
+            );
+
+            const pending = await layla.utils.getScheduledNotifications();
+            log(`pending after schedule:\n${JSON.stringify(pending, null, 2)}`);
+            assert(Array.isArray(pending), "expected notifications array");
+            assert(
+              pending.some((entry) => entry.id === scheduledId),
+              "scheduled notification missing from pending list",
+            );
+
+            const cancelled = await layla.utils.cancelScheduledNotification(
+              scheduledId,
+            );
+            log(`cancel response:\n${JSON.stringify(cancelled, null, 2)}`);
+            assert(cancelled.id === scheduledId, "cancelled id did not match");
+            scheduledId = null;
+
+            const remaining = await layla.utils.getScheduledNotifications();
+            log(`pending after cancel:\n${JSON.stringify(remaining, null, 2)}`);
+            assert(
+              !remaining.some((entry) => entry.id === cancelled.id),
+              "cancelled notification remains pending",
+            );
+
+            return `scheduled ${cancelled.id}, listed, cancelled, and confirmed removed`;
+          } finally {
+            if (scheduledId !== null) {
+              try {
+                await layla.utils.cancelScheduledNotification(scheduledId);
+                log(`cleanup: cancelled ${scheduledId}`);
+              } catch (error) {
+                log(`cleanup failed: ${String(error)}`);
+              }
+            }
+          }
+        },
+      },
       {
         id: "utils.fileRoundTrip",
         name: "saveFile -> readFile round-trip (write)",

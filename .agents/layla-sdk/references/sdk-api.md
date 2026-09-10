@@ -23,6 +23,7 @@ import LaylaSDK, {
   type LaylaChatMessage,
   type LaylaChatHistoryEntry,
   type LaylaScheduledChatMessage,
+  type LaylaScheduledNotification,
   type LaylaMemory,
   type LaylaPersona,
   type LaylaTTSVoice,
@@ -46,6 +47,9 @@ import LaylaSDK, {
   type LaylaApiScheduledChatMessage,
   type LaylaApiGetScheduledChatMessages,
   type LaylaApiCancelScheduledChatMessage,
+  type LaylaApiScheduleNotification,
+  type LaylaApiGetScheduledNotifications,
+  type LaylaApiCancelScheduledNotification,
   type LaylaApiSaveFile,
   type LaylaApiReadFile,
   type LaylaApiGetMemories,
@@ -69,6 +73,9 @@ import LaylaSDK, {
   type LaylaApiEvent_onScheduledChatMessage,
   type LaylaApiEvent_onGetScheduledChatMessagesResponse,
   type LaylaApiEvent_onCancelScheduledChatMessage,
+  type LaylaApiEvent_onScheduleNotificationResponse,
+  type LaylaApiEvent_onGetScheduledNotificationsResponse,
+  type LaylaApiEvent_onCancelScheduledNotificationResponse,
   type LaylaApiEvent_onGetMemoriesResponse,
   type LaylaApiEvent_onGetTopMemoriesResponse,
   type LaylaApiEvent_onCreateOrUpdateMemoriesResponse,
@@ -104,6 +111,10 @@ import LaylaSDK, {
   type MemoryListOptions,
   type ReadFileResult,
   type SaveFileResult,
+  type ScheduleNotificationParams,
+  type ScheduleNotificationResult,
+  type GetScheduledNotificationsResult,
+  type CancelScheduledNotificationResult,
   type SentimentValues,
   type TavernCardV2,
 } from '@layla-network/sdk';
@@ -1448,6 +1459,78 @@ Note that `generateMusic`'s callback stays positional
 (`(progress, status, current, total)`), while the raw passes take an
 `onProgress` listener that receives one `AceStepProgress` object.
 
+## `layla.utils.scheduleNotification(notification, options?)`
+
+Schedules a one-time notification for the calling mini-app. `notification`
+contains `message`, a future `timestamp` expressed as a Unix timestamp in
+milliseconds, and an optional `icon`. The icon must be a relative path to an
+existing image inside the mini-app folder. Omit it or pass `null` to use the
+mini-app's default icon; URLs, absolute paths, and paths that escape the
+mini-app folder are rejected by the host.
+
+```ts
+const notification: ScheduleNotificationResult =
+  await layla.utils.scheduleNotification({
+    message: 'Your local generation is ready.',
+    timestamp: Date.now() + 15 * 60 * 1000,
+    icon: 'images/reminder.png',
+  });
+
+console.log(notification.id);
+```
+
+The result is a `LaylaScheduledNotification` containing the opaque
+host-assigned `id`, resolved icon, message, and timestamp. Successful scheduling
+only acknowledges that the notification is pending; it does not mean the
+notification has already been delivered.
+
+Pass an abort signal as the second argument:
+
+```ts
+await layla.utils.scheduleNotification(
+  { message: 'Check the app later.', timestamp: futureTimestamp },
+  { signal: controller.signal },
+);
+```
+
+## `layla.utils.getScheduledNotifications(options?)`
+
+Returns every pending notification scheduled by the calling mini-app. Delivered
+and cancelled notifications are excluded. The host does not paginate or filter
+this response, so filter the returned `LaylaScheduledNotification[]` locally.
+
+```ts
+const pending: GetScheduledNotificationsResult =
+  await layla.utils.getScheduledNotifications();
+```
+
+Pass an abort signal as the first argument:
+
+```ts
+await layla.utils.getScheduledNotifications({
+  signal: controller.signal,
+});
+```
+
+## `layla.utils.cancelScheduledNotification(id, options?)`
+
+Cancels a pending notification by its opaque host-assigned ID. It resolves with
+`{ id }` after successful cancellation. It rejects if the ID does not identify
+a pending notification belonging to the calling mini-app. Cancelling does not
+dismiss a notification that has already been delivered.
+
+```ts
+await layla.utils.cancelScheduledNotification(notification.id);
+```
+
+Pass an abort signal as the second argument:
+
+```ts
+await layla.utils.cancelScheduledNotification(notification.id, {
+  signal: controller.signal,
+});
+```
+
 ## `layla.utils.saveFile(filename, contentBase64, share?, options?)`
 
 Saves raw base64-encoded content as a file. Do not include a data URI prefix.
@@ -1906,6 +1989,32 @@ await layla.chat.cancelScheduledChatMessage(saved.id);
 Scheduled messages created through the mock are available to later
 `layla.chat.getScheduledChatMessages()` calls in the same mock session.
 
+Customize pending mini-app notifications with static schedule data:
+
+```ts
+installLaylaMock({
+  scheduledNotifications: [
+    {
+      id: 'mock-reminder-1',
+      icon: null,
+      message: 'A pending browser-mock reminder.',
+      timestamp: Date.now() + 60 * 60 * 1000,
+    },
+  ],
+});
+
+const pending = await layla.utils.getScheduledNotifications();
+const created = await layla.utils.scheduleNotification({
+  message: 'Another reminder.',
+  timestamp: Date.now() + 2 * 60 * 60 * 1000,
+});
+await layla.utils.cancelScheduledNotification(created.id);
+```
+
+Notifications scheduled through the mock remain available to later
+`getScheduledNotifications()` calls in the same mock session. Cancelling an
+unknown ID rejects through the same `on_error` path as the native host.
+
 Customize mock memories with static memory data:
 
 ```ts
@@ -2176,6 +2285,7 @@ Useful exported types include:
 - `LaylaChatMessage`
 - `LaylaChatHistoryEntry`
 - `LaylaScheduledChatMessage`
+- `LaylaScheduledNotification`
 - `LaylaMemory`
 - `LaylaPersona`
 - `LaylaTTSVoice`
@@ -2211,6 +2321,12 @@ Useful exported types include:
 - `LaylaApiEvent_onScheduledChatMessage`
 - `LaylaApiEvent_onGetScheduledChatMessagesResponse`
 - `LaylaApiEvent_onCancelScheduledChatMessage`
+- `LaylaApiScheduleNotification`
+- `LaylaApiGetScheduledNotifications`
+- `LaylaApiCancelScheduledNotification`
+- `LaylaApiEvent_onScheduleNotificationResponse`
+- `LaylaApiEvent_onGetScheduledNotificationsResponse`
+- `LaylaApiEvent_onCancelScheduledNotificationResponse`
 - `LaylaApiGetMemories`
 - `LaylaApiGetTopMemories`
 - `LaylaApiCreateOrUpdateMemories`
@@ -2276,6 +2392,10 @@ Useful exported types include:
 - `SaveFileResult`
 - `ListDirResult`
 - `DeleteFileOrDirResult`
+- `ScheduleNotificationParams`
+- `ScheduleNotificationResult`
+- `GetScheduledNotificationsResult`
+- `CancelScheduledNotificationResult`
 - `AceStepRequest`
 - `AceStepProgress`
 - `AceStepProgressListener`

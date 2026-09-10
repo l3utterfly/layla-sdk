@@ -4,10 +4,15 @@
 
 import type { LaylaApiEvent } from '../interface';
 import type {
+  LaylaApiEvent_onCancelScheduledNotificationResponse,
+  LaylaApiEvent_onGetScheduledNotificationsResponse,
   LaylaApiEvent_onReadFileResponse,
+  LaylaApiEvent_onScheduleNotificationResponse,
   LaylaApiEvent_onSaveFileResponse,
   LaylaApiEvent_onListDirResponse,
   LaylaApiEvent_onDeleteFileOrDirResponse,
+  LaylaApiScheduleNotification,
+  LaylaScheduledNotification,
 } from '../protocol';
 import { oneShot, type RequestOptions } from '../internal/one-shot';
 
@@ -16,8 +21,74 @@ export type ReadFileResult = LaylaApiEvent_onReadFileResponse['data'];
 export type ListDirResult = LaylaApiEvent_onListDirResponse['data'];
 export type DeleteFileOrDirResult =
   LaylaApiEvent_onDeleteFileOrDirResponse['data'];
+export type ScheduleNotificationParams = Omit<
+  LaylaApiScheduleNotification['data'],
+  'icon'
+> & {
+  /** Relative image path inside the mini-app, or null for its default icon. */
+  icon?: string | null;
+};
+export type ScheduleNotificationResult = LaylaScheduledNotification;
+export type GetScheduledNotificationsResult = LaylaScheduledNotification[];
+export type CancelScheduledNotificationResult =
+  LaylaApiEvent_onCancelScheduledNotificationResponse['data'];
 
 export class Utils {
+  /**
+   * Schedule a one-time notification for the calling mini-app.
+   *
+   * `timestamp` is a future Unix timestamp in milliseconds. `icon`, when
+   * provided, is an image path relative to the mini-app folder; omit it or pass
+   * `null` to use the mini-app's default icon.
+   */
+  scheduleNotification(
+    notification: ScheduleNotificationParams,
+    options: RequestOptions = {},
+  ): Promise<ScheduleNotificationResult> {
+    return oneShot<ScheduleNotificationResult>(
+      {
+        cmd: 'schedule_notification',
+        data: {
+          icon: notification.icon ?? null,
+          message: notification.message,
+          timestamp: notification.timestamp,
+        },
+      },
+      'on_schedule_notification_response',
+      (event: LaylaApiEvent) =>
+        (event as LaylaApiEvent_onScheduleNotificationResponse).data,
+      options.signal,
+    );
+  }
+
+  /** Fetch all pending notifications scheduled by the calling mini-app. */
+  getScheduledNotifications(
+    options: RequestOptions = {},
+  ): Promise<GetScheduledNotificationsResult> {
+    return oneShot<GetScheduledNotificationsResult>(
+      { cmd: 'get_scheduled_notifications', data: null },
+      'on_get_scheduled_notifications_response',
+      (event: LaylaApiEvent) =>
+        (event as LaylaApiEvent_onGetScheduledNotificationsResponse).data
+          .scheduled_notifications ?? [],
+      options.signal,
+    );
+  }
+
+  /** Cancel a pending notification by its host-assigned ID. */
+  cancelScheduledNotification(
+    id: string,
+    options: RequestOptions = {},
+  ): Promise<CancelScheduledNotificationResult> {
+    return oneShot<CancelScheduledNotificationResult>(
+      { cmd: 'cancel_scheduled_notification', data: { id } },
+      'on_cancel_scheduled_notification_response',
+      (event: LaylaApiEvent) =>
+        (event as LaylaApiEvent_onCancelScheduledNotificationResponse).data,
+      options.signal,
+    );
+  }
+
   /**
    * Ask the native host to save base64-encoded file content.
    *
