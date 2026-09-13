@@ -14,6 +14,7 @@ import type {
   LaylaApiEvent_onGetExecutionContextResponse,
   LaylaExecutionContext,
 } from '../protocol';
+import { LaylaAbortError } from '../errors';
 import { oneShot, type RequestOptions } from '../internal/one-shot';
 
 export type ChatContextNewMessage =
@@ -77,22 +78,49 @@ export class Contextual {
   private readonly chatContextStartedThinkingListeners =
     new Set<ChatContextStartedThinkingListener>();
   private listening = false;
+  /** The context, once the host has answered: it cannot change while we run. */
+  private executionContext: LaylaExecutionContext | null = null;
+  /** The in-flight fetch, shared by concurrent callers and cleared on failure. */
+  private executionContextRequest: Promise<LaylaExecutionContext> | null = null;
 
   /**
    * Ask the native host for the context in which this mini-app is running.
    * The returned context always includes the Layla app version. Its character
    * and session fields are `null` for a standalone top-level mini-app.
+   *
+   * The host is asked once; every later call resolves from the in-memory copy.
    */
   getExecutionContext(
     options: RequestOptions = {},
   ): Promise<LaylaExecutionContext> {
-    return oneShot<LaylaExecutionContext>(
-      { cmd: 'get_execution_context', data: null },
-      'on_get_execution_context_response',
-      (event: LaylaApiEvent) =>
-        (event as LaylaApiEvent_onGetExecutionContextResponse).data,
-      options.signal,
-    );
+    if (this.executionContext) return Promise.resolve(this.executionContext);
+
+    if (!this.executionContextRequest) {
+      // Deliberately unsignalled: this request is shared by every caller, so
+      // one caller's abort must not cancel it for the others. Their signals
+      // are honoured individually by `withAbort` below.
+      this.executionContextRequest = oneShot<LaylaExecutionContext>(
+        { cmd: 'get_execution_context', data: null },
+        'on_get_execution_context_response',
+        (event: LaylaApiEvent) =>
+          (event as LaylaApiEvent_onGetExecutionContextResponse).data,
+      ).then(
+        (context) => {
+          this.executionContext = context;
+          this.executionContextRequest = null;
+          return context;
+        },
+        (err: unknown) => {
+          // Cache the context, never the failure: let a later call retry.
+          this.executionContextRequest = null;
+          throw err;
+        },
+      );
+      // A caller that aborts must not leave this shared promise unhandled.
+      this.executionContextRequest.catch(() => undefined);
+    }
+
+    return withAbort(this.executionContextRequest, options.signal);
   }
 
   /** Listen for activity in the surrounding character chat. */
@@ -282,4 +310,20 @@ export class Contextual {
       }
     }
   }
+}
+
+/**
+ * Settle with `promise`, or reject as soon as `signal` aborts — leaving the
+ * underlying promise (which other callers share) running either way.
+ */
+function withAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(new LaylaAbortError());
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = (): void => reject(new LaylaAbortError());
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(resolve, reject).finally(() => {
+      signal.removeEventListener('abort', onAbort);
+    });
+  });
 }
