@@ -9,7 +9,7 @@ import "./index.css";
 // WebView, `import.meta.env.DEV` is false and the real `window.ReactNativeWebView`
 // bridge is used instead — the exact same App, exercising the real host.
 if (import.meta.env.DEV) {
-  void import("../../../src/mock").then(({ installLaylaMock }) => {
+  void import("../../../src/mock").then(({ installLaylaMock, mockToolCall }) => {
     // A tiny in-memory SQL engine: enough for the DB round-trip check
     // (CREATE / INSERT with params / SELECT / DELETE). Unknown tables return an
     // empty result rather than throwing, so the "error isolation" probe against
@@ -20,10 +20,25 @@ if (import.meta.env.DEV) {
       sql.match(re)?.[1]?.toLowerCase() ?? "";
 
     const handle = installLaylaMock({
-      // Honor the required-word system prompts used by the prompt-swap check;
-      // otherwise echo the user prompt so the same-lane concurrency check can
-      // prove that simultaneous generations do not cross-talk.
-      respond: (messages) => {
+      // Answering the tool-calling check takes a model that uses the tools it
+      // is offered, so stand in for one: ask for the first declared tool, then
+      // answer from the result once it comes back. Everything else honors the
+      // required-word system prompts used by the prompt-swap check, or echoes
+      // the user prompt so the same-lane concurrency check can prove that
+      // simultaneous generations do not cross-talk.
+      respond: (messages, request) => {
+        const tool = request?.tools[0];
+        if (tool) {
+          const answered = messages.some((m) => m.role === "tool");
+          if (!answered) {
+            const asked = messages.at(-1)?.content ?? "";
+            const subject = /"([^"]+)"/.exec(asked)?.[1] ?? "alpha";
+            return `Looking that up. ${mockToolCall(tool.name, { system: subject })}`;
+          }
+          const result = messages.filter((m) => m.role === "tool").at(-1);
+          return `The tool says: ${result?.content ?? "(nothing)"}`;
+        }
+
         const system = messages.find((message) => message.role === "system");
         const systemContent = system?.content;
         if (typeof systemContent === "string") {
@@ -69,6 +84,14 @@ if (import.meta.env.DEV) {
       // non-blocking check has a clear signal.
       latencyMs: 60,
       tokenDelayMs: 18,
+      // The version the SDK reads to decide whether this host understands
+      // `send_message_v2`. Report a 7.5.0 host so the browser run exercises the
+      // same path — and the same tool calling — a current Layla app would.
+      executionContext: {
+        app_version: "v7.5.0",
+        character: null,
+        session_id: null,
+      },
     });
 
     (window as unknown as { __laylaDiagMock?: typeof handle }).__laylaDiagMock =

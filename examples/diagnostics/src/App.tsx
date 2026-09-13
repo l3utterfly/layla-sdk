@@ -4,6 +4,7 @@ import {
   LaylaAbortError,
   type AceStepProgress,
   type AceStepRequest,
+  type ChatCompletionMessageParam,
   type LaylaCharacter,
 } from "../../../src/index";
 import type { LaylaMockHandle } from "../../../src/mock";
@@ -271,7 +272,7 @@ const groups: Group[] = [
   {
     id: "chat",
     title: "Chat",
-    blurb: "Completions (streaming + non-streaming), system-prompt swapping, abort, engines, history, sessions, saves, scheduling.",
+    blurb: "Completions (streaming + non-streaming), system-prompt swapping, tool calling, abort, engines, history, sessions, saves, scheduling.",
     checks: [
       {
         id: "chat.create",
@@ -346,6 +347,161 @@ const groups: Group[] = [
           assert(chunks > 0, "no chunks received");
           assert(text.length > 0, "empty final content");
           return `${chunks} chunks, final: "${truncate(text)}"`;
+        },
+      },
+      {
+        id: "chat.toolCalling",
+        name: "tool calling (tools -> tool_calls -> result -> answer)",
+        desc: "Offers one tool, runs the call the model asks for, feeds the result back, and checks the final answer used it.",
+        weight: "heavy",
+        // Two or more full generations, plus the prompt reprocessing between
+        // them. On-device that runs well past the watchdog, so let it finish.
+        noTimeout: true,
+        run: async ({ layla, log, signal }) => {
+          const { app_version } = await layla.contextual.getExecutionContext({
+            signal,
+          });
+          const parsed = /^\s*v?(\d+)\.(\d+)/.exec(app_version ?? "");
+          const major = parsed ? Number(parsed[1]) : 0;
+          const minor = parsed ? Number(parsed[2]) : 0;
+          if (!parsed || major < 7 || (major === 7 && minor < 5)) {
+            skip(
+              `tool calling needs Layla v7.5.0 or newer; host reports "${app_version}"`,
+            );
+          }
+
+          // A value the model cannot know and cannot guess: the only way it
+          // reaches the final answer is through the tool.
+          const CODE = "ZEPHYR-4718";
+          const TOOL = "get_diagnostics_code";
+          const MAX_ROUNDS = 3;
+
+          const tools = [
+            {
+              type: "function" as const,
+              function: {
+                name: TOOL,
+                description:
+                  "Look up the diagnostics code for a named system. The code cannot be known any other way.",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    system: {
+                      type: "string",
+                      description: "The system to look the code up for.",
+                    },
+                  },
+                  required: ["system"],
+                },
+              },
+            },
+          ];
+
+          const messages: ChatCompletionMessageParam[] = [
+            {
+              role: "system",
+              content:
+                "You are running a diagnostics check. When a tool can answer the question, call it instead of guessing, then reply with what the tool returned.",
+            },
+            {
+              role: "user",
+              content:
+                'Look up the diagnostics code for the "alpha" system and tell me what it is.',
+            },
+          ];
+
+          let callsMade = 0;
+          let missingIds = 0;
+
+          for (let round = 1; round <= MAX_ROUNDS; round += 1) {
+            const completion = await layla.chat.completions.create({
+              model: "layla",
+              stream: false,
+              messages,
+              tools,
+              signal,
+            });
+            const choice = completion.choices[0];
+            assert(choice, "no choice returned");
+
+            const calls = choice.message.tool_calls ?? [];
+            const prose = choice.message.content || "(no prose)";
+            log(
+              `Round ${round} — finish_reason: ${choice.finish_reason}, ` +
+                `tool_calls: ${calls.length}\n${prose}`,
+            );
+
+            if (calls.length === 0) {
+              assert(
+                callsMade > 0,
+                `the model answered without calling ${TOOL}: "${truncate(choice.message.content)}"`,
+              );
+              assert(
+                choice.finish_reason === "stop",
+                `a reply with no tool calls should finish as "stop", got "${choice.finish_reason}"`,
+              );
+              const answer = choice.message.content;
+              assert(
+                answer.toUpperCase().includes(CODE),
+                `the final answer did not carry the code the tool returned: "${truncate(answer)}"`,
+              );
+              const note = missingIds > 0 ? `, ${missingIds} without an id` : "";
+              return `${callsMade} call(s) over ${round} round(s)${note}; answer: "${truncate(answer, 50)}"`;
+            }
+
+            assert(
+              choice.finish_reason === "tool_calls",
+              `a reply carrying tool_calls should finish as "tool_calls", got "${choice.finish_reason}"`,
+            );
+
+            // The assistant turn goes back exactly as the SDK handed it over.
+            messages.push({
+              role: "assistant",
+              content: choice.message.content,
+              tool_calls: calls,
+            });
+
+            for (const call of calls) {
+              callsMade += 1;
+              if (!call.id) missingIds += 1;
+              log(
+                `  -> ${call.function.name}(${truncate(call.function.arguments, 120)}) id: ${call.id || "(none)"}`,
+              );
+              assert(
+                call.type === "function",
+                `expected a function call, got type "${call.type}"`,
+              );
+
+              let args: Record<string, unknown>;
+              try {
+                args = JSON.parse(call.function.arguments || "{}") as Record<
+                  string,
+                  unknown
+                >;
+              } catch {
+                throw new Error(
+                  `${call.function.name} arguments are not valid JSON: ${truncate(call.function.arguments, 120)}`,
+                );
+              }
+
+              // Answer every call, including one for a tool that was never
+              // offered — leaving a call unanswered strands the next turn.
+              const result =
+                call.function.name === TOOL
+                  ? { system: String(args.system ?? "alpha"), code: CODE }
+                  : { error: `unknown tool "${call.function.name}"` };
+
+              messages.push({
+                role: "tool",
+                tool_call_id: call.id,
+                content: JSON.stringify(result),
+              });
+            }
+          }
+
+          throw new Error(
+            `the model kept calling tools for ${MAX_ROUNDS} rounds without answering`,
+          );
         },
       },
       {

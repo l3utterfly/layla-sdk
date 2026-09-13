@@ -25,8 +25,9 @@ The banner in the toolbar shows which environment was detected: *Browser mock*,
 ## Using it
 
 - **Run all** runs every check except the *heavy* ones. Tick **include heavy** to
-  also run the chat interfaces, TTS synthesis/playback, image generation, music
-  generation, the microphone, and the background-audio player.
+  also run the chat interfaces, tool calling, TTS synthesis/playback, image
+  generation, music generation, the microphone, and the background-audio
+  player.
 - Each check (and each group) has its own **Run** button.
 - **Rerun failures** re-runs only what failed.
 - Each check has an expandable **Log** section containing plain text. Checks can
@@ -42,6 +43,28 @@ The Chat group also sends the same user message in two sequential completions
 with unrelated system prompts. Each prompt requires a different marker word,
 which verifies that the host replaces the active system prompt between calls.
 Its log preserves both complete responses for debugging.
+
+## The tool-calling check
+
+`tool calling (tools -> tool_calls -> result -> answer)` runs a full tool loop
+and is *heavy*. It offers one tool that returns a code the model cannot know or
+guess, runs whatever call the model asks for, feeds the result back as a `tool`
+message, and fails unless the final answer carries that code. So it proves the
+whole path end to end: `tools` reaching the model, the host's `<tool_call>`
+markup being read back into `message.tool_calls`, `finish_reason` switching to
+`tool_calls`, the call's id surviving the round trip, and the model actually
+using what the tool returned.
+
+It **skips** on a host older than **v7.5.0**, which is where tool calling
+starts — older hosts drop `tools` before the request leaves the SDK. The
+browser mock reports `v7.5.0` and stands in for a model that uses its tools, so
+the check runs there too.
+
+It is exempt from the watchdog: it takes at least two full generations, plus
+the prompt reprocessing between them, which on-device runs well past 45s. Its
+log records every round — `finish_reason`, the prose, and each call with its
+arguments and id — so a model that answers without calling the tool, or calls
+it with the wrong arguments, is visible rather than just a red dot.
 
 ## Concurrency checks
 
@@ -60,9 +83,9 @@ The **Concurrency** group covers the per-lane bridge change:
 
 ## Notes for the host run
 
-- *Heavy* checks include chat interfaces and operations with real host side
-  effects (audio playback, image generation, music generation, microphone
-  access). Leave them off unless you're testing them.
+- *Heavy* checks include chat interfaces, tool calling, and operations with real
+  host side effects (audio playback, image generation, music generation,
+  microphone access). Leave them off unless you're testing them.
 - Write checks are labelled and use `[diagnostics]` content. The scheduled-chat
   and scheduled-notification checks cancel what they create; the notification
   probe uses the mini-app's bundled `icon.png` and verifies it disappears from

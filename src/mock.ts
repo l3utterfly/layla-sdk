@@ -67,6 +67,29 @@ type MockReply =
   | Iterable<string>
   | AsyncIterable<string>;
 
+/** A function tool a request declared, as `respond` sees it. */
+export interface MockChatTool {
+  name: string;
+  description?: string;
+  parameters?: Record<string, unknown>;
+}
+
+/**
+ * The raw OpenAI request body behind a generation, handed to `respond`
+ * alongside the flattened messages.
+ *
+ * Only the `send_message_v2` path has one — the older `send_message` command
+ * carries messages and nothing else — so this is `null` whenever the SDK
+ * decided the host was too old for the richer command. Answering a request
+ * that declared tools is what makes it worth reading: see {@link mockToolCall}.
+ */
+export interface MockChatRequest {
+  /** The body exactly as the mini-app sent it. */
+  body: Record<string, unknown>;
+  /** The function tools it declared; empty when it declared none. */
+  tools: MockChatTool[];
+}
+
 type MockChatHistorySource =
   | LaylaChatHistoryEntry[]
   | Record<string, LaylaChatHistoryEntry[]>;
@@ -161,7 +184,10 @@ export interface LaylaMockOptions {
    * (async) iterable of tokens for full control over timing/content. May be
    * async. Defaults to a canned reply that echoes the last user message.
    */
-  respond?: (messages: LaylaChatMessage[]) => MockReply | Promise<MockReply>;
+  respond?: (
+    messages: LaylaChatMessage[],
+    request: MockChatRequest | null,
+  ) => MockReply | Promise<MockReply>;
   /** Cards returned by `get_characters`. Defaults to two sample cards. */
   characters?: LaylaCharacter[];
   /**
@@ -380,6 +406,70 @@ export interface LaylaMockHandle {
 }
 
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/**
+ * The function tools an OpenAI request body declared. Hosted tools (web search
+ * and the like) have no local equivalent and are left out, mirroring what the
+ * real host does with them.
+ */
+function readTools(value: unknown): MockChatTool[] {
+  if (!Array.isArray(value)) return [];
+  const tools: MockChatTool[] = [];
+  for (const entry of value) {
+    const tool = (entry ?? {}) as { type?: unknown; function?: unknown };
+    if (tool.type !== 'function') continue;
+    const fn = (tool.function ?? {}) as {
+      name?: unknown;
+      description?: unknown;
+      parameters?: unknown;
+    };
+    if (typeof fn.name !== 'string' || fn.name.length === 0) continue;
+    tools.push({
+      name: fn.name,
+      ...(typeof fn.description === 'string'
+        ? { description: fn.description }
+        : {}),
+      ...(fn.parameters && typeof fn.parameters === 'object'
+        ? { parameters: fn.parameters as Record<string, unknown> }
+        : {}),
+    });
+  }
+  return tools;
+}
+
+/**
+ * Render a tool call the way the host does, for a `respond` hook answering a
+ * request that declared tools.
+ *
+ * The host has one string to stream a reply through, so it collapses a
+ * completion's tool calls into the message text as `<tool_call>` blocks and the
+ * SDK reads them back into `message.tool_calls`. Returning the markup from
+ * `respond` is therefore how a mock asks for a tool:
+ *
+ * ```ts
+ * respond: (messages, request) => {
+ *   const tool = request?.tools[0];
+ *   if (!tool) return 'No tools were offered.';
+ *   return `Looking that up. ${mockToolCall(tool.name, { city: 'Berlin' })}`;
+ * }
+ * ```
+ *
+ * Several calls in one reply are separated by a newline, as the host separates
+ * them.
+ */
+export function mockToolCall(
+  name: string,
+  args: unknown = {},
+  id = `call_mock_${Math.random().toString(36).slice(2, 10)}`,
+): string {
+  const argumentsJson =
+    typeof args === 'string' ? args : JSON.stringify(args ?? {});
+  return (
+    `<tool_call>{"name":${JSON.stringify(name)},` +
+    `"arguments":${argumentsJson},` +
+    `"tool_call_id":${JSON.stringify(id)}}</tool_call>`
+  );
+}
 
 /**
  * Flatten OpenAI-shaped request messages into Layla chat messages. Only the
@@ -647,9 +737,10 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
 
   async function* tokenSource(
     messages: LaylaChatMessage[],
+    request: MockChatRequest | null,
   ): AsyncGenerator<string> {
     const produced = options.respond
-      ? await options.respond(messages)
+      ? await options.respond(messages, request)
       : defaultReply(messages);
 
     if (typeof produced === 'string') {
@@ -679,16 +770,21 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
    */
   function handleSendV2(raw: string): Promise<void> {
     let messages: LaylaChatMessage[] = [];
+    let request: MockChatRequest | null = null;
     try {
-      const body = JSON.parse(raw) as { messages?: unknown };
+      const body = JSON.parse(raw) as Record<string, unknown>;
       messages = openAIMessagesToLayla(body.messages);
+      request = { body, tools: readTools(body.tools) };
     } catch {
       // Fall through with no messages; `respond` still gets to answer.
     }
-    return handleSend(messages);
+    return handleSend(messages, request);
   }
 
-  async function handleSend(messages: LaylaChatMessage[]): Promise<void> {
+  async function handleSend(
+    messages: LaylaChatMessage[],
+    request: MockChatRequest | null = null,
+  ): Promise<void> {
     const gen = { cancelled: false };
     current = gen;
     try {
@@ -701,7 +797,7 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
       }
 
       let snapshot = '';
-      for await (const delta of tokenSource(messages)) {
+      for await (const delta of tokenSource(messages, request)) {
         if (gen.cancelled) return;
         snapshot += delta;
         emit({ event: 'on_message', data: { msg: snapshot, delta } });

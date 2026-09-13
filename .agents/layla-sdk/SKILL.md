@@ -347,6 +347,11 @@ SDK reads that back out, so `message.content` holds the prose only and the
 markup never reaches the UI. A reply that was nothing but tool calls has
 `content: ''` (not `null`, unlike OpenAI).
 
+To exercise a tool loop locally, the browser mock can stand in for a
+tool-using model: set `executionContext.app_version` to `'v7.5.0'` or newer so
+the SDK takes the richer path, read the declared tools from `respond`'s second
+argument, and return `mockToolCall(name, args)` as the reply.
+
 `ChatCompletionStream` is also async iterable:
 
 ```ts

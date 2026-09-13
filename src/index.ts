@@ -256,4 +256,5 @@ export type { LaylaSDKOptions } from './client';
 export { default } from './client';
 
 // Mock host (dev-only).
-export { installLaylaMock, makeMockCharacter } from './mock';
+export { installLaylaMock, makeMockCharacter, mockToolCall } from './mock';
+export type { MockChatRequest, MockChatTool } from './mock';

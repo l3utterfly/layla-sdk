@@ -1904,6 +1904,35 @@ The mock receives the same normalized `LaylaChatMessage[]` wire payload as the
 native host. Its default reply also notes when the last user message contains
 an image, which makes image-input UI easy to exercise locally.
 
+`respond` takes a second argument carrying the raw OpenAI request body, so a
+mock can answer the tools a request declared. It is `null` when the SDK took the
+older `send_message` path, which carries no request body — set
+`executionContext.app_version` to `'v7.5.0'` or newer to exercise the richer
+one. `mockToolCall(name, args?, id?)` renders a call the way the host does, so
+the SDK reads it back into `message.tool_calls`:
+
+```ts
+import { installLaylaMock, mockToolCall } from '@layla-network/sdk';
+
+installLaylaMock({
+  executionContext: { app_version: 'v7.5.0', character: null, session_id: null },
+  respond: (messages, request) => {
+    const tool = request?.tools[0];
+    if (!tool) return 'No tools were offered.';
+
+    // Answer from the result once it comes back, otherwise ask for the tool.
+    const result = messages.filter((m) => m.role === 'tool').at(-1);
+    if (result) return `The tool says: ${result.content}`;
+
+    return `Looking that up. ${mockToolCall(tool.name, { city: 'Berlin' })}`;
+  },
+});
+```
+
+`request.tools` lists the function tools the body declared (hosted tools are
+left out, as the real host leaves them out); `request.body` is the whole body
+if you need anything else from it.
+
 Customize the inference engines exposed by the mock:
 
 ```ts
