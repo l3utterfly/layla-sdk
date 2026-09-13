@@ -25,6 +25,7 @@ import type {
   ChatCompletionCreateParamsStreaming as OpenAICreateParamsStreaming,
   ChatCompletionDeveloperMessageParam as OpenAIDeveloperMessageParam,
   ChatCompletionMessageParam as OpenAIMessageParam,
+  ChatCompletionMessageToolCall as OpenAIMessageToolCall,
   ChatCompletionToolMessageParam as OpenAIToolMessageParam,
   ChatCompletionSystemMessageParam as OpenAISystemMessageParam,
   ChatCompletionUserMessageParam as OpenAIUserMessageParam,
@@ -36,6 +37,8 @@ import type {
   ChatCompletionCreateParamsNonStreaming,
   ChatCompletionCreateParamsStreaming,
   ChatCompletionMessageParam,
+  ChatCompletionMessageToolCall,
+  ChatCompletionToolCallDelta,
 } from '../src/resources/chat/types';
 import type { ChatCompletionStream } from '../src/resources/chat/stream';
 import type { Layla } from '../src/client';
@@ -163,6 +166,31 @@ expectAssignable<ChatCompletionCreateParamsNonStreaming>({
 
 /* ---- the documented output narrowings stay narrow ----------------------- */
 
-// Layla never returns `length`, `tool_calls` or `content_filter`.
+// Layla stops naturally, is cancelled, or stops to call tools -- never
+// `length` or `content_filter`.
 declare const finishReason: ChatCompletion['choices'][number]['finish_reason'];
-expectAssignable<'stop'>(finishReason);
+expectAssignable<'stop' | 'tool_calls'>(finishReason);
+
+/* ---- tool calls survive the round trip ---------------------------------- */
+
+// The host collapses tool calls into `<tool_call>` markup inside the message
+// text; the SDK reads them back, and what it returns has to be the shape an
+// OpenAI consumer already knows -- including being sendable straight back as
+// the assistant turn of the next request.
+declare const toolCall: ChatCompletionMessageToolCall;
+expectAssignable<OpenAIMessageToolCall>(toolCall);
+expectAssignable<OpenAIAssistantMessageParam['tool_calls']>([toolCall]);
+
+declare const toolCallDelta: ChatCompletionToolCallDelta;
+expectAssignable<OpenAIChatCompletionChunk.Choice.Delta.ToolCall>(toolCallDelta);
+
+declare const completionToolCalls: NonNullable<
+  ChatCompletion['choices'][number]['message']['tool_calls']
+>;
+expectAssignable<NonNullable<OpenAIChatCompletion.Choice['message']['tool_calls']>>(
+  completionToolCalls,
+);
+
+// A `tool` result quotes the call's id back, so the two line up by type.
+declare const toolResult: OpenAIToolMessageParam;
+expectAssignable<typeof toolResult.tool_call_id>(toolCall.id);

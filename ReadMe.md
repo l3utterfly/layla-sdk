@@ -6,7 +6,7 @@
       <img src="assets/layla.png" alt="Layla butterfly logo" width="160">
     </td>
     <td>
-      The Layla SDK project provides the public TypeScript SDK for building custom Layla mini-apps. Mini-apps run inside Layla's WebView and can use <code>@layla-network/sdk</code> to talk to Layla app host through an OpenAI-shaped API for chat, multimodal image input, streaming responses, contextual character-chat state and events, inference engine selection, scheduled chat messages and mini-app notifications, characters, character images, personas, memories, TTS playback and audio-file generation, speech-to-text microphone input, background audio playback, image generation, music generation with the Ace-Step model (the one-call pipeline plus its raw passes), a private per-mini-app sqlite database, private file utilities, and local development mocks.
+      The Layla SDK project provides the public TypeScript SDK for building custom Layla mini-apps. Mini-apps run inside Layla's WebView and can use <code>@layla-network/sdk</code> to talk to Layla app host through an OpenAI-shaped API for chat, tool calling, multimodal image input, streaming responses, contextual character-chat state and events, inference engine selection, scheduled chat messages and mini-app notifications, characters, character images, personas, memories, TTS playback and audio-file generation, speech-to-text microphone input, background audio playback, image generation, music generation with the Ace-Step model (the one-call pipeline plus its raw passes), a private per-mini-app sqlite database, private file utilities, and local development mocks.
     </td>
   </tr>
 </table>
@@ -35,6 +35,22 @@ const layla = new LaylaSDK();
 ```
 
 The SDK is designed for Layla's WebView runtime. It does not require an API key, base URL, or direct network LLM endpoint; requests are sent through the Layla host bridge.
+
+## Version Requirements
+
+The SDK talks to whatever Layla app it finds itself in, and takes the richest route that app supports. Most of the API works everywhere, but chat has two paths:
+
+| Capability | Requires |
+| --- | --- |
+| Tool calling — `tools`, `tool_choice`, `tool` messages, and `tool_calls` on the reply | Layla **v7.5.0-alpha** or newer, and `@layla-network/sdk` **7.5.0** or newer |
+| The full OpenAI request body reaching the model untranslated (multi-part content, several images per turn, an assistant turn's `tool_calls`) | Layla **v7.5.0-alpha** or newer, and `@layla-network/sdk` **7.5.0** or newer |
+| Everything else — chat, streaming, one image per message, characters, memories, TTS, images, music, database, files | Any supported Layla version |
+
+Call sites are identical on both paths: the SDK reads the host version itself and routes accordingly. On an older host the request is translated into Layla's narrower native protocol, and anything it cannot carry — `tools` among it — is dropped with a `console.warn` rather than rejected. A mini-app that depends on tool calling should check the host version before offering the feature:
+
+```ts
+const { app_version } = await layla.contextual.getExecutionContext();
+```
 
 ## Using the SDK with Agents
 
@@ -70,7 +86,7 @@ Each release contains:
 ## Learn More
 
 - Read the [mini-apps overview](.agents/layla-sdk/references/mini-apps-overview.md) to understand app packaging, metadata, and the Layla WebView runtime.
-- Read the [SDK API reference](.agents/layla-sdk/references/sdk-api.md) for imports, contextual execution state and chat events, chat completions, streaming, inference engine selection, chat sessions, session history, message saves, scheduled chat messages and mini-app notifications, memory list/top/save APIs, personas, TTS playback and audio-file generation, speech-to-text microphone input and events, background audio controls and events, characters, image generation, music generation and the raw Ace-Step passes, a private per-mini-app sqlite database, file utilities, abort handling, and errors.
+- Read the [SDK API reference](.agents/layla-sdk/references/sdk-api.md) for imports, contextual execution state and chat events, chat completions, streaming, tool calling, inference engine selection, chat sessions, session history, message saves, scheduled chat messages and mini-app notifications, memory list/top/save APIs, personas, TTS playback and audio-file generation, speech-to-text microphone input and events, background audio controls and events, characters, image generation, music generation and the raw Ace-Step passes, a private per-mini-app sqlite database, file utilities, abort handling, and errors.
 - Browse the [examples guide](examples/ReadMe.md) to choose a starting mini-app.
 
 ## Layla App

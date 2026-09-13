@@ -52,8 +52,8 @@ function warnIgnored(what: string, reason: string): void {
 /**
  * Translate OpenAI-shaped messages into the host's `send_message` payload.
  *
- * `tool` and `function` messages are dropped (Layla has no tool loop), so this
- * can return fewer messages than it was given.
+ * `tool` and `function` messages are dropped (a host on this path has no tool
+ * loop), so this can return fewer messages than it was given.
  */
 function toLaylaChatMessages(
   messages: ChatCompletionMessageParam[],
@@ -72,7 +72,7 @@ function toLaylaChatMessage(
   if (message.role === 'tool' || message.role === 'function') {
     warnIgnored(
       `\`${message.role}\` message`,
-      'was dropped: Layla has no tool loop',
+      'was dropped: tool calling needs Layla v7.5.0 or newer',
     );
     return null;
   }
@@ -380,6 +380,9 @@ export type {
   ChatCompletionCreateParamsBase,
   ChatCompletionCreateParamsNonStreaming,
   ChatCompletionCreateParamsStreaming,
+  ChatCompletionFinishReason,
   ChatCompletionMessage,
   ChatCompletionMessageParam,
+  ChatCompletionMessageToolCall,
+  ChatCompletionToolCallDelta,
 } from './types';

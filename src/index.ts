@@ -160,8 +160,11 @@ export type {
   ChatCompletionCreateParamsBase,
   ChatCompletionCreateParamsNonStreaming,
   ChatCompletionCreateParamsStreaming,
+  ChatCompletionFinishReason,
   ChatCompletionMessage,
   ChatCompletionMessageParam,
+  ChatCompletionMessageToolCall,
+  ChatCompletionToolCallDelta,
 } from './resources/chat';
 
 // Image resource surface.

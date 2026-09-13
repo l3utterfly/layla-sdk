@@ -221,14 +221,23 @@ const messages: ChatCompletionMessageParam[] = [
 ];
 ```
 
-The SDK accepts OpenAI's full request surface and ignores what Layla's protocol
-cannot carry, rather than rejecting the call. Layla supports one image per
-message, so remote image URLs and extra image parts are ignored, as are
-`input_audio` and `file` parts, `tool`/`function` messages, and sampling or
-tool fields such as `temperature` and `tools`. A `developer` message is treated
-as `system`. Each ignored message or content part is reported with a
-`console.warn`. The OpenAI `detail` field is accepted but has no Layla wire
-equivalent.
+The SDK accepts OpenAI's full request surface. How much of it reaches the model
+depends on the Layla app the mini-app is running in, and the SDK picks the route
+itself -- call sites are identical either way:
+
+- **Layla v7.5.0-alpha and above, with `@layla-network/sdk` 7.5.0 and above**:
+  the request body is forwarded to the host untranslated, so `tools`,
+  `tool_choice`, `tool`-role messages, multi-part content and multiple images
+  all survive. This is the path that supports tool calling.
+- **Older hosts**: the request is translated into Layla's narrower native
+  protocol, which ignores rather than rejects what it cannot carry. One image
+  per message, so remote image URLs and extra image parts are ignored, as are
+  `input_audio` and `file` parts, `tool`/`function` messages, and sampling or
+  tool fields such as `temperature` and `tools`. Each ignored message or content
+  part is reported with a `console.warn`.
+
+A `developer` message is treated as `system` on both paths. The OpenAI `detail`
+field is accepted but has no Layla wire equivalent.
 
 Use non-streaming chat when the UI only needs the final answer:
 
@@ -260,6 +269,83 @@ tags from visible content. The text inside the tags streams as
 (delta, snapshot) => ...)`, and appears on the final
 `choices[0].message.reasoning`. `finalContent()` returns only visible assistant
 content.
+
+### Tool calling
+
+Tool calling needs **Layla v7.5.0-alpha or newer** and **`@layla-network/sdk`
+7.5.0 or newer**. On an older host the `tools` field is dropped, the model never
+sees the tools, and replies come back as ordinary text -- so a mini-app that
+depends on tools should check the host version first:
+
+```ts
+const { app_version } = await layla.contextual.getExecutionContext();
+```
+
+Declare tools with OpenAI's shape and run the loop yourself. The SDK reports a
+reply that asked for tools with `finish_reason: 'tool_calls'`:
+
+```ts
+const tools = [
+  {
+    type: 'function' as const,
+    function: {
+      name: 'get_weather',
+      description: 'Current weather for a city.',
+      parameters: {
+        type: 'object',
+        properties: { city: { type: 'string' } },
+        required: ['city'],
+      },
+    },
+  },
+];
+
+const messages: ChatCompletionMessageParam[] = [
+  { role: 'user', content: 'What is the weather in Berlin?' },
+];
+
+const completion = await layla.chat.completions.create({ messages, tools });
+const reply = completion.choices[0];
+
+if (reply.finish_reason === 'tool_calls') {
+  // Send the assistant turn back exactly as the SDK handed it over.
+  messages.push({
+    role: 'assistant',
+    content: reply.message.content,
+    tool_calls: reply.message.tool_calls,
+  });
+
+  for (const call of reply.message.tool_calls ?? []) {
+    const args = JSON.parse(call.function.arguments);
+    messages.push({
+      role: 'tool',
+      tool_call_id: call.id,
+      content: JSON.stringify(await runTool(call.function.name, args)),
+    });
+  }
+
+  const answer = await layla.chat.completions.create({ messages, tools });
+}
+```
+
+`function.arguments` is raw JSON text, exactly as the model wrote it. The model
+may produce invalid JSON or invent parameters, so wrap the `JSON.parse` and
+validate the result before acting on it.
+
+While streaming, each call arrives once, whole, as a `tool_calls` delta and as a
+`toolCall` event -- the host writes the call's id last, so there is nothing to
+act on before the call is complete:
+
+```ts
+stream.on('toolCall', (call) => {
+  showPendingTool(call.function.name);
+});
+```
+
+The host carries tool calls inside the message text as `<tool_call>` markup. The
+SDK reads that back out, so `message.content` holds the prose only and the
+markup never reaches the UI. A reply that was nothing but tool calls has
+`content: ''` (not `null`, unlike OpenAI).
 
 `ChatCompletionStream` is also async iterable:
 
