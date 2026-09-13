@@ -150,13 +150,17 @@ export type { RequestOptions } from './internal/one-shot';
 export { ChatCompletionStream } from './resources/chat';
 export type {
   ChatCompletion,
+  ChatCompletionChoice,
   ChatCompletionChunk,
+  ChatCompletionChunkChoice,
+  ChatCompletionChunkDelta,
   ChatCompletionContentPart,
   ChatCompletionContentPartImage,
   ChatCompletionContentPartText,
   ChatCompletionCreateParamsBase,
   ChatCompletionCreateParamsNonStreaming,
   ChatCompletionCreateParamsStreaming,
+  ChatCompletionMessage,
   ChatCompletionMessageParam,
 } from './resources/chat';
 

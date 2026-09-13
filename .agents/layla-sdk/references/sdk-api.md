@@ -308,11 +308,16 @@ const completion = await layla.chat.completions.create({
 
 Before posting `send_message`, the SDK joins any `text` parts into the Layla
 message's `content` field and moves the data URL into the native protocol's
-`image_base64` field. The native protocol supports one image per message, so
-the SDK rejects messages with multiple `image_url` parts. Although OpenAI's
-shape also permits remote image URLs, Layla's protocol requires base64 data;
-remote URLs are therefore rejected. `detail` is accepted for API compatibility
-but is not sent because the Layla protocol has no corresponding field.
+`image_base64` field.
+
+The SDK accepts OpenAI's full request surface and ignores what Layla's
+protocol cannot carry, rather than rejecting the call. The native protocol
+supports one image per message, so extra `image_url` parts are ignored.
+Layla's protocol requires base64 data, so remote image URLs are ignored.
+`input_audio` and `file` parts, and assistant `refusal` parts, are ignored.
+`detail` is accepted but not sent, because the Layla protocol has no
+corresponding field. Every ignored message or content part is reported with a
+`console.warn`, so nothing disappears silently.
 
 ## `layla.chat.completions.stream(...)`
 
@@ -2421,6 +2426,10 @@ Useful exported types include:
 - `ChatCompletionCreateParamsBase`
 - `ChatCompletionCreateParamsNonStreaming`
 - `ChatCompletionCreateParamsStreaming`
+- `ChatCompletionChoice`
+- `ChatCompletionChunkChoice`
+- `ChatCompletionChunkDelta`
+- `ChatCompletionMessage`
 
 Protocol types are also exported for host integration and advanced typing, but ordinary mini-apps should prefer the high-level SDK methods above.
 

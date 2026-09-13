@@ -6,7 +6,7 @@
  * and the stream class for the package barrel.
  */
 
-import { LaylaAbortError, LaylaError } from '../../errors';
+import { LaylaAbortError } from '../../errors';
 import type { LaylaApiEvent } from '../../interface';
 import type {
   LaylaApiEvent_onGetChatHistoryResponse,
@@ -19,13 +19,13 @@ import type {
   LaylaApiEvent_onSetInferenceEngineResponse,
   LaylaChatHistoryEntry,
   LaylaChatMessage,
+  LaylaChatRole,
   LaylaScheduledChatMessage,
 } from '../../protocol';
 import { LaylaBridge } from '../../internal/bridge';
 import { ChatCompletionStream } from './stream';
 import type {
   ChatCompletion,
-  ChatCompletionContentPartImage,
   ChatCompletionCreateParamsBase,
   ChatCompletionCreateParamsNonStreaming,
   ChatCompletionCreateParamsStreaming,
@@ -36,40 +36,97 @@ import { oneShot, type RequestOptions } from '../../internal/one-shot';
 const BASE64_IMAGE_DATA_URL =
   /^data:image\/(?:gif|jpe?g|png|webp);base64,/i;
 
+/**
+ * The SDK accepts the whole OpenAI request surface and forwards the part
+ * Layla's `send_message` protocol can carry. Anything it cannot carry is
+ * dropped rather than rejected, but never silently: dropping a message or an
+ * image the caller supplied is invisible otherwise.
+ */
+function warnIgnored(what: string, reason: string): void {
+  console.warn(`[layla-sdk] ${what} ${reason}.`);
+}
+
+/**
+ * Translate OpenAI-shaped messages into the host's `send_message` payload.
+ *
+ * `tool` and `function` messages are dropped (Layla has no tool loop), so this
+ * can return fewer messages than it was given.
+ */
+function toLaylaChatMessages(
+  messages: ChatCompletionMessageParam[],
+): LaylaChatMessage[] {
+  const translated: LaylaChatMessage[] = [];
+  for (const message of messages) {
+    const laylaMessage = toLaylaChatMessage(message);
+    if (laylaMessage) translated.push(laylaMessage);
+  }
+  return translated;
+}
+
 function toLaylaChatMessage(
   message: ChatCompletionMessageParam,
-): LaylaChatMessage {
-  if (!Array.isArray(message.content)) {
-    return {
-      role: message.role,
-      content: message.content,
-      name: message.name,
-    };
+): LaylaChatMessage | null {
+  if (message.role === 'tool' || message.role === 'function') {
+    warnIgnored(
+      `\`${message.role}\` message`,
+      'was dropped: Layla has no tool loop',
+    );
+    return null;
   }
 
-  const textParts = message.content
-    .filter((part) => part.type === 'text')
-    .map((part) => part.text);
-  const images = message.content.filter(
-    (part): part is ChatCompletionContentPartImage =>
-      part.type === 'image_url',
-  );
+  // `developer` is OpenAI's rename of `system`; the host only knows `system`.
+  const role: LaylaChatRole =
+    message.role === 'developer' ? 'system' : message.role;
 
-  if (images.length > 1) {
-    throw new LaylaError(
-      'Layla supports at most one image_url content part per chat message.',
-    );
+  // OpenAI types assistant content as optional; the Layla protocol always
+  // carries the field, with `null` standing in for "no content".
+  const content = message.content ?? null;
+
+  if (!Array.isArray(content)) {
+    return { role, content, name: message.name };
   }
 
-  const imageUrl = images[0]?.image_url.url;
-  if (imageUrl && !BASE64_IMAGE_DATA_URL.test(imageUrl)) {
-    throw new LaylaError(
-      'Layla image inputs must use a base64 data URL for a PNG, JPEG, GIF, or WEBP image. Remote image URLs cannot be translated to the Layla image_base64 protocol field.',
-    );
+  const textParts: string[] = [];
+  let imageUrl: string | undefined;
+
+  for (const part of content) {
+    switch (part.type) {
+      case 'text':
+        textParts.push(part.text);
+        break;
+      case 'image_url': {
+        const url = part.image_url.url;
+        if (!BASE64_IMAGE_DATA_URL.test(url)) {
+          // The protocol field is `image_base64`; a remote URL has nothing to
+          // translate to, and the host cannot fetch it.
+          warnIgnored(
+            'Remote image_url',
+            'was ignored: Layla image inputs must be a base64 data URL for a PNG, JPEG, GIF, or WEBP image',
+          );
+          break;
+        }
+        if (imageUrl) {
+          warnIgnored(
+            'Extra image_url part',
+            'was ignored: Layla supports at most one image per chat message',
+          );
+          break;
+        }
+        imageUrl = url;
+        break;
+      }
+      default:
+        // `input_audio`, `file`, and assistant `refusal` parts.
+        warnIgnored(
+          `\`${part.type}\` content part`,
+          'was ignored: it has no representation in the Layla protocol',
+        );
+        break;
+    }
   }
 
   return {
-    role: message.role,
+    role,
     content: textParts.length > 0 ? textParts.join('\n') : null,
     name: message.name,
     ...(imageUrl ? { image_base64: imageUrl } : {}),
@@ -128,7 +185,7 @@ class Completions {
     LaylaBridge.shared().enqueue({
       message: {
         cmd: 'send_message',
-        data: messages.map(toLaylaChatMessage),
+        data: toLaylaChatMessages(messages),
       },
       sink: stream,
       // All chat generations share the `on_message*` event shape, so they
@@ -291,12 +348,16 @@ export class Chat {
 export { ChatCompletionStream } from './stream';
 export type {
   ChatCompletion,
+  ChatCompletionChoice,
   ChatCompletionChunk,
+  ChatCompletionChunkChoice,
+  ChatCompletionChunkDelta,
   ChatCompletionContentPart,
   ChatCompletionContentPartImage,
   ChatCompletionContentPartText,
   ChatCompletionCreateParamsBase,
   ChatCompletionCreateParamsNonStreaming,
   ChatCompletionCreateParamsStreaming,
+  ChatCompletionMessage,
   ChatCompletionMessageParam,
 } from './types';

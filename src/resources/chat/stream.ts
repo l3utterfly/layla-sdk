@@ -323,7 +323,7 @@ export class ChatCompletionStream
       object: 'chat.completion.chunk',
       created: this.created,
       model: this.model,
-      choices: [{ index: 0, delta, finish_reason: finish }],
+      choices: [{ index: 0, delta, finish_reason: finish, logprobs: null }],
     };
   }
 
@@ -331,6 +331,9 @@ export class ChatCompletionStream
     const message: ChatCompletion['choices'][number]['message'] = {
       role: 'assistant',
       content: this.contentSnapshot,
+      // Required by the OpenAI ChatCompletionMessage shape. Layla has no
+      // refusal channel, so it is always null.
+      refusal: null,
     };
     if (this.reasoningSnapshot) message.reasoning = this.reasoningSnapshot;
 
@@ -344,6 +347,9 @@ export class ChatCompletionStream
           index: 0,
           message,
           finish_reason: 'stop',
+          // Required by the OpenAI ChatCompletion.Choice shape; Layla does not
+          // expose token log probabilities.
+          logprobs: null,
         },
       ],
     };

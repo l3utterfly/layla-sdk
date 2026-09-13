@@ -221,9 +221,14 @@ const messages: ChatCompletionMessageParam[] = [
 ];
 ```
 
-Layla supports one image per message. Remote image URLs and multiple image
-parts are rejected because the native protocol accepts one base64 image. The
-OpenAI `detail` field is accepted but has no Layla wire equivalent.
+The SDK accepts OpenAI's full request surface and ignores what Layla's protocol
+cannot carry, rather than rejecting the call. Layla supports one image per
+message, so remote image URLs and extra image parts are ignored, as are
+`input_audio` and `file` parts, `tool`/`function` messages, and sampling or
+tool fields such as `temperature` and `tools`. A `developer` message is treated
+as `system`. Each ignored message or content part is reported with a
+`console.warn`. The OpenAI `detail` field is accepted but has no Layla wire
+equivalent.
 
 Use non-streaming chat when the UI only needs the final answer:
 
