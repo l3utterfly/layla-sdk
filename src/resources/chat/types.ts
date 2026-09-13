@@ -9,11 +9,13 @@
  * deliberately permissive in and strict out:
  *
  * - **In**: the parameter types are OpenAI's own, so any request body that
- *   type-checks against the OpenAI SDK type-checks here. Layla's host protocol
- *   is narrower than the OpenAI API, and everything it cannot represent is
- *   accepted and ignored rather than rejected — see the notes on
- *   `ChatCompletionCreateParamsBase` and `ChatCompletionMessageParam` for the
- *   exact list.
+ *   type-checks against the OpenAI SDK type-checks here. How much of that body
+ *   reaches the model depends on the Layla app the mini-app runs in: 7.5.0 and
+ *   newer take the request untranslated, while older hosts read a narrower
+ *   protocol and everything it cannot represent is accepted and ignored rather
+ *   than rejected — see the notes on `ChatCompletionCreateParamsBase` and
+ *   `ChatCompletionMessageParam` for the exact list. The SDK picks the route
+ *   itself; call sites are identical either way.
  * - **Out**: the response types are *narrowings* of OpenAI's. Anything Layla
  *   emits is assignable to the corresponding OpenAI type, and the SDK fills in
  *   sensible defaults (`refusal: null`, `logprobs: null`) for the fields
@@ -47,9 +49,9 @@ export type ChatCompletionContentPartText = OpenAIChatCompletionContentPartText;
 /**
  * An image input part in an OpenAI-style chat message.
  *
- * OpenAI accepts a remote URL or a base64 data URL in `image_url.url`. Layla's
- * protocol only has an `image_base64` field, so a base64 data URL is forwarded
- * and a remote URL is ignored.
+ * OpenAI accepts a remote URL or a base64 data URL in `image_url.url`. On
+ * Layla hosts older than 7.5.0 the protocol only has an `image_base64` field,
+ * so a base64 data URL is forwarded and a remote URL is ignored.
  */
 export type ChatCompletionContentPartImage =
   OpenAIChatCompletionContentPartImage;
@@ -57,9 +59,10 @@ export type ChatCompletionContentPartImage =
 /**
  * OpenAI's full content-part union, accepted as-is.
  *
- * Layla forwards `text` parts and one `image_url` part carrying a base64 data
- * URL. `input_audio`, `file`, `refusal` parts, additional images, and remote
- * image URLs are accepted and ignored.
+ * Layla 7.5.0 and newer receive every part as written. Older hosts take `text`
+ * parts and one `image_url` part carrying a base64 data URL; `input_audio`,
+ * `file`, `refusal` parts, additional images, and remote image URLs are
+ * accepted and ignored there.
  */
 export type ChatCompletionContentPart = OpenAIChatCompletionContentPart;
 
@@ -69,7 +72,8 @@ export type ChatCompletionContentPart = OpenAIChatCompletionContentPart;
  * OpenAI's `ChatCompletionMessageParam` union, accepted as-is, so message
  * arrays written for the OpenAI SDK can be passed straight through.
  *
- * Layla's host protocol understands `system`, `user` and `assistant`. The SDK
+ * Layla 7.5.0 and newer receive the messages exactly as written. On older
+ * hosts the protocol understands `system`, `user` and `assistant`, and the SDK
  * degrades the rest rather than rejecting it:
  *
  * - `developer` is folded into `system` (it is OpenAI's rename of that role).
@@ -151,13 +155,18 @@ export interface ChatCompletion
  * `signal`. Every OpenAI field is accepted so existing OpenAI call sites
  * compile unchanged.
  *
- * The Layla host only consumes `messages`. The remaining fields —
- * `temperature`, `top_p`, `max_tokens`, `max_completion_tokens`, `n`, `stop`,
- * `seed`, `tools`, `tool_choice`, `response_format`, `logprobs`, `modalities`,
- * `metadata`, `store` and the rest — are accepted for compatibility and
- * ignored; sampling and tool behaviour are decided by the host. `model` is
- * only echoed back on the returned objects unless you extend the
- * `send_message` protocol.
+ * Layla 7.5.0 and newer receive this body verbatim, so `temperature`,
+ * `model`, `tools` and the rest are the host's to interpret. Older hosts only
+ * consume `messages`: the remaining fields — `temperature`, `top_p`,
+ * `max_tokens`, `max_completion_tokens`, `n`, `stop`, `seed`, `tools`,
+ * `tool_choice`, `response_format`, `logprobs`, `modalities`, `metadata`,
+ * `store` and the rest — are accepted for compatibility and ignored there,
+ * with sampling and tool behaviour decided by the host and `model` only echoed
+ * back on the returned objects.
+ *
+ * `signal` never goes to the host on either route, and `stream` is the SDK's
+ * to decide: a completion is always generated as a stream and `stream: false`
+ * only means the SDK collects it before resolving.
  */
 export interface ChatCompletionCreateParamsBase
   extends Omit<OpenAIChatCompletionCreateParamsBase, 'model' | 'stream'> {

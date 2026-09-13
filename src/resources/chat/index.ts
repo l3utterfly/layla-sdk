@@ -23,6 +23,7 @@ import type {
   LaylaScheduledChatMessage,
 } from '../../protocol';
 import { LaylaBridge } from '../../internal/bridge';
+import { hostSupportsSendMessageV2 } from '../../internal/host-version';
 import { ChatCompletionStream } from './stream';
 import type {
   ChatCompletion,
@@ -37,10 +38,12 @@ const BASE64_IMAGE_DATA_URL =
   /^data:image\/(?:gif|jpe?g|png|webp);base64,/i;
 
 /**
- * The SDK accepts the whole OpenAI request surface and forwards the part
- * Layla's `send_message` protocol can carry. Anything it cannot carry is
+ * On the `send_message` path the SDK forwards only the part of the OpenAI
+ * request surface that Layla's protocol can carry. Anything it cannot carry is
  * dropped rather than rejected, but never silently: dropping a message or an
- * image the caller supplied is invisible otherwise.
+ * image the caller supplied is invisible otherwise. Hosts on the
+ * `send_message_v2` path read the request untranslated and drop nothing, so
+ * none of this runs for them.
  */
 function warnIgnored(what: string, reason: string): void {
   console.warn(`[layla-sdk] ${what} ${reason}.`);
@@ -133,6 +136,21 @@ function toLaylaChatMessage(
   };
 }
 
+/**
+ * Serialise the caller's request for `send_message_v2`, which carries the raw
+ * OpenAI body for the host to interpret itself.
+ *
+ * Nothing is translated. Two SDK-level fields are handled: `signal` is a Layla
+ * extension (and not serialisable), and `stream` is pinned on, because the
+ * host answers every generation over the streaming `on_message`/
+ * `on_message_end` pair regardless of how the caller consumes it.
+ */
+function toSendMessageV2Body(body: ChatCompletionCreateParamsBase): string {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { signal, ...request } = body;
+  return JSON.stringify({ ...request, stream: true });
+}
+
 class Completions {
   create(
     body: ChatCompletionCreateParamsNonStreaming,
@@ -143,11 +161,7 @@ class Completions {
   create(
     body: ChatCompletionCreateParamsBase,
   ): Promise<ChatCompletion | ChatCompletionStream> {
-    const stream = this.startStream(
-      body.messages,
-      body.model ?? 'layla',
-      body.signal,
-    );
+    const stream = this.startStream(body);
     if (body.stream) return Promise.resolve(stream);
     return stream.finalChatCompletion();
   }
@@ -159,15 +173,14 @@ class Completions {
   stream(
     body: Omit<ChatCompletionCreateParamsBase, 'stream'>,
   ): ChatCompletionStream {
-    return this.startStream(body.messages, body.model ?? 'layla', body.signal);
+    return this.startStream(body);
   }
 
   private startStream(
-    messages: ChatCompletionMessageParam[],
-    model: string,
-    signal?: AbortSignal,
+    body: ChatCompletionCreateParamsBase,
   ): ChatCompletionStream {
-    const stream = new ChatCompletionStream(model);
+    const stream = new ChatCompletionStream(body.model ?? 'layla');
+    const signal = body.signal;
 
     if (signal?.aborted) {
       // Never enqueue an already-aborted request.
@@ -182,15 +195,24 @@ class Completions {
       );
     }
 
-    LaylaBridge.shared().enqueue({
-      message: {
-        cmd: 'send_message',
-        data: toLaylaChatMessages(messages),
-      },
-      sink: stream,
-      // All chat generations share the `on_message*` event shape, so they
-      // serialise within a single lane; other surfaces run alongside them.
-      laneKey: 'on_message_end',
+    // Which command carries the request depends on the host's version, which
+    // is only knowable asynchronously — so the job is enqueued from a `then`
+    // while the public API stays synchronous. Nothing else changes: the answer
+    // is memoised after the first completion, concurrent callers resolve in
+    // the order they asked (so generations still reach the lane in call
+    // order), and a stream aborted before it is enqueued is simply dropped,
+    // exactly as one aborted while queued would be.
+    void hostSupportsSendMessageV2().then((useSendMessageV2) => {
+      if (stream.isClosed()) return;
+      LaylaBridge.shared().enqueue({
+        message: useSendMessageV2
+          ? { cmd: 'send_message_v2', data: toSendMessageV2Body(body) }
+          : { cmd: 'send_message', data: toLaylaChatMessages(body.messages) },
+        sink: stream,
+        // All chat generations share the `on_message*` event shape, so they
+        // serialise within a single lane; other surfaces run alongside them.
+        laneKey: 'on_message_end',
+      });
     });
     return stream;
   }

@@ -380,6 +380,56 @@ export interface LaylaMockHandle {
 }
 
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/**
+ * Flatten OpenAI-shaped request messages into Layla chat messages. Only the
+ * fields the mock's `respond` hook can use survive: array content collapses to
+ * its text parts, `developer` folds into `system`, and roles the protocol does
+ * not know are skipped.
+ */
+function openAIMessagesToLayla(value: unknown): LaylaChatMessage[] {
+  if (!Array.isArray(value)) return [];
+  const messages: LaylaChatMessage[] = [];
+  for (const entry of value) {
+    const message = (entry ?? {}) as {
+      role?: unknown;
+      content?: unknown;
+      name?: unknown;
+    };
+    const role = message.role === 'developer' ? 'system' : message.role;
+    if (
+      role !== 'system' &&
+      role !== 'user' &&
+      role !== 'assistant' &&
+      role !== 'tool'
+    ) {
+      continue;
+    }
+
+    let content: string | null = null;
+    if (typeof message.content === 'string') {
+      content = message.content;
+    } else if (Array.isArray(message.content)) {
+      const text = message.content
+        .filter(
+          (part): part is { type: 'text'; text: string } =>
+            !!part &&
+            (part as { type?: unknown }).type === 'text' &&
+            typeof (part as { text?: unknown }).text === 'string',
+        )
+        .map((part) => part.text)
+        .join('\n');
+      content = text.length > 0 ? text : null;
+    }
+
+    messages.push({
+      role,
+      content,
+      ...(typeof message.name === 'string' ? { name: message.name } : {}),
+    });
+  }
+  return messages;
+}
 const mockFileStoragePrefix = '@layla-network/sdk:mock:file:';
 const mockVoiceAudioDataUri =
   'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
@@ -619,6 +669,23 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
         yield* produced as Iterable<string>;
       }
     }
+  }
+
+  /**
+   * `send_message_v2` carries the raw OpenAI request body as a string, so the
+   * mock unpacks it into the chat messages the `respond` hook is written
+   * against — flattening OpenAI's content parts the same way the v1 payload
+   * already arrives flattened.
+   */
+  function handleSendV2(raw: string): Promise<void> {
+    let messages: LaylaChatMessage[] = [];
+    try {
+      const body = JSON.parse(raw) as { messages?: unknown };
+      messages = openAIMessagesToLayla(body.messages);
+    } catch {
+      // Fall through with no messages; `respond` still gets to answer.
+    }
+    return handleSend(messages);
   }
 
   async function handleSend(messages: LaylaChatMessage[]): Promise<void> {
@@ -2003,6 +2070,9 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
       switch (msg.cmd) {
         case 'send_message':
           void handleSend(msg.data);
+          break;
+        case 'send_message_v2':
+          void handleSendV2(msg.data);
           break;
         case 'cancel':
           handleCancel();

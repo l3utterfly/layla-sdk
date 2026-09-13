@@ -21,7 +21,7 @@ declare global {
 
 /* ---- chat messages --------------------------------------------------------- */
 
-export type LaylaChatRole = 'system' | 'user' | 'assistant';
+export type LaylaChatRole = 'system' | 'user' | 'assistant' | 'tool';
 
 /** An OpenAI-style chat message. */
 export interface LaylaChatMessage {
@@ -217,6 +217,12 @@ export interface LaylaExecutionContext {
 export interface LaylaApiSendMessage {
   cmd: 'send_message';
   data: LaylaChatMessage[];
+}
+
+/** Send a conversation for completion (a streaming request), for Layla v7.5.0 and above */
+export interface LaylaApiSendMessageV2 {
+  cmd: 'send_message_v2';
+  data: string;   // the full openai request body as string
 }
 
 /** Ask the host for the list of available character cards (a one-shot request). */
@@ -875,6 +881,7 @@ export interface LaylaApiDeleteFileOrDir {
  */
 export type BaseApiRequest =
   | LaylaApiSendMessage
+  | LaylaApiSendMessageV2
   | LaylaApiGetCharacters
   | LaylaApiGetCharacterImage
   | LaylaApiCancel
