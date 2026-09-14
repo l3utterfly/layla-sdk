@@ -6,6 +6,10 @@ on:
     branches: [main]
     paths:
       - '.agents/layla-sdk/**'
+      - 'src/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.json'
       - '.github/workflows/package-agent-skill.yml'
 
 permissions:
@@ -20,6 +24,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+          cache: npm
 
       - name: Read SDK version
         id: ver
@@ -33,13 +38,52 @@ jobs:
           test -f .agents/layla-sdk/references/sdk-api.md
           test -f .agents/layla-sdk/references/mini-apps-overview.md
 
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # The skill ships the generated declarations as references/types.d.ts so
+      # agents read real type definitions instead of guessing object shapes.
+      # They are built here and staged into the zip; no generated copy is
+      # committed to .agents/, so it can never go stale against src/.
+      - name: Build SDK declarations
+        run: npm run build
+
+      - name: Stage skill
+        id: stage
+        run: |
+          STAGE="$RUNNER_TEMP/layla-sdk-agent-skill"
+          rm -rf "$STAGE"
+          mkdir -p "$STAGE"
+          cp -R .agents/layla-sdk "$STAGE/layla-sdk"
+          cp dist/index.d.ts "$STAGE/layla-sdk/references/types.d.ts"
+          echo "stage=$STAGE" >> "$GITHUB_OUTPUT"
+
+      - name: Validate staged skill
+        run: |
+          STAGE="${{ steps.stage.outputs.stage }}"
+          TYPES="$STAGE/layla-sdk/references/types.d.ts"
+          test -s "$TYPES"
+          # A truncated or wrong-file copy should fail the build, not ship.
+          grep -q 'interface LaylaCharacter' "$TYPES"
+          grep -q 'declare class LaylaSDK' "$TYPES"
+          # Anything the docs promise is in the bundle must actually be there.
+          for f in SKILL.md references/sdk-api.md; do
+            if grep -q 'references/types.d.ts' "$STAGE/layla-sdk/$f"; then
+              echo "ok: $f references types.d.ts"
+            else
+              echo "error: $f no longer references references/types.d.ts" >&2
+              exit 1
+            fi
+          done
+
       - name: Package skill zip
         id: package
         run: |
           ZIP_NAME="layla-sdk-agent-skill-v${{ steps.ver.outputs.version }}.zip"
-          mkdir -p "$RUNNER_TEMP/layla-sdk-agent-skill"
-          cp -R .agents/layla-sdk "$RUNNER_TEMP/layla-sdk-agent-skill/layla-sdk"
-          cd "$RUNNER_TEMP/layla-sdk-agent-skill"
+          cd "${{ steps.stage.outputs.stage }}"
           zip -r "$GITHUB_WORKSPACE/$ZIP_NAME" layla-sdk
           echo "zip_name=$ZIP_NAME" >> "$GITHUB_OUTPUT"
           echo "zip_path=$GITHUB_WORKSPACE/$ZIP_NAME" >> "$GITHUB_OUTPUT"

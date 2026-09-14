@@ -2450,160 +2450,387 @@ installLaylaMock({
 
 ## Public Types
 
-Useful exported types include:
+Full, authoritative declarations for every exported type ship with this skill as
+`references/types.d.ts` — the generated `dist/index.d.ts` for the packaged SDK
+version. Read that file whenever you need a field name or an exact shape that is
+not spelled out below, rather than inferring one from an example.
 
-- `LaylaSDKOptions`
-- `RequestOptions`
-- `LaylaChatRole`
-- `LaylaChatMessage`
-- `LaylaChatHistoryEntry`
-- `LaylaScheduledChatMessage`
-- `LaylaScheduledNotification`
-- `LaylaMemory`
-- `LaylaPersona`
-- `LaylaTTSVoice`
-- `GenerateVoiceToFileResult`
-- `ExecuteSqlResult`
-- `STTSpeechRecognized`
-- `STTSpeechRecognizedListener`
-- `BackgroundAudioMetadata`
-- `BackgroundAudioTrackChanged`
-- `BackgroundAudioTrackChangedListener`
-- `BackgroundAudioStatus`
-- `BackgroundAudioStatusListener`
-- `BackgroundAudioFinished`
-- `BackgroundAudioFinishedListener`
-- `LaylaExecutionContext`
-- `ChatContextFinishedSpeaking`
-- `ChatContextFinishedSpeakingListener`
-- `ChatContextNewMessage`
-- `ChatContextNewMessageListener`
-- `ChatContextSentimentUpdate`
-- `ChatContextSentimentUpdateListener`
-- `ChatContextStartedSpeaking`
-- `ChatContextStartedSpeakingListener`
-- `ChatContextStartedThinking`
-- `ChatContextStartedThinkingListener`
-- `MemoryListOptions`
-- `LaylaApiEvent_onGetChatSessionsResponse`
-- `LaylaApiSaveChatMessage`
-- `LaylaApiEvent_onSaveChatMessageResponse`
-- `LaylaApiScheduledChatMessage`
-- `LaylaApiGetScheduledChatMessages`
-- `LaylaApiCancelScheduledChatMessage`
-- `LaylaApiEvent_onScheduledChatMessage`
-- `LaylaApiEvent_onGetScheduledChatMessagesResponse`
-- `LaylaApiEvent_onCancelScheduledChatMessage`
-- `LaylaApiScheduleNotification`
-- `LaylaApiGetScheduledNotifications`
-- `LaylaApiCancelScheduledNotification`
-- `LaylaApiEvent_onScheduleNotificationResponse`
-- `LaylaApiEvent_onGetScheduledNotificationsResponse`
-- `LaylaApiEvent_onCancelScheduledNotificationResponse`
-- `LaylaApiGetMemories`
-- `LaylaApiGetTopMemories`
-- `LaylaApiCreateOrUpdateMemories`
-- `LaylaApiGetPersona`
-- `LaylaApiGetTTSVoices`
-- `LaylaApiGenerateVoice`
-- `LaylaApiGenerateVoiceToFile`
-- `LaylaApiStopSpeaking`
-- `LaylaApiSTTStartListening`
-- `LaylaApiSTTStopListening`
-- `LaylaApiExecuteSql`
-- `LaylaApiAceStepGenerate`
-- `LaylaApiAceStepRequest`
-- `LaylaApiAceStepLm`
-- `LaylaApiAceStepSynth`
-- `LaylaApiAceStepUnderstand`
-- `LaylaApiAceStepVae`
-- `LaylaApiEvent_onAceStepGenerateResponse`
-- `LaylaApiEvent_onAceStepGenerateProgress`
-- `LaylaApiEvent_onAceStepLmResponse`
-- `LaylaApiEvent_onAceStepSynthResponse`
-- `LaylaApiEvent_onAceStepUnderstandResponse`
-- `LaylaApiEvent_onAceStepVaeResponse`
-- `LaylaApiStartBackgroundAudioPlayer`
-- `LaylaApiStopBackgroundAudioPlayer`
-- `LaylaApiPauseBackgroundAudioPlayer`
-- `LaylaApiResumeBackgroundAudioPlayer`
-- `LaylaApiSkipBackgroundAudioTrack`
-- `LaylaApiGetInferenceEngines`
-- `LaylaApiSetInferenceEngine`
-- `LaylaApiGetExecutionContext`
-- `LaylaApiEvent_onGetMemoriesResponse`
-- `LaylaApiEvent_onGetTopMemoriesResponse`
-- `LaylaApiEvent_onCreateOrUpdateMemoriesResponse`
-- `LaylaApiEvent_onGetPersonaResponse`
-- `LaylaApiEvent_onGetTTSVoicesResponse`
-- `LaylaApiEvent_onGetInferenceEnginesResponse`
-- `LaylaApiEvent_onSetInferenceEngineResponse`
-- `LaylaApiEvent_onGetExecutionContextResponse`
-- `LaylaApiEvent_onChatContextFinishedSpeaking`
-- `LaylaApiEvent_onChatContextNewMessage`
-- `LaylaApiEvent_onChatContextSentimentUpdate`
-- `LaylaApiEvent_onChatContextStartedSpeaking`
-- `LaylaApiEvent_onChatContextStartedThinking`
-- `LaylaApiEvent_onFinishedSpeaking`
-- `LaylaApiEvent_onGenerateVoiceToFileResponse`
-- `LaylaApiEvent_onBackgroundAudioTrackChanged`
-- `LaylaApiEvent_onBackgroundAudioStatus`
-- `LaylaApiEvent_onBackgroundAudioFinished`
-- `LaylaApiEvent_onSTTListeningStarted`
-- `LaylaApiEvent_onSTTSpeechRecognized`
-- `LaylaApiEvent_onSTTListeningStopped`
-- `LaylaApiEvent_onExecuteSqlResponse`
-- `LaylaApiSaveFile`
-- `LaylaApiEvent_onSaveFileResponse`
-- `LaylaApiReadFile`
-- `LaylaApiEvent_onReadFileResponse`
-- `LaylaApiListDir`
-- `LaylaApiEvent_onListDirResponse`
-- `LaylaApiDeleteFileOrDir`
-- `LaylaApiEvent_onDeleteFileOrDirResponse`
-- `ReadFileResult`
-- `SaveFileResult`
-- `ListDirResult`
-- `DeleteFileOrDirResult`
-- `ScheduleNotificationParams`
-- `ScheduleNotificationResult`
-- `GetScheduledNotificationsResult`
-- `CancelScheduledNotificationResult`
-- `AceStepRequest`
-- `AceStepProgress`
-- `AceStepProgressListener`
-- `AceStepPassOptions`
-- `AceStepLmOptions`
-- `AceStepSynthOptions`
-- `AceStepSynthResult`
-- `AceStepUnderstandOptions`
-- `AceStepUnderstandResult`
-- `AceStepUnderstandSource`
-- `AceStepVaeOptions`
-- `AceStepVaeResult`
-- `LaylaCharacter`
-- `TavernCardV2`
-- `SentimentValues`
-- `TavernCharacterBook`
-- `ChatCompletion`
-- `ChatCompletionChunk`
-- `ChatCompletionMessageParam`
-- `ChatCompletionContentPart`
-- `ChatCompletionContentPartText`
-- `ChatCompletionContentPartImage`
-- `ChatCompletionCreateParamsBase`
-- `ChatCompletionCreateParamsNonStreaming`
-- `ChatCompletionCreateParamsStreaming`
-- `ChatCompletionChoice`
-- `ChatCompletionChunkChoice`
-- `ChatCompletionChunkDelta`
-- `ChatCompletionMessage`
+The shapes below are the ones most mini-apps touch. They are reproduced from the
+same declarations; if the two ever disagree, `references/types.d.ts` wins.
 
-Protocol types are also exported for host integration and advanced typing, but ordinary mini-apps should prefer the high-level SDK methods above.
+### Chat and history
+
+```ts
+type LaylaChatRole = 'system' | 'user' | 'assistant' | 'tool';
+
+/** An OpenAI-style chat message. */
+interface LaylaChatMessage {
+  role: LaylaChatRole;
+  content: string | null;
+  name?: string;
+  image_base64?: string;
+}
+
+interface LaylaChatHistoryEntry extends LaylaChatMessage {
+  id: number;
+  character_id: string;
+  session_id: string;
+  timestamp: number;
+}
+
+interface LaylaScheduledChatMessage {
+  id: number;
+  character_id: string;
+  session_id: string | null;
+  timestamp: number;
+  message: string;
+}
+```
+
+`layla.chat.getChatSessions(...)` resolves to:
+
+```ts
+{
+  character_id: string;
+  sessions: {
+    session_id: string;
+    last_message_timestamp: number;
+    last_message_content: string;
+  }[];
+}
+```
+
+### Characters
+
+`layla.characters.list(...)` resolves to `LaylaCharacter[]`. Note the two `data`
+hops: `character.data` is the card, `character.data.data` is its fields.
+
+```ts
+interface LaylaCharacter {
+  id: string;
+  data: TavernCardV2;
+}
+
+/** A Character Card V2 (`chara_card_v2`) as returned by the host. */
+interface TavernCardV2 {
+  spec: 'chara_card_v2';
+  spec_version: '2.0';
+  data: {
+    name: string;
+    description: string;
+    personality: string;
+    scenario: string;
+    first_mes: string;
+    mes_example: string;
+    creator_notes: string;
+    system_prompt: string;
+    post_history_instructions: string;
+    alternate_greetings: string[];
+    character_book?: TavernCharacterBook;
+    tags: string[];
+    creator: string;
+    character_version: string;
+    extensions: Record<string, unknown>;
+  };
+}
+
+interface TavernCharacterBook {
+  name?: string;
+  description?: string;
+  scan_depth?: number;
+  token_budget?: number;
+  recursive_scanning?: boolean;
+  extensions: Record<string, unknown>;
+  entries: {
+    keys: string[];
+    content: string;
+    extensions: Record<string, unknown>;
+    enabled: boolean;
+    insertion_order: number;
+    case_sensitive?: boolean;
+    name?: string;
+    priority?: number;
+    id?: number;
+    comment?: string;
+    selective?: boolean;
+    secondary_keys?: string[];
+    constant?: boolean;
+    position?: 'before_char' | 'after_char';
+  }[];
+}
+```
+
+### Memories, personas, execution context
+
+```ts
+interface LaylaMemory {
+  id: number;
+  character_id: string;
+  session_id: string;
+  rawText: string;
+  timestamp: number;
+  summary: string | null;
+  knowledgeGraphJSON: string | null;
+}
+
+interface LaylaPersona {
+  name: string;
+  description: string;
+}
+
+interface LaylaExecutionContext {
+  app_version: string;
+  character: LaylaCharacter | null;
+  session_id: string | null;
+}
+
+interface MemoryListOptions extends RequestOptions {
+  /** Only return memories created after this timestamp. */
+  minTimestamp?: number;
+  /** Only return memories created before this timestamp. */
+  maxTimestamp?: number;
+}
+```
+
+### Options
+
+```ts
+interface LaylaSDKOptions {
+  /** Reserved for future use (e.g. default model). */
+  model?: string;
+}
+
+interface RequestOptions {
+  /** Abort the request from the consumer side. */
+  signal?: AbortSignal;
+}
+```
+
+### Chat completions
+
+These extend the OpenAI types, narrowed for Layla. `reasoning` is a Layla-only
+field carrying the text inside `<think>` blocks.
+
+```ts
+type ChatCompletionFinishReason = 'stop' | 'tool_calls';
+
+interface ChatCompletionMessage extends OpenAI.ChatCompletionMessage {
+  /** Narrowed from OpenAI's `string | null`. Tool-call-only replies give `''`. */
+  content: string;
+  /** Layla extension, not part of the OpenAI spec. */
+  reasoning?: string;
+  /** Present only when the reply asked for tools, i.e. `finish_reason === 'tool_calls'`. */
+  tool_calls?: ChatCompletionMessageToolCall[];
+}
+
+interface ChatCompletionChoice {
+  index: number;
+  finish_reason: ChatCompletionFinishReason;
+  message: ChatCompletionMessage;
+  logprobs: null; // Layla does not expose log probabilities.
+}
+
+interface ChatCompletion {
+  id: string;
+  object: 'chat.completion';
+  created: number;
+  model: string; // `'layla'` unless the caller set one.
+  choices: ChatCompletionChoice[];
+}
+
+/** A streamed delta. Layla always emits a single choice at index 0. */
+interface ChatCompletionChunkDelta {
+  role?: 'assistant';
+  content?: string | null;
+  reasoning?: string; // Layla extension.
+  tool_calls?: ChatCompletionToolCallDelta[];
+}
+
+interface ChatCompletionChunkChoice {
+  index: number;
+  delta: ChatCompletionChunkDelta;
+  /** `null` until the last chunk. */
+  finish_reason: ChatCompletionFinishReason | null;
+}
+
+interface ChatCompletionChunk {
+  id: string;
+  object: 'chat.completion.chunk';
+  created: number;
+  model: string;
+  choices: ChatCompletionChunkChoice[];
+}
+```
+
+`ChatCompletionCreateParamsBase` is OpenAI's request body with `model` relaxed to
+optional and a Layla-only `signal?: AbortSignal`. `ChatCompletionMessageParam`,
+`ChatCompletionContentPart`, `ChatCompletionContentPartText` and
+`ChatCompletionContentPartImage` are re-exported from OpenAI unchanged.
+
+### Voice, sentiment, database
+
+```ts
+type GenerateVoiceToFileResult = {
+  success: boolean;
+  audio_data_base64: string | null;
+  filename: string | null;
+  message?: string;
+};
+
+interface LaylaTTSVoice {
+  id: string;
+  type: string;
+  tags: string[];
+  name: string;
+}
+
+type STTSpeechRecognized = { transcript: string };
+type STTSpeechRecognizedListener = (data: STTSpeechRecognized) => void;
+
+type ExecuteSqlResult = {
+  /** Rows returned by the query (empty for writes). Each row is a column->value map. */
+  rows: any[];
+  /** Number of rows changed by an INSERT/UPDATE/DELETE. */
+  rowsAffected: number;
+  /** Row id of the last inserted row (0 when not applicable). */
+  insertId: number;
+};
+```
+
+`SentimentValues` is the shape of the sentiment threshold table, so
+`keyof SentimentValues` is the set of sentiment labels:
+
+```
+admiration, amusement, anger, annoyance, approval, caring, confusion,
+curiosity, desire, disappointment, disapproval, disgust, embarrassment,
+excitement, fear, gratitude, grief, joy, love, nervousness, optimism, pride,
+realization, relief, remorse, sadness, surprise, neutral
+```
+
+### Files and notifications
+
+```ts
+type SaveFileResult = { filename: string; success: boolean; message?: string };
+type ReadFileResult = { filename: string; content_base64: string | null; message?: string };
+type ListDirResult = { path: string; is_dir: boolean }[];
+type DeleteFileOrDirResult = null;
+
+interface LaylaScheduledNotification {
+  id: string;
+  icon: string | null;
+  message: string;
+  timestamp: number;
+}
+
+type ScheduleNotificationParams = {
+  message: string;
+  timestamp: number;
+  /** Relative image path inside the mini-app, or null for its default icon. */
+  icon?: string | null;
+};
+
+type ScheduleNotificationResult = LaylaScheduledNotification;
+type GetScheduledNotificationsResult = LaylaScheduledNotification[];
+type CancelScheduledNotificationResult = { id: string };
+```
+
+### Contextual chat events
+
+```ts
+type ChatContextNewMessage = {
+  message: LaylaChatMessage;
+  character_id: string;
+  session_id: string;
+  timestamp: number;
+};
+type ChatContextSentimentUpdate = { sentiment: keyof SentimentValues };
+type ChatContextStartedSpeaking = null;
+type ChatContextFinishedSpeaking = null;
+type ChatContextStartedThinking = null;
+```
+
+Each has a matching listener alias, e.g.
+`ChatContextNewMessageListener = (data: ChatContextNewMessage) => void`.
+
+### Background audio
+
+```ts
+type BackgroundAudioMetadata = {
+  title?: string;
+  artist?: string;
+  albumTitle?: string;
+  artworkUrl?: string;
+};
+
+type BackgroundAudioTrackChanged = { currentIndex: number; previousIndex: number };
+
+type BackgroundAudioStatus = {
+  playing: boolean;
+  currentIndex: number;
+  currentTime: number;
+  duration: number;
+  isLoaded: boolean;
+};
+
+type BackgroundAudioFinished = null;
+```
+
+Each has a matching listener alias, e.g.
+`BackgroundAudioStatusListener = (data: BackgroundAudioStatus) => void`.
+
+### Ace-Step
+
+`AceStepRequest` is documented in full under "Raw Ace-Step passes" above.
+The supporting types:
+
+```ts
+interface AceStepProgress {
+  /** Overall fraction, or null when the host cannot compute one. */
+  progress: number | null;
+  /** Phase label, e.g. "Loading models", "Generating music". */
+  status: string;
+  /** Position within the current phase. Restarts whenever `status` changes. */
+  current: number;
+  /** Units of work in the current phase. `<= 1` marks a one-shot phase. */
+  total: number;
+}
+
+type AceStepProgressListener = (progress: AceStepProgress) => void;
+
+interface AceStepPassOptions extends RequestOptions {
+  onProgress?: AceStepProgressListener;
+  /**
+   * Run the pass on the GPU where the host supports it. Only `acestep.synth`
+   * acts on this today; the other passes accept it and run on the CPU anyway.
+   */
+  useGpu?: boolean;
+}
+
+/** Exactly one of the two fields. */
+type AceStepUnderstandSource =
+  | { audioBase64: string; latentsBase64?: never }
+  | { latentsBase64: string; audioBase64?: never };
+```
+
+`AceStepLmOptions`, `AceStepSynthOptions`, `AceStepUnderstandOptions`,
+`AceStepVaeOptions` and the matching `*Result` types are in
+`references/types.d.ts`.
+
+### Protocol types
+
+Every `LaylaApi*` and `LaylaApiEvent_*` type is the wire contract with the native
+host. They are exported for host integration and advanced typing, and their full
+definitions are in `references/types.d.ts`. Ordinary mini-apps should use the
+high-level SDK methods above instead.
 
 ## Source of Truth
 
-The TypeScript source is the source of truth for current signatures:
+`references/types.d.ts`, bundled with this skill, holds the complete generated
+declarations for the packaged SDK version. Check it before this document
+whenever a type shape matters.
+
+If you have the SDK repository checked out, the TypeScript source is the source
+of truth for current signatures:
 
 - `src/index.ts`
 - `src/client.ts`

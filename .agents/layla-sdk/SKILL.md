@@ -10,6 +10,7 @@ Use `@layla-network/sdk` when building a third-party Layla mini-app that runs in
 The packaged skill is self-contained. Use the bundled references first:
 
 - Read `references/sdk-api.md` for SDK imports, method signatures, examples, exported types, mock usage, abort behavior, and error handling.
+- Read `references/types.d.ts` when you need a field name or the exact shape of a type. It is the generated TypeScript declaration file for the packaged SDK version and is authoritative — never guess an object shape or infer one from an example when this file is available.
 - Read `references/mini-apps-overview.md` for mini-app packaging, metadata, `index.html` versus `index.url`, WebView runtime expectations, and troubleshooting.
 
 If the bundled reference appears stale and internet access is available, check the public package source or release docs for the installed package version:
