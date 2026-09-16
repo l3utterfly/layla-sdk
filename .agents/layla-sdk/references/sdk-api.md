@@ -28,7 +28,8 @@ import LaylaSDK, {
   type LaylaPersona,
   type LaylaTTSVoice,
   type GenerateVoiceToFileResult,
-  type BackgroundAudioMetadata,
+  type BackgroundAudioTrack,
+  type BackgroundAudioMetadata, // deprecated: shared metadata for string queues
   type BackgroundAudioStatusListener,
   type BackgroundAudioTrackChangedListener,
   type BackgroundAudioFinishedListener,
@@ -60,7 +61,8 @@ import LaylaSDK, {
   type LaylaApiGenerateVoice,
   type LaylaApiGenerateVoiceToFile,
   type LaylaApiStopSpeaking,
-  type LaylaApiStartBackgroundAudioPlayer,
+  type LaylaApiStartBackgroundAudioPlayerV2,
+  type LaylaApiStartBackgroundAudioPlayer, // deprecated legacy request
   type LaylaApiStopBackgroundAudioPlayer,
   type LaylaApiPauseBackgroundAudioPlayer,
   type LaylaApiResumeBackgroundAudioPlayer,
@@ -1082,25 +1084,51 @@ Background music and long-form audio use the separate
 host protocol: each returned promise resolves when the command has been posted
 to the WebView bridge, not when playback reaches a particular state.
 
-Start a queue with `start(queueAudioFiles, metadata?)`. Starting again replaces
-the current queue. Local paths are resolved from the mini-app root; remote
-audio URLs may also be used.
+Start a queue with `start(tracks: BackgroundAudioTrack[]): Promise<void>`.
+Starting again replaces the current queue. Each track has a required `file`
+(a local path relative to the mini-app root or a remote audio URL) and its own
+optional metadata:
 
 ```ts
-await layla.backgroundAudio.start(
-  ['audio/intro.mp3', 'https://example.com/audio/episode.mp3'],
+const tracks: BackgroundAudioTrack[] = [
   {
-    title: 'A quiet journey',
+    file: 'audio/intro.mp3',
+    title: 'Intro',
     artist: 'Layla Mini-App',
     albumTitle: 'Stories',
     artworkUrl: 'https://example.com/artwork.jpg',
   },
-);
+  { file: 'https://example.com/audio/episode.mp3', title: 'Episode 1' },
+];
+await layla.backgroundAudio.start(tracks);
 ```
 
-`artworkUrl`, when provided, must be a remote HTTPS URL. The other metadata
-fields are optional and may be shown on the lock screen or in the media
-notification.
+`artworkUrl`, when provided, must be a remote HTTPS URL. Metadata may be shown
+on the lock screen or in the media notification for the current track.
+
+Both overloads use the same SDK method name, `start`. Non-empty object arrays
+send `start_background_audio_player_v2` with the tracks as the request data;
+the host must support that command. Dispatch is based on input shape, not host
+version. Do not mix strings and track objects or pass a second metadata
+argument with track objects.
+
+The legacy `start(queueAudioFiles: string[], metadata?: BackgroundAudioMetadata):
+Promise<void>` overload is deprecated but still works unchanged:
+
+```ts
+// Deprecated: shared metadata for the whole queue.
+await layla.backgroundAudio.start(['intro.mp3', 'chapter-1.mp3'], {
+  title: 'A quiet journey',
+  artist: 'Layla Mini-App',
+});
+```
+
+It sends the original `start_background_audio_player` command with
+`{ queueAudioFiles, metadata? }`. `BackgroundAudioMetadata` and
+`LaylaApiStartBackgroundAudioPlayer` remain exported and are deprecated;
+prefer `BackgroundAudioTrack` and `LaylaApiStartBackgroundAudioPlayerV2`.
+An empty array (`start([])`, including a typed empty track array) also uses
+the original command because its element shape cannot be distinguished.
 
 Control playback with:
 
@@ -2281,7 +2309,10 @@ background-audio event directly:
 const mock = installLaylaMock();
 
 layla.backgroundAudio.on('status', console.log);
-await layla.backgroundAudio.start(['intro.mp3', 'chapter-1.mp3']);
+await layla.backgroundAudio.start([
+  { file: 'intro.mp3', title: 'Intro' },
+  { file: 'chapter-1.mp3', title: 'Chapter 1' },
+]);
 await layla.backgroundAudio.skip();
 
 mock.emitBackgroundAudioTrackChanged({
@@ -2339,7 +2370,14 @@ installLaylaMock({
       start: ({ queueAudioFiles }) => {
         queue = queueAudioFiles;
         index = 0;
-        play();
+        if (queue.length) play();
+        else el.pause();
+      },
+      startV2: (tracks) => {
+        queue = tracks.map(track => track.file);
+        index = 0;
+        if (queue.length) play();
+        else el.pause();
       },
       stop: () => {
         el.pause();
@@ -2358,12 +2396,19 @@ installLaylaMock({
   },
 });
 
-await layla.backgroundAudio.start(['intro.mp3', 'chapter-1.mp3']);
+await layla.backgroundAudio.start([
+  { file: 'intro.mp3', title: 'Intro' },
+  { file: 'chapter-1.mp3', title: 'Chapter 1' },
+]);
 ```
 
-The controller's methods map one-to-one to `layla.backgroundAudio.start/stop/
-pause/resume/skip` (all fire-and-forget, so they return `void`). The `start`
-request also carries the optional `metadata` passed to `start(...)`. Emit
+The controller methods return `void`. Legacy commands call `start` with
+`{ queueAudioFiles, metadata? }`; V2 commands call the optional `startV2(tracks)`
+with all per-track metadata. Existing controllers can omit `startV2`: the mock
+then calls `start` with the file paths and the first track's metadata (later
+tracks' metadata is unavailable through this fallback). The public SDK method
+remains `layla.backgroundAudio.start(...)`; `startV2` is only a mock controller
+hook. `stop`, `pause`, `resume`, and `skip` retain their existing mapping. Emit
 `status`, `trackChanged`, and `finished` through the emitter to reach the app's
 `backgroundAudio.on(...)` listeners. When the mock is uninstalled it calls the
 controller's `stop()` once so it can release its audio resources. When
@@ -2755,6 +2800,15 @@ Each has a matching listener alias, e.g.
 ### Background audio
 
 ```ts
+type BackgroundAudioTrack = {
+  file: string;
+  title?: string;
+  artist?: string;
+  albumTitle?: string;
+  artworkUrl?: string; // remote HTTPS URL
+};
+
+/** @deprecated Use per-track metadata in BackgroundAudioTrack. */
 type BackgroundAudioMetadata = {
   title?: string;
   artist?: string;

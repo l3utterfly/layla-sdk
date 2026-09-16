@@ -55,6 +55,7 @@ import LaylaSDK, {
   type GenerateVoiceToFileResult,
   type ExecuteSqlResult,
   type STTSpeechRecognizedListener,
+  type BackgroundAudioTrack,
   type BackgroundAudioStatusListener,
   type BackgroundAudioTrackChangedListener,
   type BackgroundAudioFinishedListener,
@@ -123,7 +124,7 @@ await layla.tts.stopSpeaking();
 await layla.stt.startListening();
 layla.stt.on('speechRecognized', ({ transcript }) => {});
 await layla.stt.stopListening();
-await layla.backgroundAudio.start(audioFiles, metadata);
+await layla.backgroundAudio.start([{ file: 'intro.mp3', title: 'Intro' }]);
 await layla.backgroundAudio.pause();
 await layla.backgroundAudio.resume();
 await layla.backgroundAudio.skip();
@@ -643,16 +644,28 @@ confirms `stopListening()` with `on_stt_listening_stopped`.
 ## Background Audio
 
 Use the separate `layla.backgroundAudio` surface for background music,
-podcasts, and other queued audio. `start(audioFiles, metadata?)` replaces any
-existing queue. Local file paths resolve from the mini-app root. Metadata is
-optional; `artworkUrl`, when present, must be a remote HTTPS URL.
+podcasts, and other queued audio. Prefer `start(tracks)` with a
+`BackgroundAudioTrack[]`: each item has a required `file` and optional `title`,
+`artist`, `albumTitle`, and `artworkUrl`. Starting again replaces the existing
+queue. Local file paths resolve from the mini-app root; remote audio URLs also
+work. `artworkUrl`, when present, must be a remote HTTPS URL.
+
+The method name stays `start`: track objects select the host's
+`start_background_audio_player_v2` command. The deprecated
+`start(audioFiles: string[], metadata?)` overload still sends the original
+command unchanged. Empty arrays use the original command for compatibility.
+Do not mix strings and track objects or pass shared metadata with track objects.
 
 ```ts
-await layla.backgroundAudio.start(['intro.mp3', 'chapter-1.mp3'], {
-  title: 'A quiet journey',
-  artist: 'Layla Mini-App',
-  artworkUrl: 'https://example.com/artwork.jpg',
-});
+await layla.backgroundAudio.start([
+  {
+    file: 'intro.mp3',
+    title: 'Intro',
+    artist: 'Layla Mini-App',
+    artworkUrl: 'https://example.com/artwork.jpg',
+  },
+  { file: 'chapter-1.mp3', title: 'Chapter 1', artist: 'Layla Mini-App' },
+]);
 
 await layla.backgroundAudio.pause();
 await layla.backgroundAudio.resume();
