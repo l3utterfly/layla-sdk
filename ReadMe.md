@@ -36,6 +36,19 @@ const layla = new LaylaSDK();
 
 The SDK is designed for Layla's WebView runtime. It does not require an API key, base URL, or direct network LLM endpoint; requests are sent through the Layla host bridge.
 
+## Background Audio
+
+Start a queue with metadata for each track:
+
+```ts
+await layla.backgroundAudio.start([
+  { file: 'chapter-1.mp3', title: 'Chapter 1', artist: 'Narrator' },
+  { file: 'chapter-2.mp3', title: 'Chapter 2', artist: 'Narrator' },
+]);
+```
+
+Track objects use the host's `start_background_audio_player_v2` command. The existing `start(['chapter-1.mp3'], { title: 'Book' })` signature is deprecated but still sends the original command unchanged. An empty array also uses the original command to preserve compatibility. The `BackgroundAudioTrack` type is exported for typed queues.
+
 ## Version Requirements
 
 The SDK talks to whatever Layla app it finds itself in, and takes the richest route that app supports. Most of the API works everywhere, but chat has two paths:

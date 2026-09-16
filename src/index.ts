@@ -59,6 +59,7 @@ export type {
   LaylaApiSetInferenceEngine,
   LaylaApiGetExecutionContext,
   LaylaApiStartBackgroundAudioPlayer,
+  LaylaApiStartBackgroundAudioPlayerV2,
   LaylaApiStopBackgroundAudioPlayer,
   LaylaApiPauseBackgroundAudioPlayer,
   LaylaApiResumeBackgroundAudioPlayer,
@@ -223,6 +224,7 @@ export type {
 export { BackgroundAudio } from './resources/background-audio';
 export type {
   BackgroundAudioMetadata,
+  BackgroundAudioTrack,
   BackgroundAudioTrackChanged,
   BackgroundAudioTrackChangedListener,
   BackgroundAudioStatus,

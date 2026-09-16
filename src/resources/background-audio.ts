@@ -12,12 +12,16 @@ import type {
   LaylaApiEvent_onBackgroundAudioStatus,
   LaylaApiEvent_onBackgroundAudioTrackChanged,
   LaylaApiStartBackgroundAudioPlayer,
+  LaylaApiStartBackgroundAudioPlayerV2,
 } from '../protocol';
 import { LaylaBridgeUnavailableError, LaylaError } from '../errors';
 
+/** @deprecated Use per-track metadata in {@link BackgroundAudioTrack}. */
 export type BackgroundAudioMetadata = NonNullable<
   LaylaApiStartBackgroundAudioPlayer['data']['metadata']
 >;
+export type BackgroundAudioTrack =
+  LaylaApiStartBackgroundAudioPlayerV2['data'][number];
 export type BackgroundAudioTrackChanged =
   LaylaApiEvent_onBackgroundAudioTrackChanged['data'];
 export type BackgroundAudioStatus =
@@ -49,15 +53,34 @@ export class BackgroundAudio {
     new Set<BackgroundAudioFinishedListener>();
   private listening = false;
 
-  /** Start playback, replacing any existing background-audio queue. */
+  /**
+   * Start playback with per-track metadata, replacing the existing queue.
+   * An empty array uses the legacy command to preserve existing behavior.
+   */
+  start(tracks: BackgroundAudioTrack[]): Promise<void>;
+  /**
+   * Start playback, replacing any existing background-audio queue.
+   * @deprecated Pass an array of `{ file, title?, artist?, albumTitle?, artworkUrl? }` instead.
+   */
   start(
     queueAudioFiles: string[],
     metadata?: BackgroundAudioMetadata,
+  ): Promise<void>;
+  start(
+    tracks: string[] | BackgroundAudioTrack[],
+    metadata?: BackgroundAudioMetadata,
   ): Promise<void> {
+    if (tracks.length > 0 && typeof tracks[0] !== 'string') {
+      return this.post({
+        cmd: 'start_background_audio_player_v2',
+        data: tracks as BackgroundAudioTrack[],
+      });
+    }
+
     return this.post({
       cmd: 'start_background_audio_player',
       data: {
-        queueAudioFiles,
+        queueAudioFiles: tracks as string[],
         ...(metadata ? { metadata } : {}),
       },
     });

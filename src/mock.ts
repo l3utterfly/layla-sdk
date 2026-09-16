@@ -47,6 +47,7 @@ import type {
   LaylaApiEvent_onListDirResponse,
   LaylaApiEvent_onSTTSpeechRecognized,
   LaylaApiStartBackgroundAudioPlayer,
+  LaylaApiStartBackgroundAudioPlayerV2,
   LaylaCharacter,
   LaylaChatHistoryEntry,
   LaylaChatMessage,
@@ -167,6 +168,11 @@ export interface LaylaMockBackgroundAudioEmitter {
 export interface LaylaMockBackgroundAudioController {
   /** Handle `backgroundAudio.start(queueAudioFiles, metadata)`. */
   start(request: MockStartBackgroundAudioRequest): void;
+  /**
+   * Handle `backgroundAudio.start(tracks)` with per-track metadata.
+   * When omitted, falls back to `start` with file paths and the first track's metadata.
+   */
+  startV2?(tracks: LaylaApiStartBackgroundAudioPlayerV2['data']): void;
   /** Handle `backgroundAudio.stop()`. Also called once on mock uninstall. */
   stop(): void;
   /** Handle `backgroundAudio.pause()`. */
@@ -2086,6 +2092,21 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     });
   }
 
+  function handleStartBackgroundAudioPlayerV2(
+    tracks: LaylaApiStartBackgroundAudioPlayerV2['data'],
+  ): void {
+    if (customBackgroundAudio?.startV2) {
+      customBackgroundAudio.startV2(tracks);
+      return;
+    }
+
+    const { file: _file, ...metadata } = tracks[0] ?? {};
+    handleStartBackgroundAudioPlayer({
+      queueAudioFiles: tracks.map(track => track.file),
+      ...(tracks.length > 0 ? { metadata } : {}),
+    });
+  }
+
   function handleStopBackgroundAudioPlayer(): void {
     if (customBackgroundAudio) {
       customBackgroundAudio.stop();
@@ -2271,6 +2292,9 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
           break;
         case 'start_background_audio_player':
           handleStartBackgroundAudioPlayer(msg.data);
+          break;
+        case 'start_background_audio_player_v2':
+          handleStartBackgroundAudioPlayerV2(msg.data);
           break;
         case 'stop_background_audio_player':
           handleStopBackgroundAudioPlayer();

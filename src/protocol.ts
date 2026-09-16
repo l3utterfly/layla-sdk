@@ -569,6 +569,7 @@ export interface LaylaApiGetExecutionContext {
 }
 
 /**
+ * @deprecated Use LaylaApiStartBackgroundAudioPlayerV2 for per-track metadata.
  * Ask the host to start the background audio player and queue the provided audio files for playback.
  * There is no response event for this request. The host should start the background audio player and queue the provided audio files for playback in the order they are provided.
  * Starting the player while another queue is already playing replaces that queue entirely.
@@ -585,6 +586,22 @@ export interface LaylaApiStartBackgroundAudioPlayer {
       artworkUrl?: string; // must be a remote https url
     };
   };
+}
+
+/**
+ * Ask the host to start the background audio player and queue the provided audio files for playback.
+ * There is no response event for this request. The host should start the background audio player and queue the provided audio files for playback in the order they are provided.
+ * Starting the player while another queue is already playing replaces that queue entirely.
+ */
+export interface LaylaApiStartBackgroundAudioPlayerV2 {
+  cmd: 'start_background_audio_player_v2';
+  data: {
+    file: string;   // audio file path (local or remote) to queue for playback
+    title?: string;
+    artist?: string;
+    albumTitle?: string;
+    artworkUrl?: string; // must be a remote https url
+  }[];
 }
 
 /**
@@ -911,6 +928,7 @@ export type BaseApiRequest =
   | LaylaApiGetExecutionContext
   | LaylaApiGenerateVoiceToFile
   | LaylaApiStartBackgroundAudioPlayer
+  | LaylaApiStartBackgroundAudioPlayerV2
   | LaylaApiStopBackgroundAudioPlayer
   | LaylaApiPauseBackgroundAudioPlayer
   | LaylaApiResumeBackgroundAudioPlayer
