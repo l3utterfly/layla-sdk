@@ -49,6 +49,29 @@ await layla.backgroundAudio.start([
 
 Track objects use the host's `start_background_audio_player_v2` command. The existing `start(['chapter-1.mp3'], { title: 'Book' })` signature is deprecated but still sends the original command unchanged. An empty array also uses the original command to preserve compatibility. The `BackgroundAudioTrack` type is exported for typed queues.
 
+## Ace-Step Models
+
+List locally known music-model bundles and select one per generation request:
+
+```ts
+const models = await layla.acestep.getModels();
+const model = models.find(({ ready_for_use }) => ready_for_use);
+if (!model) throw new Error('No Ace-Step model is ready');
+
+const audio = await layla.acestep.generateMusic(
+  'A dreamy lo-fi hip-hop beat',
+  (progress, status) => console.log(progress, status),
+  undefined,
+  30,
+  { modelId: model?.modelId },
+);
+```
+
+Built-in bundles are returned even when unavailable; check `ready_for_use`
+before offering one. Raw `lm`, `synth`, `understand`, `vaeEncode`, and
+`vaeDecode` calls also accept `modelId` in their options. Keep the same ID
+across related raw passes.
+
 ## Version Requirements
 
 The SDK talks to whatever Layla app it finds itself in, and takes the richest route that app supports. Most of the API works everywhere, but chat has two paths:

@@ -32,12 +32,14 @@ import type {
   LaylaApiEvent_onGetChatSessionsResponse,
   LaylaApiEvent_onExecuteSqlResponse,
   LaylaApiEvent_onGetImageGenerationModelsResponse,
+  LaylaApiAceStepGetModelsResponse,
   LaylaApiEvent_onAceStepGenerateResponse,
   LaylaApiEvent_onAceStepLmResponse,
   LaylaApiEvent_onAceStepSynthResponse,
   LaylaApiEvent_onAceStepUnderstandResponse,
   LaylaApiEvent_onAceStepVaeResponse,
   LaylaApiAceStepRequest,
+  LaylaApiAceStepGenerate,
   LaylaApiAceStepLm,
   LaylaApiAceStepSynth,
   LaylaApiAceStepUnderstand,
@@ -121,6 +123,8 @@ type MockListDirResult = LaylaApiEvent_onListDirResponse['data'];
 
 type MockAceStepGenerateResult =
   LaylaApiEvent_onAceStepGenerateResponse['data'];
+
+type MockAceStepModel = LaylaApiAceStepGetModelsResponse['data'][number];
 
 type MockAceStepGenerateProgress =
   LaylaApiEvent_onAceStepGenerateProgress['data'];
@@ -285,6 +289,11 @@ export interface LaylaMockOptions {
    */
   imageGenerationModels?: MockImageGenerationModel[];
   /**
+   * Models returned by `acestep.getModels()`. Defaults include ready and
+   * unavailable built-in bundles plus one complete imported bundle.
+   */
+  aceStepModels?: MockAceStepModel[];
+  /**
    * Handle `db.executeSql(query, params)` calls. Return the query result the
    * mock should reply with (`rows`, `rowsAffected`, `insertId`). May be async,
    * so you can back it with an in-browser SQL engine (e.g. sql.js) for realistic
@@ -297,7 +306,9 @@ export interface LaylaMockOptions {
     params: unknown[],
   ) => MockExecuteSqlResult | Promise<MockExecuteSqlResult>;
   /**
-   * Handle `acestep.generateMusic(prompt, onProgress, lyrics, duration)` calls.
+   * Handle
+   * `acestep.generateMusic(prompt, onProgress, lyrics, duration, options)`
+   * calls.
    * Return the final result the mock replies with (`audio_data_base64`, which
    * should include a data URI prefix, and an optional `message`). Call the
    * provided `reportProgress` to drive `on_ace_step_generate_progress` events
@@ -306,7 +317,7 @@ export interface LaylaMockOptions {
    * five canned progress ticks and returns a tiny placeholder WAV data URI.
    */
   aceStepGenerate?: (
-    request: { prompt: string; lyrics?: string; duration?: number },
+    request: LaylaApiAceStepGenerate['data'],
     reportProgress: (progress: MockAceStepGenerateProgress) => void,
   ) => MockAceStepGenerateResult | Promise<MockAceStepGenerateResult>;
   /**
@@ -697,6 +708,11 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
       description: 'A higher-quality mock image model for local development.',
     },
   ];
+  const aceStepModels = options.aceStepModels ?? [
+    { modelId: 'ace-step-v1.5-turbo', ready_for_use: true },
+    { modelId: 'ace-step-v1.5-sft', ready_for_use: false },
+    { modelId: 'mock-imported-ace-step', ready_for_use: true },
+  ];
 
   // The single in-flight generation, mirroring the SDK's one-active-job model.
   let current: { cancelled: boolean } | null = null;
@@ -1047,11 +1063,22 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     });
   }
 
-  async function handleAceStepGenerate(data: {
-    prompt: string;
-    lyrics?: string;
-    duration?: number;
-  }): Promise<void> {
+  async function handleAceStepGetModels(): Promise<void> {
+    await delay(latencyMs);
+    if (shouldError()) {
+      emitError('Simulated Ace-Step models error');
+      return;
+    }
+
+    emit({
+      event: 'on_ace_step_get_models_response',
+      data: aceStepModels.map((model) => ({ ...model })),
+    });
+  }
+
+  async function handleAceStepGenerate(
+    data: LaylaApiAceStepGenerate['data'],
+  ): Promise<void> {
     await delay(latencyMs);
     if (shouldError()) {
       emitError('Simulated music generation error');
@@ -1060,11 +1087,7 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
 
     if (options.aceStepGenerate) {
       const result = await options.aceStepGenerate(
-        {
-          prompt: data.prompt,
-          lyrics: data.lyrics,
-          duration: data.duration,
-        },
+        { ...data },
         (progress) =>
           emit({ event: 'on_ace_step_generate_progress', data: progress }),
       );
@@ -2208,6 +2231,9 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
           break;
         case 'get_image_generation_models':
           void handleGetImageGenerationModels();
+          break;
+        case 'ace_step_get_models':
+          void handleAceStepGetModels();
           break;
         case 'ace_step_generate':
           void handleAceStepGenerate(msg.data);

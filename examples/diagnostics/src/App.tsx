@@ -45,6 +45,8 @@ interface CheckCtx {
   /** Cross-check cache (e.g. a character id resolved once and reused). */
   shared: {
     characters?: LaylaCharacter[];
+    /** A ready Ace-Step model selected by the model-list check. */
+    aceStepModelId?: string;
     /** An enriched request from the raw LM pass, rendered by the synth check. */
     aceStepTake?: AceStepRequest;
     /** A rendered track, reused as the source for understand/VAE. */
@@ -974,6 +976,7 @@ const groups: Group[] = [
             ["memories", layla.memories.list(cid, 0, 3)],
             ["sentiment", layla.classifier.getSentiment("great")],
             ["models", layla.images.getImageGenerationModels()],
+            ["musicModels", layla.acestep.getModels()],
             ["context", layla.contextual.getExecutionContext()],
             ["sql", layla.db.executeSql("SELECT 1")],
           ];
@@ -1163,6 +1166,29 @@ const groups: Group[] = [
         },
       },
       {
+        id: "acestep.getModels",
+        name: "acestep.getModels",
+        desc: "Lists built-in and imported Ace-Step bundles with their local readiness.",
+        weight: "safe",
+        run: async (ctx) => {
+          const models = await ctx.layla.acestep.getModels({
+            signal: ctx.signal,
+          });
+          assert(Array.isArray(models), "expected an array");
+          assert(
+            models.every(
+              (model) =>
+                typeof model.modelId === "string" &&
+                typeof model.ready_for_use === "boolean",
+            ),
+            "expected every model to have modelId and ready_for_use",
+          );
+          const ready = models.filter((model) => model.ready_for_use);
+          ctx.shared.aceStepModelId = ready[0]?.modelId;
+          return `${models.length} models, ${ready.length} ready${ready[0] ? `; selected ${ready[0].modelId}` : ""}`;
+        },
+      },
+      {
         id: "acestep.generate",
         name: "acestep.generateMusic (+progress)",
         desc: "Generates music with Ace-Step end to end and receives progress callbacks carrying a whole-request fraction.",
@@ -1176,7 +1202,7 @@ const groups: Group[] = [
               ticks.push({ progress, status, current, total }),
             undefined,
             undefined,
-            { signal: ctx.signal },
+            { signal: ctx.signal, modelId: ctx.shared.aceStepModelId },
           );
           assert(ticks.length > 0, "no progress events");
           // Unlike a raw pass, the one-call pipeline knows how its phases weigh
@@ -1215,7 +1241,11 @@ const groups: Group[] = [
           const probe = aceStepProgressProbe(ctx);
           const requests = await ctx.layla.acestep.lm(
             { caption: ACE_STEP_CAPTION, duration: 20, lm_batch_size: 2 },
-            { onProgress: probe.onProgress, signal: ctx.signal },
+            {
+              modelId: ctx.shared.aceStepModelId,
+              onProgress: probe.onProgress,
+              signal: ctx.signal,
+            },
           );
           assert(Array.isArray(requests), "expected an array of requests");
           assert(requests.length > 0, "expected at least one enriched request");
@@ -1251,7 +1281,11 @@ const groups: Group[] = [
           const probe = aceStepProgressProbe(ctx);
           const result = await ctx.layla.acestep.synth(
             { ...base, seed },
-            { onProgress: probe.onProgress, signal: ctx.signal },
+            {
+              modelId: ctx.shared.aceStepModelId,
+              onProgress: probe.onProgress,
+              signal: ctx.signal,
+            },
           );
           assert(
             typeof result.audio_data_base64 === "string" &&
@@ -1291,6 +1325,7 @@ const groups: Group[] = [
           const result = await ctx.layla.acestep.understand(
             { audioBase64: aceStepSourceAudio(ctx) },
             {
+              modelId: ctx.shared.aceStepModelId,
               returnLatents: true,
               onProgress: probe.onProgress,
               signal: ctx.signal,
@@ -1336,6 +1371,7 @@ const groups: Group[] = [
           const result = await ctx.layla.acestep.understand(
             { latentsBase64: latents },
             {
+              modelId: ctx.shared.aceStepModelId,
               // Deliberately set: it must be ignored when latents were the
               // source, since the bytes would be the ones just passed in.
               returnLatents: true,
@@ -1371,7 +1407,11 @@ const groups: Group[] = [
           const encodeProbe = aceStepProgressProbe(ctx);
           const encoded = await ctx.layla.acestep.vaeEncode(
             aceStepSourceAudio(ctx),
-            { onProgress: encodeProbe.onProgress, signal: ctx.signal },
+            {
+              modelId: ctx.shared.aceStepModelId,
+              onProgress: encodeProbe.onProgress,
+              signal: ctx.signal,
+            },
           );
           assert(
             encoded.direction === "encode",
@@ -1399,6 +1439,7 @@ const groups: Group[] = [
           const decoded = await ctx.layla.acestep.vaeDecode(
             encoded.latents_base64,
             {
+              modelId: ctx.shared.aceStepModelId,
               request: { output_format: "wav24" },
               onProgress: decodeProbe.onProgress,
               signal: ctx.signal,

@@ -67,6 +67,7 @@ export type {
   LaylaApiSTTStartListening,
   LaylaApiSTTStopListening,
   LaylaApiExecuteSql,
+  LaylaApiAceStepGetModels,
   LaylaApiAceStepGenerate,
   LaylaApiAceStepRequest,
   LaylaApiAceStepLm,
@@ -119,6 +120,7 @@ export type {
   LaylaApiEvent_onSTTSpeechRecognized,
   LaylaApiEvent_onSTTListeningStopped,
   LaylaApiEvent_onExecuteSqlResponse,
+  LaylaApiAceStepGetModelsResponse,
   LaylaApiEvent_onAceStepGenerateResponse,
   LaylaApiEvent_onAceStepLmResponse,
   LaylaApiEvent_onAceStepSynthResponse,
@@ -176,8 +178,10 @@ export type { LaylaImageGenerationModel } from './resources/images';
 export { AceStep } from './resources/acestep';
 export type {
   AceStepRequest,
+  AceStepModel,
   AceStepProgress,
   AceStepProgressListener,
+  AceStepGenerateOptions,
   AceStepPassOptions,
   AceStepLmOptions,
   AceStepSynthOptions,

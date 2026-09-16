@@ -113,6 +113,12 @@ console.log('Diagnostics task.js starting.');
     return `${models.length} model(s)`;
   });
 
+  await check('acestep.getModels', async () => {
+    const models = await layla.acestep.getModels();
+    const ready = models.filter((model) => model.ready_for_use).length;
+    return `${models.length} model(s), ${ready} ready`;
+  });
+
   // --- Sentiment (lightweight classifier) ---
   await check('classifier.getSentiment', async () => {
     const sentiment = await layla.classifier.getSentiment('I am delighted this task runner works.');

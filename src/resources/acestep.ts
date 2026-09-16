@@ -5,6 +5,8 @@
  *
  * Ace-Step is an on-device music generation model. Two levels are exposed here:
  *
+ *   getModels()      list built-in and imported model bundles and readiness.
+ *
  *   generateMusic()  the one-call pipeline. Prompt in, finished track out; the
  *                    host runs the LM pass and the synth pass for you.
  *
@@ -13,19 +15,22 @@
  *   vaeEncode()      artefacts: enriched metadata and lyrics before rendering,
  *   vaeDecode()      an analysis of an existing track, or latents to reuse.
  *
- * Every command streams `on_ace_step_generate_progress` while it runs, surfaced
+ * Every generation/pass command streams `on_ace_step_generate_progress` while
+ * it runs, surfaced
  * through the `onProgress` callback. The one-call pipeline knows how its phases
  * weigh against each other, so its `progress` is a 0..1 fraction of the whole
  * request; a raw pass is a single pass with no defined share of a larger whole,
  * so it reports `progress: null` and a caller wanting a bar should derive one
  * from `current`/`total`.
  *
- * All Ace-Step commands share one bridge lane, so the host is never asked to
- * run two of these heavy passes at once.
+ * All Ace-Step generation/pass commands share one bridge lane, so the host is
+ * never asked to run two of these heavy passes at once. Model listing is a
+ * lightweight independent request.
  */
 
 import type { LaylaApiEvent, LaylaApiRequest } from '../interface';
 import type {
+  LaylaApiAceStepGetModelsResponse,
   LaylaApiAceStepRequest,
   LaylaApiEvent_onAceStepLmResponse,
   LaylaApiEvent_onAceStepSynthResponse,
@@ -34,7 +39,7 @@ import type {
 } from '../protocol';
 import { type BridgeSink, LaylaBridge } from '../internal/bridge';
 import { Deferred } from '../internal/deferred';
-import { type RequestOptions } from '../internal/one-shot';
+import { oneShot, type RequestOptions } from '../internal/one-shot';
 import { LaylaAbortError, LaylaError } from '../errors';
 
 /**
@@ -45,6 +50,9 @@ import { LaylaAbortError, LaylaError } from '../errors';
  * {@link AceStep.synth}.
  */
 export type AceStepRequest = LaylaApiAceStepRequest;
+
+/** One Ace-Step model bundle known to the host. */
+export type AceStepModel = LaylaApiAceStepGetModelsResponse['data'][number];
 
 /** The rendered track returned by {@link AceStep.synth}. */
 export type AceStepSynthResult = LaylaApiEvent_onAceStepSynthResponse['data'];
@@ -78,8 +86,22 @@ export interface AceStepProgress {
 
 export type AceStepProgressListener = (progress: AceStepProgress) => void;
 
+/** Options for {@link AceStep.generateMusic}. */
+export interface AceStepGenerateOptions extends RequestOptions {
+  /**
+   * Model bundle to use for this request. Omit or pass `null` to use the
+   * user's selected Ace-Step model.
+   */
+  modelId?: string | null;
+}
+
 /** Options shared by every raw Ace-Step pass. */
 export interface AceStepPassOptions extends RequestOptions {
+  /**
+   * Model bundle to use for this pass. Omit or pass `null` to use the user's
+   * selected Ace-Step model. Keep this consistent across related raw passes.
+   */
+  modelId?: string | null;
   /** Called for each progress event the host emits while the pass runs. */
   onProgress?: AceStepProgressListener;
   /**
@@ -149,10 +171,11 @@ export type AceStepUnderstandSource =
     };
 
 /**
- * Every Ace-Step command serialises in this one lane. They all drive the same
- * on-device engine, so running two at once would only make both slower — and it
- * keeps `on_ace_step_generate_progress` unambiguous on hosts that do not echo
- * the bridge's correlation id.
+ * Every Ace-Step generation/pass command serialises in this one lane. They all
+ * drive the same on-device engine, so running two at once would only make both
+ * slower — and it keeps `on_ace_step_generate_progress` unambiguous on hosts
+ * that do not echo the bridge's correlation id. `getModels()` does not use the
+ * engine and goes through the ordinary one-shot path instead.
  */
 const ACE_STEP_LANE = 'ace_step';
 
@@ -269,6 +292,25 @@ function aceStepRequest<T>(
 
 export class AceStep {
   /**
+   * List every Ace-Step model bundle known to the host. Built-in models are
+   * returned even when their files are missing; inspect `ready_for_use` before
+   * offering one for generation. Complete user-imported bundles are included
+   * too.
+   *
+   * This is a local availability check. It does not load, download, or select
+   * a model.
+   */
+  getModels(options: RequestOptions = {}): Promise<AceStepModel[]> {
+    return oneShot<AceStepModel[]>(
+      { cmd: 'ace_step_get_models', data: null },
+      'on_ace_step_get_models_response',
+      (event: LaylaApiEvent) =>
+        (event as LaylaApiAceStepGetModelsResponse).data ?? [],
+      options.signal,
+    );
+  }
+
+  /**
    * Ask the native host to generate music with the Ace-Step model. Resolves to a
    * ready-to-use base64 audio src string (including the data URI prefix), or
    * null if the host does not return audio.
@@ -280,7 +322,9 @@ export class AceStep {
    *
    * Pass `lyrics` to steer the vocals, and `duration` (in seconds) to control
    * the length of the generated music. When `duration` is omitted the host uses
-   * its default length.
+   * its default length. Pass `options.modelId` to select one of the bundles
+   * returned by {@link AceStep.getModels}; omit it or pass `null` to use the
+   * user's selected model.
    *
    * This runs the LM pass and the synth pass back to back. Use {@link
    * AceStep.lm} and {@link AceStep.synth} instead when the mini-app needs the
@@ -296,12 +340,13 @@ export class AceStep {
     ) => void,
     lyrics?: string,
     duration?: number,
-    options?: RequestOptions,
+    options?: AceStepGenerateOptions,
   ): Promise<string | null> {
     return aceStepRequest<string | null>(
       {
         cmd: 'ace_step_generate',
         data: {
+          model_id: options?.modelId,
           prompt,
           lyrics,
           duration,
@@ -337,6 +382,7 @@ export class AceStep {
       {
         cmd: 'ace_step_lm',
         data: {
+          model_id: options.modelId,
           request,
           use_gpu: options.useGpu,
         },
@@ -371,6 +417,7 @@ export class AceStep {
       {
         cmd: 'ace_step_synth',
         data: {
+          model_id: options.modelId,
           request,
           use_gpu: options.useGpu,
           use_flash_attn: options.useFlashAttn,
@@ -405,6 +452,7 @@ export class AceStep {
       {
         cmd: 'ace_step_understand',
         data: {
+          model_id: options.modelId,
           audio_data_base64: source.audioBase64,
           src_latents_base64: source.latentsBase64,
           return_latents: options.returnLatents,
@@ -438,6 +486,7 @@ export class AceStep {
       {
         cmd: 'ace_step_vae',
         data: {
+          model_id: options.modelId,
           audio_data_base64: audioBase64,
           request: options.request,
           use_gpu: options.useGpu,
@@ -467,6 +516,7 @@ export class AceStep {
       {
         cmd: 'ace_step_vae',
         data: {
+          model_id: options.modelId,
           latents_base64: latentsBase64,
           request: options.request,
           use_gpu: options.useGpu,

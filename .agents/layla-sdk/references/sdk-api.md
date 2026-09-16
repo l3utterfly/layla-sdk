@@ -99,9 +99,11 @@ import LaylaSDK, {
   type LaylaApiEvent_onSaveFileResponse,
   type LaylaApiEvent_onReadFileResponse,
   type LaylaCharacter,
+  type AceStepModel,
   type AceStepRequest,
   type AceStepProgress,
   type AceStepProgressListener,
+  type AceStepGenerateOptions,
   type AceStepLmOptions,
   type AceStepSynthOptions,
   type AceStepSynthResult,
@@ -1360,6 +1362,29 @@ try {
 }
 ```
 
+## `layla.acestep.getModels(options?)`
+
+Returns every Ace-Step model bundle known to the host. Built-in bundles appear
+in catalog order even when their files are missing or incomplete, followed by
+complete user-imported bundles sorted by model ID.
+
+```ts
+const models = await layla.acestep.getModels();
+
+for (const model of models) {
+  console.log(model.modelId, model.ready_for_use);
+}
+
+const readyModel = models.find(({ ready_for_use }) => ready_for_use);
+if (!readyModel) throw new Error('No Ace-Step model is ready');
+```
+
+Each `AceStepModel` has a stable `modelId`, which is also the bundle's folder
+name in host storage, and a `ready_for_use` boolean. Readiness is checked on disk
+for each call. It does not select or load the model, trigger a download, or
+guarantee that the device has enough memory to run it. The method accepts the
+shared `{ signal }` request option.
+
 ## `layla.acestep.generateMusic(prompt, onProgress, lyrics?, duration?, options?)`
 
 Generates music with the on-device Ace-Step model. This is the one-call pipeline: the host runs the LM pass and the synth pass back to back. The returned value is a ready-to-use audio source string (a base64 data URI), or `null` if the host does not return audio.
@@ -1403,6 +1428,25 @@ const audioSrc = await layla.acestep.generateMusic(
 );
 ```
 
+Pass `modelId` in the options object to select a model for this request. Use an
+ID returned by `getModels()` whose `ready_for_use` value is `true`. Omit
+`modelId` or pass `null` to use the user's selected Ace-Step model. Explicit IDs
+are forwarded unchanged to the backend without SDK validation.
+
+```ts
+const models = await layla.acestep.getModels();
+const model = models.find(({ ready_for_use }) => ready_for_use);
+if (!model) throw new Error('No Ace-Step model is ready');
+
+const audioSrc = await layla.acestep.generateMusic(
+  'A calm ambient soundscape',
+  onProgress,
+  undefined,
+  60,
+  { modelId: model?.modelId },
+);
+```
+
 Use an abort signal when the UI can cancel music generation:
 
 ```ts
@@ -1437,12 +1481,21 @@ and lyrics before anything is rendered, an analysis of an existing track, or
 latents to reuse.
 
 Every raw pass takes an options object that extends `RequestOptions`, so
-`signal` and an `onProgress` listener go in the same place:
+`signal`, `modelId`, and an `onProgress` listener go in the same place. Keep the
+same explicit `modelId` across related passes. The host forwards IDs to the
+backend without validating that, for example, an LM result from one bundle is
+compatible with a synth request sent to another:
 
 ```ts
+const readyModel = (await layla.acestep.getModels()).find(
+  ({ ready_for_use }) => ready_for_use,
+);
+if (!readyModel) throw new Error('No Ace-Step model is ready');
+
 const requests = await layla.acestep.lm(
   { caption: 'dreamy lo-fi hip-hop', lm_batch_size: 3 },
   {
+    modelId: readyModel?.modelId,
     onProgress: ({ status, current, total }) =>
       setProgress({ status, current, total }),
     signal: controller.signal,
@@ -1450,8 +1503,9 @@ const requests = await layla.acestep.lm(
 );
 ```
 
-All Ace-Step commands share one bridge lane, so calls queue behind each other
-rather than asking the host to run two heavy passes at once.
+All Ace-Step generation/pass commands share one bridge lane, so calls queue
+behind each other rather than asking the host to run two heavy passes at once.
+`getModels()` is a lightweight independent request.
 
 ### `AceStepRequest`
 
@@ -1500,7 +1554,7 @@ const [take] = await layla.acestep.lm({
 console.log(take.lyrics, take.bpm, take.keyscale);
 ```
 
-`options` accepts `onProgress`, `signal`, and `useGpu` (accepted for symmetry —
+`options` accepts `modelId`, `onProgress`, `signal`, and `useGpu` (accepted for symmetry —
 the LM pass always runs on the CPU).
 
 ### `layla.acestep.synth(request, options?)`
@@ -1510,6 +1564,7 @@ Text-Encoder, DiT and VAE and resolves with the rendered track inline:
 
 ```ts
 const result = await layla.acestep.synth(take, {
+  modelId: readyModel?.modelId,
   useGpu: true,
   onProgress: ({ status, current, total }) => setProgress({ status, current, total }),
 });
@@ -1527,7 +1582,7 @@ rendered.
 `request.output_format`. Nothing is written to the app's storage — pass
 `audio_data_base64` to `layla.utils.saveFile()` to keep it.
 
-`options` accepts `onProgress`, `signal`, `useGpu` (OpenCL on Android, with CPU
+`options` accepts `modelId`, `onProgress`, `signal`, `useGpu` (OpenCL on Android, with CPU
 fallback), `useFlashAttn`, and `vaeTileSize`.
 
 ### `layla.acestep.understand(source, options?)`
@@ -1560,7 +1615,7 @@ const cover = await layla.acestep.synth({
 `latents_base64` is `null` unless `returnLatents` was set and the source was
 audio; `latent_frames` is `0` when no latents came back.
 
-`options` accepts `onProgress`, `signal`, `returnLatents`, `useFlashAttn`,
+`options` accepts `modelId`, `onProgress`, `signal`, `returnLatents`, `useFlashAttn`,
 `vaeTileSize`, `useGpu` (accepted for symmetry — every understand stage runs on
 the CPU), and a `request` holding sampling params only (`lm_temperature`,
 `lm_top_p`, `lm_top_k`, `lm_seed`). Understand samples colder than generation:
@@ -1590,14 +1645,14 @@ audio side is `null`; on `'decode'`, `audio_data_base64` and `num_samples` are
 set and the latents side is `null`. `vaeDecode` accepts up to 15000 frames (10
 minutes).
 
-`options` accepts `onProgress`, `signal`, `vaeTileSize`, `useGpu` (accepted for
+`options` accepts `modelId`, `onProgress`, `signal`, `vaeTileSize`, `useGpu` (accepted for
 symmetry — the VAE is pinned to the CPU today), and a `request` read on decode
 for `output_format`, `mp3_bitrate` and `peak_clip`.
 
 ### Progress on Ace-Step commands
 
-Every Ace-Step command streams the same progress event, surfaced as an
-`AceStepProgress`:
+Every Ace-Step generation/pass command streams the same progress event,
+surfaced as an `AceStepProgress`:
 
 ```ts
 interface AceStepProgress {
@@ -2075,13 +2130,32 @@ every query resolves to an empty result
 your own results, or to back the mock with an in-browser SQL engine such as
 sql.js for realistic local testing.
 
-Customize Ace-Step music generation, including the progress it streams:
+Configure the model listing returned by the mock, including unavailable
+built-in bundles:
 
 ```ts
 installLaylaMock({
-  aceStepGenerate: async ({ prompt, lyrics, duration }, reportProgress) => {
+  aceStepModels: [
+    { modelId: 'ace-step-v1.5-turbo', ready_for_use: true },
+    { modelId: 'ace-step-v1.5-sft', ready_for_use: false },
+  ],
+});
+```
+
+Customize Ace-Step music generation, including the selected model and the
+progress it streams:
+
+```ts
+installLaylaMock({
+  aceStepGenerate: async ({ model_id, prompt, lyrics, duration }, reportProgress) => {
+    console.log('Generating with', model_id);
     for (let step = 1; step <= 4; step++) {
-      reportProgress({ progress: step / 4, status: `Composing (${step}/4)` });
+      reportProgress({
+        progress: step / 4,
+        status: `Composing (${step}/4)`,
+        current: step,
+        total: 4,
+      });
       await new Promise((r) => setTimeout(r, 100));
     }
     return { audio_data_base64: 'data:audio/wav;base64,UklGRi...' };
@@ -2091,10 +2165,13 @@ installLaylaMock({
 const audio = await layla.acestep.generateMusic(
   'lofi beats to test to',
   (progress, status) => console.log(progress, status),
+  undefined,
+  undefined,
+  { modelId: 'ace-step-v1.5-turbo' },
 );
 ```
 
-The handler receives the `{ prompt, lyrics, duration }` request and a
+The handler receives the `{ model_id, prompt, lyrics, duration }` request and a
 `reportProgress` function that emits `on_ace_step_generate_progress` events
 (each with `progress` 0..1, a `status` string, and `current`/`total` within that
 phase) to the app's `onProgress` callback. Return the final result
@@ -2110,7 +2187,8 @@ may be async:
 
 ```ts
 installLaylaMock({
-  aceStepLm: async ({ request }, reportProgress) => {
+  aceStepLm: async ({ model_id, request }, reportProgress) => {
+    console.log('LM model', model_id);
     reportProgress({ progress: null, status: 'Enriching prompt', current: 1, total: 1 });
     return {
       requests: [
@@ -2118,7 +2196,7 @@ installLaylaMock({
       ],
     };
   },
-  aceStepSynth: async ({ request }) => ({
+  aceStepSynth: async ({ model_id, request }) => ({
     audio_data_base64: 'data:audio/wav;base64,UklGRi...',
     seed: 1234,
     sample_rate: 48000,
@@ -2838,6 +2916,15 @@ Each has a matching listener alias, e.g.
 The supporting types:
 
 ```ts
+interface AceStepModel {
+  modelId: string;
+  ready_for_use: boolean;
+}
+
+interface AceStepGenerateOptions extends RequestOptions {
+  modelId?: string | null;
+}
+
 interface AceStepProgress {
   /** Overall fraction, or null when the host cannot compute one. */
   progress: number | null;
@@ -2852,6 +2939,7 @@ interface AceStepProgress {
 type AceStepProgressListener = (progress: AceStepProgress) => void;
 
 interface AceStepPassOptions extends RequestOptions {
+  modelId?: string | null;
   onProgress?: AceStepProgressListener;
   /**
    * Run the pass on the GPU where the host supports it. Only `acestep.synth`

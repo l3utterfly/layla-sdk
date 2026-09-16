@@ -94,6 +94,7 @@ await layla.characters.getImage(characterId);
 await layla.characters.update(character);
 await layla.classifier.getSentiment('This is a happy message.');
 await layla.images.generateImage(prompt, onProgress);
+await layla.acestep.getModels();
 await layla.acestep.generateMusic(prompt, onProgress);
 await layla.acestep.lm(request);
 await layla.acestep.synth(request);
@@ -796,6 +797,18 @@ if (imageSrc) imageElement.src = imageSrc;
 
 ## Music Generation (Ace-Step)
 
+List the Ace-Step model bundles known to the host with
+`layla.acestep.getModels()`. Built-in bundles are listed even when they are not
+downloaded; complete imported bundles are included too. Only offer entries with
+`ready_for_use: true` for generation. Readiness is a local file check, not a
+guarantee that the device has enough memory:
+
+```ts
+const models = await layla.acestep.getModels();
+const model = models.find(({ ready_for_use }) => ready_for_use);
+if (!model) throw new Error('No Ace-Step model is ready');
+```
+
 Use `layla.acestep.generateMusic(prompt, onProgress, lyrics?, duration?, options?)`
 to generate music with the on-device Ace-Step model. This is the one-call
 pipeline: the host runs the LM pass and the synth pass back to back. It resolves
@@ -826,16 +839,21 @@ const audioSrc = await layla.acestep.generateMusic(
   (progress, status) => setProgress({ progress, status }),
   'We are running through the city lights tonight', // lyrics
   60, // duration in seconds — omit to use the host default
-  { signal: controller.signal },
+  { signal: controller.signal, modelId: model?.modelId },
 );
 ```
+
+`options.modelId` selects a model for this request. Omit it or pass `null` to
+use the user's selected Ace-Step model. The SDK forwards explicit IDs unchanged;
+the host does not validate compatibility between separately submitted passes.
 
 ### Raw Ace-Step passes
 
 Prefer `generateMusic` for "prompt in, track out". Reach for the raw passes only
 when the mini-app needs the intermediate artefacts. Each takes an options object
 extending `RequestOptions`, so `signal` and an `onProgress` listener go in the
-same place:
+same place. The same object also accepts `modelId`; use the same ID for every
+related `lm`, `synth`, `understand`, and VAE request:
 
 - `layla.acestep.lm(request, options?)` — enriches one request into metadata,
   lyrics and `audio_codes` without rendering audio. Resolves with one enriched
@@ -860,10 +878,17 @@ same place:
 // Show the user several takes, then render the one they pick.
 const takes = await layla.acestep.lm(
   { caption: 'A dreamy lo-fi hip-hop beat', duration: 60, lm_batch_size: 3 },
-  { onProgress: ({ status, current, total }) => setProgress({ status, current, total }) },
+  {
+    modelId: model?.modelId,
+    onProgress: ({ status, current, total }) =>
+      setProgress({ status, current, total }),
+  },
 );
 
-const rendered = await layla.acestep.synth(takes[chosen], { useGpu: true });
+const rendered = await layla.acestep.synth(takes[chosen], {
+  modelId: model?.modelId,
+  useGpu: true,
+});
 audioElement.src = rendered.audio_data_base64;
 ```
 
@@ -877,12 +902,14 @@ const cover = await layla.acestep.synth({
 ```
 
 `synth()` writes nothing to storage — pass `audio_data_base64` to
-`layla.utils.saveFile()` to keep it. All Ace-Step commands share one bridge
-lane, so they queue behind each other rather than running two heavy passes at
-once.
+`layla.utils.saveFile()` to keep it. All Ace-Step generation and raw-pass
+commands share one bridge lane, so they queue behind each other rather than
+running two heavy passes at once. `getModels()` is a lightweight independent
+request.
 
 Progress arrives as an `AceStepProgress` (`{ progress, status, current, total }`)
-on every Ace-Step command. `progress` is a 0..1 fraction of the whole request,
+on every generation/pass command. `progress` is a 0..1 fraction of the whole
+request,
 but it is `null` on every raw pass — a single pass has no defined share of a
 larger whole — so drive a bar from `current`/`total` there, and show a spinner
 when `total <= 1`.

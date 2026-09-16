@@ -569,7 +569,7 @@ export interface LaylaApiGetExecutionContext {
 }
 
 /**
- * @deprecated Use LaylaApiStartBackgroundAudioPlayerV2 for per-track metadata.
+ * [deprecated]
  * Ask the host to start the background audio player and queue the provided audio files for playback.
  * There is no response event for this request. The host should start the background audio player and queue the provided audio files for playback in the order they are provided.
  * Starting the player while another queue is already playing replaces that queue entirely.
@@ -674,6 +674,18 @@ export interface LaylaApiExecuteSql {
 }
 
 /**
+ * List all built-in ACE-Step model bundles, including ones not yet downloaded,
+ * plus complete user-imported bundles. No pagination or additional data is needed.
+ * The host responds with `on_ace_step_get_models_response`, or `on_error` if
+ * checking the local model files fails. This does not load or download models
+ * or change the user's selected model used by the music generation commands.
+ */
+export interface LaylaApiAceStepGetModels {
+  cmd: 'ace_step_get_models';
+  data: null;
+}
+
+/**
  * Ask the host to generate music using the Ace-Step music generation model.
  * The host should respond with an `on_ace_step_generate_response` event containing the generated music base64 data (including the data URI prefix), or 'on_error' if there was an error during the generation process.
  * The host emits `on_ace_step_generate_progress` events during the generation process to indicate the current status of the music generation.
@@ -681,6 +693,10 @@ export interface LaylaApiExecuteSql {
 export interface LaylaApiAceStepGenerate {
   cmd: 'ace_step_generate';
   data: {
+    /** Model ID for this request. Omitted or null uses the user's selected model.
+     *  Supplied IDs pass unchanged to the backend without API validation;
+     *  callers are responsible for model compatibility across requests. */
+    model_id?: string | null;
     prompt: string;
     lyrics?: string;
     duration?: number; // optional duration in seconds for the generated music (default is 30 seconds)
@@ -752,6 +768,10 @@ export interface LaylaApiAceStepRequest {
 export interface LaylaApiAceStepLm {
   cmd: 'ace_step_lm';
   data: {
+    /** Model ID for this request. Omitted or null uses the user's selected model.
+     *  Supplied IDs pass unchanged to the backend without API validation;
+     *  callers are responsible for model compatibility across requests. */
+    model_id?: string | null;
     /** Request to enrich. `caption` is required. */
     request: LaylaApiAceStepRequest;
     /** Accepted for symmetry — the LM pass always runs on CPU. */
@@ -775,6 +795,10 @@ export interface LaylaApiAceStepLm {
 export interface LaylaApiAceStepSynth {
   cmd: 'ace_step_synth';
   data: {
+    /** Model ID for this request. Omitted or null uses the user's selected model.
+     *  Supplied IDs pass unchanged to the backend without API validation;
+     *  callers are responsible for model compatibility across requests. */
+    model_id?: string | null;
     /** Request to render — normally one entry from an `ace_step_lm` response.
      *  `caption` is required. */
     request: LaylaApiAceStepRequest;
@@ -806,6 +830,10 @@ export interface LaylaApiAceStepSynth {
 export interface LaylaApiAceStepUnderstand {
   cmd: 'ace_step_understand';
   data: {
+    /** Model ID for this request. Omitted or null uses the user's selected model.
+     *  Supplied IDs pass unchanged to the backend without API validation;
+     *  callers are responsible for model compatibility across requests. */
+    model_id?: string | null;
     /** Track to analyze (WAV or MP3, any sample rate, max 10 minutes), base64
      *  encoded. The data URI prefix is optional; the format is detected from the
      *  bytes, not from any declared mime type. */
@@ -850,6 +878,10 @@ export interface LaylaApiAceStepUnderstand {
 export interface LaylaApiAceStepVae {
   cmd: 'ace_step_vae';
   data: {
+    /** Model ID for this request. Omitted or null uses the user's selected model.
+     *  Supplied IDs pass unchanged to the backend without API validation;
+     *  callers are responsible for model compatibility across requests. */
+    model_id?: string | null;
     /** Audio to encode (WAV or MP3, any sample rate, max 10 minutes), base64
      *  encoded. Mutually exclusive with `latents_base64`. */
     audio_data_base64?: string;
@@ -937,6 +969,7 @@ export type BaseApiRequest =
   | LaylaApiSTTStartListening
   | LaylaApiSTTStopListening
   | LaylaApiExecuteSql
+  | LaylaApiAceStepGetModels
   | LaylaApiAceStepGenerate
   | LaylaApiAceStepLm
   | LaylaApiAceStepSynth
@@ -1397,6 +1430,22 @@ export interface LaylaApiEvent_onExecuteSqlResponse {
 }
 
 /**
+ * Model availability snapshot for `ace_step_get_models`. Built-in models appear
+ * in catalog order, followed by complete imported bundles sorted by model ID.
+ * Readiness is checked on disk for each request; it does not mean a model is
+ * selected or loaded, or guarantee that the device has enough memory to run it.
+ */
+export interface LaylaApiAceStepGetModelsResponse {
+  event: 'on_ace_step_get_models_response';
+  data: {
+    /** Stable bundle ID, also used as its folder name in the host's model storage. */
+    modelId: string;
+    /** True when all required weight files exist; false for missing or partial bundles. */
+    ready_for_use: boolean;
+  }[];
+}
+
+/**
  * The response for an `ace_step_generate` request, containing the generated music audio data encoded in base64 (including the data URI prefix).
  * This event is emitted by the host after successfully generating music using the Ace-Step music generation model.
  */
@@ -1539,6 +1588,7 @@ export type BaseApiEvent =
   | LaylaApiEvent_onSTTSpeechRecognized
   | LaylaApiEvent_onSTTListeningStopped
   | LaylaApiEvent_onExecuteSqlResponse
+  | LaylaApiAceStepGetModelsResponse
   | LaylaApiEvent_onAceStepGenerateResponse
   | LaylaApiEvent_onAceStepLmResponse
   | LaylaApiEvent_onAceStepSynthResponse
