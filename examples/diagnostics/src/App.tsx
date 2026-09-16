@@ -1196,13 +1196,19 @@ const groups: Group[] = [
         noTimeout: true,
         run: async (ctx) => {
           const ticks: AceStepProgress[] = [];
+          const modelId = ctx.shared.aceStepModelId;
+          ctx.log(
+            modelId
+              ? `model: ${modelId} (first ready model from acestep.getModels)`
+              : "model: host-selected default (acestep.getModels was not run or found none ready)",
+          );
           const src = await ctx.layla.acestep.generateMusic(
             "a short upbeat chiptune loop, test render",
             (progress, status, current, total) =>
               ticks.push({ progress, status, current, total }),
             undefined,
             undefined,
-            { signal: ctx.signal, modelId: ctx.shared.aceStepModelId },
+            { signal: ctx.signal, modelId },
           );
           assert(ticks.length > 0, "no progress events");
           // Unlike a raw pass, the one-call pipeline knows how its phases weigh
