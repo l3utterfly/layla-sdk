@@ -76,6 +76,7 @@ export type {
   LaylaApiAceStepVae,
   LaylaApiListDir,
   LaylaApiDeleteFileOrDir,
+  LaylaApiCloudLogin,
   LaylaApiCancel,
 
   // event types
@@ -128,6 +129,7 @@ export type {
   LaylaApiEvent_onAceStepVaeResponse,
   LaylaApiEvent_onListDirResponse,
   LaylaApiEvent_onDeleteFileOrDirResponse,
+  LaylaApiEvent_onCloudLogin,
 } from './protocol';
 export { SENTIMENT_THRESHOLDS } from './protocol';
 
@@ -240,6 +242,10 @@ export type {
 // Database resource surface.
 export { DB } from './resources/db';
 export type { ExecuteSqlResult } from './resources/db';
+
+// Layla Cloud resource surface.
+export { Cloud } from './resources/cloud';
+export type { CloudLoginResult } from './resources/cloud';
 
 // Contextual mini-app surface.
 export { Contextual } from './resources/contextual';

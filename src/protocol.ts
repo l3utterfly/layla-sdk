@@ -924,6 +924,16 @@ export interface LaylaApiDeleteFileOrDir {
 }
 
 /**
+ * Ask the host to return the currently logged in Layla Cloud account's access token.
+ * The host should respond with an `on_layla_cloud_login` event, which contains the access token if logged in, or null if user declined to login.
+ * The access token can be further used in Layla Cloud APIs as the Bearer token
+ */
+export interface LaylaApiCloudLogin {
+  cmd: 'layla_cloud_login';
+  data: null;   // no data is required for this request
+}
+
+/**
  * A request command (anything that opens a job and expects events back).
  * Add new one-shot commands here. `cancel` is not a request — it's a control
  * signal for an already-open job — so it lives outside this union.
@@ -976,7 +986,8 @@ export type BaseApiRequest =
   | LaylaApiAceStepUnderstand
   | LaylaApiAceStepVae
   | LaylaApiListDir
-  | LaylaApiDeleteFileOrDir;
+  | LaylaApiDeleteFileOrDir
+  | LaylaApiCloudLogin;
 
 /* ---- RN -> Web events ------------------------------------------------------ */
 
@@ -1546,6 +1557,18 @@ export interface LaylaApiEvent_onDeleteFileOrDirResponse {
   data: null; // no additional data is needed for this event
 }
 
+/**
+ * The response for a `layla_cloud_login` request
+ * This event is emitted by the host after user successfully logs in or declines the login. This response will contain the access token, or null, if user did not login
+ * The access token can be further used in Layla Cloud APIs as the Bearer token
+ */
+export interface LaylaApiEvent_onCloudLogin {
+  event: 'on_layla_cloud_login';
+  data: {
+    access_token: string | null;
+  };
+}
+
 export type BaseApiEvent =
   | LaylaApiEvent_onMsgEnd
   | LaylaApiEvent_onError
@@ -1595,4 +1618,5 @@ export type BaseApiEvent =
   | LaylaApiEvent_onAceStepUnderstandResponse
   | LaylaApiEvent_onAceStepVaeResponse
   | LaylaApiEvent_onListDirResponse
-  | LaylaApiEvent_onDeleteFileOrDirResponse;
+  | LaylaApiEvent_onDeleteFileOrDirResponse
+  | LaylaApiEvent_onCloudLogin;

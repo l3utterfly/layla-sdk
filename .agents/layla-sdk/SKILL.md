@@ -1,6 +1,6 @@
 ---
 name: layla-sdk
-description: Use @layla-network/sdk when building or debugging third-party Layla mini-apps, WebView integrations, or task.js background scripts. Covers the public TypeScript client for chat and contextual events, characters, scheduled chat and notifications, media, memories and personas, private sqlite and files, local mocks, errors, and runtime packaging.
+description: Use @layla-network/sdk when building or debugging third-party Layla mini-apps, WebView integrations, or task.js background scripts. Covers the public TypeScript client for chat and contextual events, characters, scheduled chat and notifications, media, memories and personas, private sqlite and files, Layla Cloud sign-in, local mocks, errors, and runtime packaging.
 ---
 
 # Layla SDK
@@ -54,6 +54,7 @@ import LaylaSDK, {
   type LaylaTTSVoice,
   type GenerateVoiceToFileResult,
   type ExecuteSqlResult,
+  type CloudLoginResult,
   type STTSpeechRecognizedListener,
   type BackgroundAudioTrack,
   type BackgroundAudioStatusListener,
@@ -131,6 +132,7 @@ await layla.backgroundAudio.resume();
 await layla.backgroundAudio.skip();
 await layla.backgroundAudio.stop();
 await layla.db.executeSql(query, params);
+await layla.cloud.login();
 await layla.utils.saveFile(filename, contentBase64, share);
 await layla.utils.readFile(filename);
 await layla.utils.listDir(path);
@@ -745,6 +747,39 @@ resolves to an empty result (`{ rows: [], rowsAffected: 0, insertId: 0 }`); pass
 an `executeSql` handler to `installLaylaMock(...)` to return your own results, or
 to back the mock with an in-browser SQL engine.
 
+## Layla Cloud
+
+Use `layla.cloud.login(options?)` to get an access token for the Layla Cloud
+account signed in on the device. The host owns the sign-in flow: it may answer
+from an existing session or put an interactive login in front of the user
+first, so the call can stay pending for a while — show a waiting state.
+
+It resolves with the access token, or with `null` when the user declined to log
+in. `null` is a normal outcome, not an error; keep the mini-app usable without
+cloud features.
+
+```ts
+const accessToken: CloudLoginResult = await layla.cloud.login();
+
+if (accessToken === null) {
+  showMessage('Sign in to Layla Cloud to sync your data.');
+  return;
+}
+
+const response = await fetch('https://api.layla-network.ai/some/endpoint', {
+  headers: { Authorization: `Bearer ${accessToken}` },
+});
+```
+
+Call Layla Cloud HTTP APIs with ordinary `fetch` and the token as the
+`Authorization: Bearer <token>` header — the SDK does not proxy them. Do not
+persist the token; call `login()` again when a request comes back unauthorized,
+since the host may have refreshed or dropped the session.
+
+For local testing, the browser mock replies with a canned placeholder token.
+Pass a `cloudLogin` handler to `installLaylaMock(...)` to return your own token,
+or `null` to exercise the declined-login path.
+
 ## Sentiment
 
 Use `layla.classifier.getSentiment(text, options?)` to score text with Layla's sentiment classifier. The result is a `SentimentValues` object keyed by emotion category.
@@ -1134,7 +1169,8 @@ Prefer headless-friendly APIs: non-streaming chat completions, `layla.db`,
 `layla.memories`, `layla.chat.saveChatMessage`,
 `layla.chat.scheduleChatMessage`, `layla.utils.scheduleNotification`,
 `layla.classifier.getSentiment`, and `layla.characters`. Avoid UI- and
-device-interaction flows (TTS playback, speech-to-text, background audio) in a
+device-interaction flows (TTS playback, speech-to-text, background audio, and
+`layla.cloud.login()`, which can put a sign-in prompt in front of the user) in a
 background task. Do not rely on
 long-lived event subscriptions such as `layla.contextual.on(...)` — the run
 ends when the script's completion value settles, so listeners do not outlive

@@ -98,6 +98,8 @@ import LaylaSDK, {
   type LaylaApiEvent_onBackgroundAudioFinished,
   type LaylaApiEvent_onSaveFileResponse,
   type LaylaApiEvent_onReadFileResponse,
+  type LaylaApiCloudLogin,
+  type LaylaApiEvent_onCloudLogin,
   type LaylaCharacter,
   type AceStepModel,
   type AceStepRequest,
@@ -112,6 +114,7 @@ import LaylaSDK, {
   type AceStepUnderstandSource,
   type AceStepVaeOptions,
   type AceStepVaeResult,
+  type CloudLoginResult,
   type MemoryListOptions,
   type ReadFileResult,
   type SaveFileResult,
@@ -1221,6 +1224,51 @@ Pass an abort signal to stop waiting for the response:
 await layla.db.executeSql('SELECT 1', undefined, { signal: controller.signal });
 ```
 
+## Layla Cloud
+
+The `layla.cloud` surface bridges a mini-app to the Layla Cloud account signed
+in on the device. It hands back an access token; the mini-app calls Layla Cloud
+HTTP APIs with it directly using ordinary `fetch`. The SDK does not proxy those
+requests and never stores the token.
+
+### `layla.cloud.login(options?)`
+
+Asks the host for the signed-in Layla Cloud account's access token, prompting
+the user to log in when there is no session yet. The promise resolves once the
+host emits `on_layla_cloud_login`, or rejects on error/abort.
+
+It resolves with the access token, or with `null` when the user declined to log
+in. `null` is a normal outcome, not an error: treat it as "no cloud features
+this session" and keep the mini-app usable without them.
+
+```ts
+const accessToken: CloudLoginResult = await layla.cloud.login();
+
+if (accessToken === null) {
+  showMessage('Sign in to Layla Cloud to sync your data.');
+  return;
+}
+
+const response = await fetch('https://api.layla-network.ai/some/endpoint', {
+  headers: { Authorization: `Bearer ${accessToken}` },
+});
+```
+
+The host owns the whole sign-in flow, so the call stays pending for as long as
+the user takes over an interactive login — show a waiting state rather than a
+short timeout. Do not persist the token: ask again when a request comes back
+unauthorized, since the host may have refreshed or dropped the session in the
+meantime.
+
+Pass an abort signal to stop waiting for the response:
+
+```ts
+await layla.cloud.login({ signal: controller.signal });
+```
+
+Aborting stops the mini-app waiting; it does not close a login the host has
+already put in front of the user.
+
 ## `layla.classifier.getSentiment(text, options?)`
 
 Scores a piece of text with Layla's sentiment classifier and returns `SentimentValues`, keyed by emotion category.
@@ -2130,6 +2178,22 @@ every query resolves to an empty result
 your own results, or to back the mock with an in-browser SQL engine such as
 sql.js for realistic local testing.
 
+Exercise the Layla Cloud surface:
+
+```ts
+installLaylaMock({
+  cloudLogin: () => 'mock-access-token',
+});
+
+const accessToken = await layla.cloud.login();
+```
+
+There is no Layla Cloud account outside the app. When the `cloudLogin` handler
+is omitted, the mock replies with a canned placeholder token
+(`'mock-layla-cloud-access-token'`) so the signed-in path runs locally. Return
+`null` from the handler to exercise the declined-login path, or return a token
+after a delay of your own to exercise the waiting state.
+
 Configure the model listing returned by the mock, including unavailable
 built-in bundles:
 
@@ -2857,6 +2921,13 @@ type GetScheduledNotificationsResult = LaylaScheduledNotification[];
 type CancelScheduledNotificationResult = { id: string };
 ```
 
+### Layla Cloud
+
+```ts
+/** The Layla Cloud access token, or null when the user is not signed in. */
+type CloudLoginResult = string | null;
+```
+
 ### Contextual chat events
 
 ```ts
@@ -2987,6 +3058,7 @@ of truth for current signatures:
 - `src/resources/tts.ts`
 - `src/resources/stt.ts`
 - `src/resources/db.ts`
+- `src/resources/cloud.ts`
 - `src/resources/background-audio.ts`
 - `src/resources/contextual.ts`
 - `src/resources/utils.ts`

@@ -871,6 +871,47 @@ const groups: Group[] = [
     ],
   },
   {
+    id: "cloud",
+    title: "Layla Cloud",
+    blurb: "Access token for the signed-in Layla Cloud account.",
+    checks: [
+      {
+        id: "cloud.login",
+        name: "login (access token)",
+        desc: "Asks the host for the cloud access token; a declined login reports skip.",
+        weight: "safe",
+        // The host owns the sign-in flow and may put an interactive login in
+        // front of the user, which runs well past the 45s watchdog.
+        noTimeout: true,
+        run: async ({ layla, log }) => {
+          const token = await layla.cloud.login();
+
+          if (token === null) {
+            log("on_layla_cloud_login carried access_token: null");
+            return skip(
+              "no account signed in, or the login was declined — sign in to Layla Cloud and rerun",
+            );
+          }
+
+          assert(
+            typeof token === "string",
+            `expected a string access token, got ${typeof token}`,
+          );
+          assert(token.length > 0, "host returned an empty access token");
+          // The token is a live bearer credential, so the log records its shape
+          // and never its value.
+          log(
+            `access token received: ${token.length} chars, starting "${token.slice(
+              0,
+              4,
+            )}…"`,
+          );
+          return `received a ${token.length}-char access token`;
+        },
+      },
+    ],
+  },
+  {
     id: "contextual",
     title: "Contextual",
     blurb: "Execution context + push-event subscription.",

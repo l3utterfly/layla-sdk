@@ -31,6 +31,7 @@ import type {
   LaylaApiEvent_onChatContextStartedThinking,
   LaylaApiEvent_onGetChatSessionsResponse,
   LaylaApiEvent_onExecuteSqlResponse,
+  LaylaApiEvent_onCloudLogin,
   LaylaApiEvent_onGetImageGenerationModelsResponse,
   LaylaApiAceStepGetModelsResponse,
   LaylaApiEvent_onAceStepGenerateResponse,
@@ -114,6 +115,9 @@ type MockImageGenerationModel =
   LaylaApiEvent_onGetImageGenerationModelsResponse['data'][number];
 
 type MockExecuteSqlResult = LaylaApiEvent_onExecuteSqlResponse['data'];
+
+type MockCloudLoginResult =
+  LaylaApiEvent_onCloudLogin['data']['access_token'];
 
 type MockSaveFileResult = LaylaApiEvent_onSaveFileResponse['data'];
 
@@ -305,6 +309,13 @@ export interface LaylaMockOptions {
     query: string,
     params: unknown[],
   ) => MockExecuteSqlResult | Promise<MockExecuteSqlResult>;
+  /**
+   * Handle `cloud.login()` calls. Return the access token the mock should reply
+   * with, or `null` to simulate a user who declined the login. May be async, so
+   * you can gate it behind a prompt of your own. When omitted, the mock replies
+   * with a canned placeholder token.
+   */
+  cloudLogin?: () => MockCloudLoginResult | Promise<MockCloudLoginResult>;
   /**
    * Handle
    * `acestep.generateMusic(prompt, onProgress, lyrics, duration, options)`
@@ -538,6 +549,9 @@ function openAIMessagesToLayla(value: unknown): LaylaChatMessage[] {
   return messages;
 }
 const mockFileStoragePrefix = '@layla-network/sdk:mock:file:';
+
+/** Placeholder Layla Cloud token the mock hands out when no handler is given. */
+const mockCloudAccessToken = 'mock-layla-cloud-access-token';
 const mockVoiceAudioDataUri =
   'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
 const mockVoiceFilename = 'mock-voice.wav';
@@ -2032,6 +2046,25 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     });
   }
 
+  async function handleCloudLogin(): Promise<void> {
+    await delay(latencyMs);
+    if (shouldError()) {
+      emitError('Simulated Layla Cloud login error');
+      return;
+    }
+
+    // There is no Layla Cloud account outside the app, so the mock hands back a
+    // placeholder token unless the caller supplied its own answer.
+    const accessToken: MockCloudLoginResult = options.cloudLogin
+      ? await options.cloudLogin()
+      : mockCloudAccessToken;
+
+    emit({
+      event: 'on_layla_cloud_login',
+      data: { access_token: accessToken },
+    });
+  }
+
   function emitBackgroundAudioStatus(): void {
     if (!backgroundAudio) return;
     emit({
@@ -2351,6 +2384,9 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
           break;
         case 'execute_sql':
           void handleExecuteSql(msg.data);
+          break;
+        case 'layla_cloud_login':
+          void handleCloudLogin();
           break;
         default:
           break;

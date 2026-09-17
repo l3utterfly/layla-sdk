@@ -66,6 +66,20 @@ log records every round — `finish_reason`, the prose, and each call with its
 arguments and id — so a model that answers without calling the tool, or calls
 it with the wrong arguments, is visible rather than just a red dot.
 
+## The Layla Cloud check
+
+`login (access token)` asks the host for the access token of the Layla Cloud
+account signed in on the device. It passes when the host returns a non-empty
+token, and reports *skip* when it returns `null` — no account is signed in, or
+the user declined the login — since that is a valid answer rather than a broken
+endpoint. The log records the token's length and first few characters only,
+never the token itself: it is a live bearer credential.
+
+It is *safe* (it runs with **Run all**), but exempt from the watchdog, because
+the host may put an interactive sign-in in front of the user, which easily
+outlasts 45s. The browser mock answers with a placeholder token, so the check is
+green there without a real account.
+
 ## Concurrency checks
 
 The **Concurrency** group covers the per-lane bridge change:

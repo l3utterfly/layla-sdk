@@ -6,7 +6,7 @@
       <img src="assets/layla.png" alt="Layla butterfly logo" width="160">
     </td>
     <td>
-      The Layla SDK project provides the public TypeScript SDK for building custom Layla mini-apps. Mini-apps run inside Layla's WebView and can use <code>@layla-network/sdk</code> to talk to Layla app host through an OpenAI-shaped API for chat, tool calling, multimodal image input, streaming responses, contextual character-chat state and events, inference engine selection, scheduled chat messages and mini-app notifications, characters, character images, personas, memories, TTS playback and audio-file generation, speech-to-text microphone input, background audio playback, image generation, music generation with the Ace-Step model (the one-call pipeline plus its raw passes), a private per-mini-app sqlite database, private file utilities, and local development mocks.
+      The Layla SDK project provides the public TypeScript SDK for building custom Layla mini-apps. Mini-apps run inside Layla's WebView and can use <code>@layla-network/sdk</code> to talk to Layla app host through an OpenAI-shaped API for chat, tool calling, multimodal image input, streaming responses, contextual character-chat state and events, inference engine selection, scheduled chat messages and mini-app notifications, characters, character images, personas, memories, TTS playback and audio-file generation, speech-to-text microphone input, background audio playback, image generation, music generation with the Ace-Step model (the one-call pipeline plus its raw passes), a private per-mini-app sqlite database, private file utilities, Layla Cloud sign-in, and local development mocks.
     </td>
   </tr>
 </table>
@@ -72,6 +72,28 @@ before offering one. Raw `lm`, `synth`, `understand`, `vaeEncode`, and
 `vaeDecode` calls also accept `modelId` in their options. Keep the same ID
 across related raw passes.
 
+## Layla Cloud
+
+Get an access token for the Layla Cloud account signed in on the device:
+
+```ts
+const accessToken = await layla.cloud.login();
+
+if (accessToken === null) {
+  // The user declined to log in — carry on without cloud features.
+  return;
+}
+
+const response = await fetch('https://api.layla-network.ai/some/endpoint', {
+  headers: { Authorization: `Bearer ${accessToken}` },
+});
+```
+
+The host owns the sign-in flow, so the call can stay pending while the user
+logs in; it resolves with `null` when they decline. Call Layla Cloud HTTP APIs
+with ordinary `fetch` and the token as the Bearer header — the SDK does not
+proxy them.
+
 ## Version Requirements
 
 The SDK talks to whatever Layla app it finds itself in, and takes the richest route that app supports. Most of the API works everywhere, but chat has two paths:
@@ -122,7 +144,7 @@ Each release contains:
 ## Learn More
 
 - Read the [mini-apps overview](.agents/layla-sdk/references/mini-apps-overview.md) to understand app packaging, metadata, and the Layla WebView runtime.
-- Read the [SDK API reference](.agents/layla-sdk/references/sdk-api.md) for imports, contextual execution state and chat events, chat completions, streaming, tool calling, inference engine selection, chat sessions, session history, message saves, scheduled chat messages and mini-app notifications, memory list/top/save APIs, personas, TTS playback and audio-file generation, speech-to-text microphone input and events, background audio controls and events, characters, image generation, music generation and the raw Ace-Step passes, a private per-mini-app sqlite database, file utilities, abort handling, and errors.
+- Read the [SDK API reference](.agents/layla-sdk/references/sdk-api.md) for imports, contextual execution state and chat events, chat completions, streaming, tool calling, inference engine selection, chat sessions, session history, message saves, scheduled chat messages and mini-app notifications, memory list/top/save APIs, personas, TTS playback and audio-file generation, speech-to-text microphone input and events, background audio controls and events, characters, image generation, music generation and the raw Ace-Step passes, a private per-mini-app sqlite database, file utilities, Layla Cloud sign-in, abort handling, and errors.
 - Browse the [examples guide](examples/ReadMe.md) to choose a starting mini-app.
 
 ## Layla App
