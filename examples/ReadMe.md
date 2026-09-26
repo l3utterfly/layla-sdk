@@ -26,6 +26,12 @@ A swipe-style character generator demonstrating image generation and creating ne
 
 Use this example to see how a mini-app can generate images, build Character Card V2 data, and save newly created characters back into Layla.
 
+## `image-lab`
+
+An image workbench demonstrating image generation, reference sheets, and image editing.
+
+Use this example to see how a mini-app can generate images with installed Layla image models, arrange up to eight image references as a contact sheet, edit a source image, and inspect safetensors architecture metadata locally. It ships as a prebuilt single-file `index.html` with its `app.json`, icon, and background.
+
 ## `diagnostics`
 
 A test harness that exercises **every** public SDK endpoint plus the per-lane concurrency behaviour, reporting pass / fail / skip for each.

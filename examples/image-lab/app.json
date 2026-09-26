@@ -1,0 +1,7 @@
+{
+  "title": "Image Lab for Layla",
+  "tagline": "Reference sheets, image edits and checkpoint inspection",
+  "description": "Generate with installed Layla image models, arrange up to eight image references as a contact sheet, edit a source image, and inspect safetensors architecture metadata locally.",
+  "iconUri": "icon.png",
+  "backgroundImgUri": "bg.png"
+}
