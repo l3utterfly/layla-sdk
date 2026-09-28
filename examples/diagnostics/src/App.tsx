@@ -6,6 +6,7 @@ import {
   type AceStepRequest,
   type ChatCompletionMessageParam,
   type LaylaCharacter,
+  type NeoDragonProgress,
 } from "../../../src/index";
 import type { LaylaMockHandle } from "../../../src/mock";
 import "./App.css";
@@ -1116,7 +1117,7 @@ const groups: Group[] = [
   {
     id: "media",
     title: "Media & devices (heavy)",
-    blurb: "TTS synthesis/playback, image generation, music generation and the raw Ace-Step passes, microphone, background audio. Not run by default.",
+    blurb: "TTS synthesis/playback, image and video generation, music generation and the raw Ace-Step passes, microphone, background audio. Not run by default.",
     checks: [
       {
         id: "tts.getVoices",
@@ -1204,6 +1205,72 @@ const groups: Group[] = [
           return src
             ? `image (${src.length} chars), ${progress} progress events`
             : `no image returned, ${progress} progress events`;
+        },
+      },
+      {
+        id: "neodragon.generateVideo",
+        name: "neodragon.generateVideo (+progress)",
+        desc: "Downloads the bundled mini-app icon and animates it with NeoDragon.",
+        weight: "heavy",
+        noTimeout: true,
+        run: async ({ layla, signal, log }) => {
+          const response = await fetch("./icon.png", { signal });
+          assert(
+            response.ok,
+            `failed to download ./icon.png (${response.status} ${response.statusText})`,
+          );
+          const imageBytes = new Uint8Array(await response.arrayBuffer());
+          assert(imageBytes.length > 0, "downloaded icon is empty");
+          const imageDataUri = `data:image/png;base64,${toBase64(imageBytes)}`;
+          log(`source: ./icon.png (${imageBytes.length} bytes)`);
+
+          const ticks: NeoDragonProgress[] = [];
+          const result = await layla.neodragon.generateVideo(
+            imageDataUri,
+            "Bring the butterfly icon gently to life with subtle wing movement and a slow camera push-in.",
+            {
+              // Native resolution keeps this already-heavy diagnostic as light
+              // as possible while still running the complete video pipeline.
+              upscale: false,
+              signal,
+              onProgress: (progress) => ticks.push(progress),
+            },
+          );
+
+          assert(
+            result.video_data_base64.startsWith("data:video/mp4;base64,"),
+            "expected an MP4 data URI",
+          );
+          assert(result.width > 0 && result.height > 0, "invalid dimensions");
+          assert(result.frame_count > 0, "invalid frame count");
+          assert(result.fps > 0, "invalid FPS");
+          assert(result.duration_ms > 0, "invalid duration");
+          assert(
+            result.generation_time_ms >= 0,
+            "invalid generation time",
+          );
+
+          if (ticks.length > 0) {
+            const stages = [...new Set(ticks.map((tick) => tick.stage))];
+            log(`progress: ${ticks.length} events — ${stages.join(", ")}`);
+            log(
+              ticks
+                .slice(0, 16)
+                .map(
+                  (tick) =>
+                    `  ${tick.stage} ${tick.current}/${tick.total} — ${Math.round(tick.fraction * 100)}%`,
+                )
+                .join("\n"),
+            );
+          } else {
+            log("progress: no optional progress events received");
+          }
+
+          return (
+            `${result.width}x${result.height}, ${result.frame_count} frames ` +
+            `@ ${result.fps} fps, ${result.duration_ms}ms, ` +
+            `${ticks.length} progress events`
+          );
         },
       },
       {
@@ -1764,7 +1831,7 @@ export default function App() {
               checked={includeHeavy}
               onChange={(e) => setIncludeHeavy(e.target.checked)}
             />
-            include heavy (chat / audio / image gen / mic)
+            include heavy (chat / audio / image & video gen / mic)
           </label>
           <span className="tally">
             <b className="ok">{counts.pass}</b> pass ·{" "}

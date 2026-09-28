@@ -26,8 +26,8 @@ The banner in the toolbar shows which environment was detected: *Browser mock*,
 
 - **Run all** runs every check except the *heavy* ones. Tick **include heavy** to
   also run the chat interfaces, tool calling, TTS synthesis/playback, image
-  generation, music generation, the microphone, and the background-audio
-  player.
+  generation, video generation, music generation, the microphone, and the
+  background-audio player.
 - Each check (and each group) has its own **Run** button.
 - **Rerun failures** re-runs only what failed.
 - Each check has an expandable **Log** section containing plain text. Checks can
@@ -36,8 +36,8 @@ The banner in the toolbar shows which environment was detected: *Browser mock*,
 
 Most checks have a 45s watchdog, so a missing or broken endpoint fails loudly
 instead of hanging. On-device generation endpoints (TTS synthesis, image
-generation, music generation) are designed to run for a long time, so they are
-exempt from the watchdog and run until the host responds.
+generation, video generation, music generation) are designed to run for a long
+time, so they are exempt from the watchdog and run until the host responds.
 
 The Chat group also sends the same user message in two sequential completions
 with unrelated system prompts. Each prompt requires a different marker word,
@@ -98,8 +98,12 @@ The **Concurrency** group covers the per-lane bridge change:
 ## Notes for the host run
 
 - *Heavy* checks include chat interfaces, tool calling, and operations with real
-  host side effects (audio playback, image generation, music generation,
-  microphone access). Leave them off unless you're testing them.
+  host side effects (audio playback, image generation, video generation, music
+  generation, microphone access). Leave them off unless you're testing them.
+- The video-generation check downloads the bundled `icon.png` with a relative
+  URL, converts it to a PNG data URI, and asks NeoDragon to animate it at native
+  resolution. It validates the returned MP4 metadata without logging the large
+  encoded video.
 - Write checks are labelled and use `[diagnostics]` content. The scheduled-chat
   and scheduled-notification checks cancel what they create; the notification
   probe uses the mini-app's bundled `icon.png` and verifies it disappears from
