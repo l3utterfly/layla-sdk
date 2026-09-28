@@ -61,6 +61,7 @@ import LaylaSDK, {
   type LaylaApiGenerateVoice,
   type LaylaApiGenerateVoiceToFile,
   type LaylaApiStopSpeaking,
+  type LaylaApiNeodragonGenerateVideo,
   type LaylaApiStartBackgroundAudioPlayerV2,
   type LaylaApiStartBackgroundAudioPlayer, // deprecated legacy request
   type LaylaApiStopBackgroundAudioPlayer,
@@ -93,6 +94,8 @@ import LaylaSDK, {
   type LaylaApiEvent_onChatContextStartedThinking,
   type LaylaApiEvent_onFinishedSpeaking,
   type LaylaApiEvent_onGenerateVoiceToFileResponse,
+  type LaylaApiEvent_onNeodragonGenerateVideoResponse,
+  type LaylaApiEvent_onNeodragonGenerateVideoProgress,
   type LaylaApiEvent_onBackgroundAudioTrackChanged,
   type LaylaApiEvent_onBackgroundAudioStatus,
   type LaylaApiEvent_onBackgroundAudioFinished,
@@ -101,6 +104,11 @@ import LaylaSDK, {
   type LaylaApiCloudLogin,
   type LaylaApiEvent_onCloudLogin,
   type LaylaCharacter,
+  type NeoDragonCrop,
+  type NeoDragonGenerateVideoOptions,
+  type NeoDragonGenerateVideoResult,
+  type NeoDragonProgress,
+  type NeoDragonProgressListener,
   type AceStepModel,
   type AceStepRequest,
   type AceStepProgress,
@@ -1410,6 +1418,70 @@ try {
 }
 ```
 
+## `layla.neodragon.generateVideo(imageDataBase64, prompt, options?)`
+
+Generates an MP4 video from a still image with NeoDragon. The source image must
+be a base64 data URI, including its media prefix. The returned
+`video_data_base64` is also a complete data URI and can be assigned directly to
+a `<video>` element.
+
+```ts
+const result = await layla.neodragon.generateVideo(
+  sourceImageDataUri,
+  'A slow camera push-in while the leaves move in a gentle breeze',
+  {
+    onProgress: ({ stage, current, total, fraction }) => {
+      setProgress({ stage, current, total, fraction });
+    },
+  },
+);
+
+videoElement.src = result.video_data_base64;
+console.log(result.seed, result.width, result.height, result.duration_ms);
+```
+
+`NeoDragonGenerateVideoOptions` accepts:
+
+- `seed?: number` — omit for a random seed. Zero is valid and reproducible.
+- `upscale?: boolean` — defaults to `true` for 1024x640 output; pass `false`
+  for NeoDragon's native 512x320 output.
+- `fps?: number` — MP4 playback rate from 1 through 60; defaults to 24.
+- `cinematicPrompt?: boolean` — whether the host appends NeoDragon's cinematic
+  prompt modifier; defaults to `true`.
+- `crop?: { x, y, width, height }` — a normalized source-image region applied
+  before NeoDragon's 16:10 center crop.
+- `onProgress?: (progress) => void` — receives engine-stage milestones.
+- `signal?: AbortSignal` — rejects locally with `LaylaAbortError` when aborted.
+
+Progress contains `stage` (for example `loading`, `text`, `sampling`, or
+`decoding`), `current`, `total`, and `fraction`. `fraction` is the current
+stage's `current / total`, clamped to 0..1; it is not a wall-clock estimate.
+A throwing progress listener is ignored so it cannot terminate generation.
+
+The resolved `NeoDragonGenerateVideoResult` contains the MP4 data URI, resolved seed,
+output width and height, frame count, FPS, playback duration in milliseconds,
+and generation time in milliseconds:
+
+```ts
+type NeoDragonGenerateVideoResult = {
+  video_data_base64: string;
+  seed: number;
+  width: number;
+  height: number;
+  frame_count: number;
+  fps: number;
+  duration_ms: number;
+  generation_time_ms: number;
+};
+```
+
+Video generations are serialized with each other so progress remains
+unambiguous on hosts that do not echo request IDs. Aborting closes the SDK
+promise but does not cancel NeoDragon on the host because the protocol has no
+video-cancel command; the next queued video starts after the host sends the
+terminal response. The Layla host must implement `neodragon_generate_video`, so
+keep host and SDK versions synchronized for this API.
+
 ## `layla.acestep.getModels(options?)`
 
 Returns every Ace-Step model bundle known to the host. Built-in bundles appear
@@ -2193,6 +2265,38 @@ is omitted, the mock replies with a canned placeholder token
 (`'mock-layla-cloud-access-token'`) so the signed-in path runs locally. Return
 `null` from the handler to exercise the declined-login path, or return a token
 after a delay of your own to exercise the waiting state.
+
+Customize video generation and drive progress through the same SDK path used by
+the native host:
+
+```ts
+installLaylaMock({
+  neodragonGenerateVideo: async (request, reportProgress) => {
+    reportProgress({
+      stage: 'sampling',
+      current: 10,
+      total: 20,
+      fraction: 0.5,
+    });
+
+    return {
+      video_data_base64: 'data:video/mp4;base64,AAAA...',
+      seed: request.seed ?? 1234,
+      width: request.upscale === false ? 512 : 1024,
+      height: request.upscale === false ? 320 : 640,
+      frame_count: 49,
+      fps: request.fps ?? 24,
+      duration_ms: 2042,
+      generation_time_ms: 800,
+    };
+  },
+});
+```
+
+The handler receives the native `neodragon_generate_video` data shape,
+including `image_data_base64` and `cinematic_prompt`, plus a `reportProgress`
+function. When omitted, the mock reports `loading`, `text`, `sampling`, and
+`decoding` stages and returns a small placeholder MP4 data URI with metadata.
 
 Configure the model listing returned by the mock, including unavailable
 built-in bundles:
@@ -2980,6 +3084,41 @@ type BackgroundAudioFinished = null;
 
 Each has a matching listener alias, e.g.
 `BackgroundAudioStatusListener = (data: BackgroundAudioStatus) => void`.
+
+### Video generation
+
+```ts
+type NeoDragonCrop = { x: number; y: number; width: number; height: number };
+
+interface NeoDragonProgress {
+  stage: string;
+  current: number;
+  total: number;
+  fraction: number;
+}
+
+type NeoDragonProgressListener = (progress: NeoDragonProgress) => void;
+
+interface NeoDragonGenerateVideoOptions extends RequestOptions {
+  seed?: number;
+  upscale?: boolean;
+  fps?: number;
+  cinematicPrompt?: boolean;
+  crop?: NeoDragonCrop;
+  onProgress?: NeoDragonProgressListener;
+}
+
+type NeoDragonGenerateVideoResult = {
+  video_data_base64: string;
+  seed: number;
+  width: number;
+  height: number;
+  frame_count: number;
+  fps: number;
+  duration_ms: number;
+  generation_time_ms: number;
+};
+```
 
 ### Ace-Step
 

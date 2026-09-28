@@ -33,6 +33,8 @@ import type {
   LaylaApiEvent_onExecuteSqlResponse,
   LaylaApiEvent_onCloudLogin,
   LaylaApiEvent_onGetImageGenerationModelsResponse,
+  LaylaApiEvent_onNeodragonGenerateVideoResponse,
+  LaylaApiNeodragonGenerateVideo,
   LaylaApiAceStepGetModelsResponse,
   LaylaApiEvent_onAceStepGenerateResponse,
   LaylaApiEvent_onAceStepLmResponse,
@@ -62,7 +64,10 @@ import type {
   LaylaExecutionContext,
   TavernCardV2,
 } from './protocol';
-import type { LaylaApiEvent_onAceStepGenerateProgress } from './typescript-protocol';
+import type {
+  LaylaApiEvent_onAceStepGenerateProgress,
+  LaylaApiEvent_onNeodragonGenerateVideoProgress,
+} from './typescript-protocol';
 import { makeMockChatHistory } from './mock-data/chat-history';
 
 type MockReply =
@@ -113,6 +118,12 @@ type MockChatSession =
 
 type MockImageGenerationModel =
   LaylaApiEvent_onGetImageGenerationModelsResponse['data'][number];
+
+type MockNeodragonGenerateVideoResult =
+  LaylaApiEvent_onNeodragonGenerateVideoResponse['data'];
+
+type MockNeodragonGenerateVideoProgress =
+  LaylaApiEvent_onNeodragonGenerateVideoProgress['data'];
 
 type MockExecuteSqlResult = LaylaApiEvent_onExecuteSqlResponse['data'];
 
@@ -292,6 +303,19 @@ export interface LaylaMockOptions {
    * Defaults to two sample models.
    */
   imageGenerationModels?: MockImageGenerationModel[];
+  /**
+   * Handle `neodragon.generateVideo(imageDataBase64, prompt, options)` calls.
+   * Return the generated MP4 data URI and metadata. Call `reportProgress` to
+   * drive `on_neodragon_generate_video_progress` events before resolving.
+   * When omitted, the mock reports four canned stages and returns a tiny
+   * placeholder MP4.
+   */
+  neodragonGenerateVideo?: (
+    request: LaylaApiNeodragonGenerateVideo['data'],
+    reportProgress: (progress: MockNeodragonGenerateVideoProgress) => void,
+  ) =>
+    | MockNeodragonGenerateVideoResult
+    | Promise<MockNeodragonGenerateVideoResult>;
   /**
    * Models returned by `acestep.getModels()`. Defaults include ready and
    * unavailable built-in bundles plus one complete imported bundle.
@@ -555,6 +579,8 @@ const mockCloudAccessToken = 'mock-layla-cloud-access-token';
 const mockVoiceAudioDataUri =
   'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
 const mockVoiceFilename = 'mock-voice.wav';
+const mockVideoDataUri =
+  'data:video/mp4;base64,AAAAHGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDE=';
 // Ace-Step always renders at 48kHz. The mock invents a short fixed track length
 // and a tiny latents blob so the raw passes have something to hand back.
 const mockAceStepSampleRate = 48000;
@@ -1073,6 +1099,56 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
       event: 'on_generate_image_response',
       data: {
         image_data_base64: 'https://picsum.photos/200/300', // Placeholder image URL for the mock
+      },
+    });
+  }
+
+  async function handleNeodragonGenerateVideo(
+    data: LaylaApiNeodragonGenerateVideo['data'],
+  ): Promise<void> {
+    await delay(latencyMs);
+    if (shouldError()) {
+      emitError('Simulated video generation error');
+      return;
+    }
+
+    const reportProgress = (progress: MockNeodragonGenerateVideoProgress) =>
+      emit({ event: 'on_neodragon_generate_video_progress', data: progress });
+
+    if (options.neodragonGenerateVideo) {
+      const result = await options.neodragonGenerateVideo(
+        { ...data },
+        reportProgress,
+      );
+      emit({ event: 'on_neodragon_generate_video_response', data: result });
+      return;
+    }
+
+    const stages = ['loading', 'text', 'sampling', 'decoding'];
+    for (let index = 0; index < stages.length; index++) {
+      await delay(latencyMs);
+      reportProgress({
+        stage: stages[index],
+        current: 1,
+        total: 1,
+        fraction: 1,
+      });
+    }
+
+    const fps = data.fps ?? 24;
+    const frameCount = 49;
+    const upscale = data.upscale ?? true;
+    emit({
+      event: 'on_neodragon_generate_video_response',
+      data: {
+        video_data_base64: mockVideoDataUri,
+        seed: data.seed ?? 1234,
+        width: upscale ? 1024 : 512,
+        height: upscale ? 640 : 320,
+        frame_count: frameCount,
+        fps,
+        duration_ms: Math.round((frameCount / fps) * 1000),
+        generation_time_ms: stages.length * latencyMs,
       },
     });
   }
@@ -2261,6 +2337,9 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
           break;
         case 'generate_image':
           void handleGenerateImage(msg.data);
+          break;
+        case 'neodragon_generate_video':
+          void handleNeodragonGenerateVideo(msg.data);
           break;
         case 'get_image_generation_models':
           void handleGetImageGenerationModels();

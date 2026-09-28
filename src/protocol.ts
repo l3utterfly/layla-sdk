@@ -269,6 +269,35 @@ export interface LaylaApiGenerateImage {
 }
 
 /**
+ * Ask the host to generate an MP4 video from a still image with NeoDragon.
+ * Binary input and output stay on the wire as data URIs: the source image is
+ * supplied in `image_data_base64`, and the host responds with an
+ * `on_neodragon_generate_video_response` containing `video_data_base64`.
+ *
+ * The host may emit TypeScript-only `on_neodragon_generate_video_progress`
+ * events while this request runs. Other SDKs receive only the terminal response.
+ */
+export interface LaylaApiNeodragonGenerateVideo {
+  cmd: 'neodragon_generate_video';
+  data: {
+    /** Source image encoded as base64, including its data URI prefix. */
+    image_data_base64: string;
+    /** Describes the motion to generate. */
+    prompt: string;
+    /** Omit for a random seed; zero is a valid, reproducible seed. */
+    seed?: number;
+    /** Upscale to 1024x640 (default) instead of the native 512x320. */
+    upscale?: boolean;
+    /** MP4 playback rate, from 1 through 60. Defaults to 24. */
+    fps?: number;
+    /** Append NeoDragon's cinematic prompt modifier. Defaults to true. */
+    cinematic_prompt?: boolean;
+    /** Normalized source region used before NeoDragon's 16:10 center crop. */
+    crop?: { x: number; y: number; width: number; height: number };
+  };
+}
+
+/**
  * Ask the host for the list of available image generation models. The host should respond with an `on_get_image_generation_models_response` event containing an array of model names.
  * The host will only return image models that are immediately available for use (so this will not include models that are not downloaded)
  */
@@ -945,6 +974,7 @@ export type BaseApiRequest =
   | LaylaApiGetCharacterImage
   | LaylaApiCancel
   | LaylaApiGenerateImage
+  | LaylaApiNeodragonGenerateVideo
   | LaylaApiUpdateCharacter
   | LaylaApiGetChatHistory
   | LaylaApiGetSentiment
@@ -1028,6 +1058,23 @@ export interface LaylaApiEvent_onGenerateImageResponse {
   data: {
     image_data_base64: string | null;
   } | null; // null if there was an error generating the image
+}
+
+/** The MP4 produced by a successful `neodragon_generate_video` request. */
+export interface LaylaApiEvent_onNeodragonGenerateVideoResponse {
+  event: 'on_neodragon_generate_video_response';
+  data: {
+    /** Generated MP4 encoded as base64, including the data URI prefix. */
+    video_data_base64: string;
+    /** Resolved seed, so the generation can be reproduced. */
+    seed: number;
+    width: number;
+    height: number;
+    frame_count: number;
+    fps: number;
+    duration_ms: number;
+    generation_time_ms: number;
+  };
 }
 
 /**
@@ -1575,6 +1622,7 @@ export type BaseApiEvent =
   | LaylaApiEvent_onGetCharactersResponse
   | LaylaApiEvent_onGetCharacterImageResponse
   | LaylaApiEvent_onGenerateImageResponse
+  | LaylaApiEvent_onNeodragonGenerateVideoResponse
   | LaylaApiEvent_onUpdateCharacterResponse
   | LaylaApiEvent_onGetChatHistoryResponse
   | LaylaApiEvent_onGetSentimentResponse

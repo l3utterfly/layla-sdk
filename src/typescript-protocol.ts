@@ -10,6 +10,21 @@ export interface LaylaApiEvent_onGenerateImageProgress {
   };
 }
 
+/**
+ * Progress update for a `neodragon_generate_video` request. NeoDragon reports
+ * milestones within the current engine stage; `fraction` is `current / total`,
+ * clamped to 0..1, and is not a wall-clock time estimate.
+ */
+export interface LaylaApiEvent_onNeodragonGenerateVideoProgress {
+  event: 'on_neodragon_generate_video_progress';
+  data: {
+    stage: string; // e.g. "loading", "text", "sampling", "decoding"
+    current: number;
+    total: number;
+    fraction: number;
+  };
+}
+
 /** A streamed token. `msg` is the full snapshot, `delta` is new. */
 export interface LaylaApiEvent_onMsg {
   event: 'on_message';
@@ -46,9 +61,11 @@ export interface LaylaApiEvent_onAceStepGenerateProgress {
 export type TypescriptApiEvent =
   | LaylaApiEvent_onMsg
   | LaylaApiEvent_onGenerateImageProgress
+  | LaylaApiEvent_onNeodragonGenerateVideoProgress
   | LaylaApiEvent_onAceStepGenerateProgress;
 
 export const isTypescriptApiEvent = (event: { event: string }): event is TypescriptApiEvent =>
   event.event === 'on_message' ||
   event.event === 'on_generate_image_progress' ||
+  event.event === 'on_neodragon_generate_video_progress' ||
   event.event === 'on_ace_step_generate_progress';

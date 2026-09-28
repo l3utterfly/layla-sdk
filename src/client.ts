@@ -8,6 +8,7 @@
 import { Chat } from './resources/chat';
 import { Characters } from './resources/characters';
 import { Images } from './resources/images';
+import { NeoDragon } from './resources/neodragon';
 import { AceStep } from './resources/acestep';
 import { Classifier } from './resources/classifier';
 import { Utils } from './resources/utils';
@@ -29,6 +30,7 @@ export class LaylaSDK {
   readonly chat = new Chat();
   readonly characters = new Characters();
   readonly images = new Images();
+  readonly neodragon = new NeoDragon();
   readonly acestep = new AceStep();
   readonly classifier = new Classifier();
   readonly utils = new Utils();

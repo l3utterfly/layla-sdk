@@ -1,6 +1,6 @@
 ---
 name: layla-sdk
-description: Use @layla-network/sdk when building or debugging third-party Layla mini-apps, WebView integrations, or task.js background scripts. Covers the public TypeScript client for chat and contextual events, characters, scheduled chat and notifications, media, memories and personas, private sqlite and files, Layla Cloud sign-in, local mocks, errors, and runtime packaging.
+description: Use @layla-network/sdk when building or debugging third-party Layla mini-apps, WebView integrations, or task.js background scripts. Covers the public TypeScript client for chat and contextual events, characters, scheduled chat and notifications, image/video/music media generation, memories and personas, private sqlite and files, Layla Cloud sign-in, local mocks, errors, and runtime packaging.
 ---
 
 # Layla SDK
@@ -53,6 +53,9 @@ import LaylaSDK, {
   type LaylaPersona,
   type LaylaTTSVoice,
   type GenerateVoiceToFileResult,
+  type NeoDragonGenerateVideoOptions,
+  type NeoDragonGenerateVideoResult,
+  type NeoDragonProgress,
   type ExecuteSqlResult,
   type CloudLoginResult,
   type STTSpeechRecognizedListener,
@@ -95,6 +98,7 @@ await layla.characters.getImage(characterId);
 await layla.characters.update(character);
 await layla.classifier.getSentiment('This is a happy message.');
 await layla.images.generateImage(prompt, onProgress);
+await layla.neodragon.generateVideo(imageDataBase64, prompt, options);
 await layla.acestep.getModels();
 await layla.acestep.generateMusic(prompt, onProgress);
 await layla.acestep.lm(request);
@@ -829,6 +833,50 @@ Character images follow the same convention:
 const imageSrc = await layla.characters.getImage(character.id);
 if (imageSrc) imageElement.src = imageSrc;
 ```
+
+## Video Generation
+
+Use `layla.neodragon.generateVideo(imageDataBase64, prompt, options?)` to
+animate a still image with NeoDragon. The source image must include its data URI
+prefix. The method resolves with the generated MP4 data URI plus the resolved
+seed and output metadata:
+
+```ts
+const result: NeoDragonGenerateVideoResult =
+  await layla.neodragon.generateVideo(
+    sourceImageDataUri,
+    'A slow camera push-in while the leaves move in a gentle breeze',
+    {
+      seed: 0,
+      fps: 24,
+      onProgress: ({ stage, fraction }: NeoDragonProgress) => {
+        setProgress({ stage, fraction });
+      },
+    },
+  );
+
+videoElement.src = result.video_data_base64;
+console.log(result.seed, result.width, result.height, result.duration_ms);
+```
+
+`NeoDragonGenerateVideoOptions` also accepts `upscale` (defaults to true for
+1024x640; false keeps the native 512x320 output), `cinematicPrompt` (defaults to
+true), a normalized `{ x, y, width, height }` source `crop`, and `signal`. `fps`
+is 1..60 and defaults to 24. A seed of zero is valid; omit the seed to let the
+host pick one.
+
+Progress reports `stage`, `current`, `total`, and `fraction`. The fraction is
+progress within the current engine stage, not an overall time estimate. Video
+generations serialize with each other. Aborting rejects locally but cannot stop
+NeoDragon because the protocol has no video-cancel command; the lane becomes
+available when the host sends the terminal response.
+
+The browser mock supports this surface. Pass a
+`neodragonGenerateVideo(request, reportProgress)` handler to
+`installLaylaMock(...)` for custom output, or use the default four-stage
+progress sequence and placeholder MP4. The host must implement the
+`neodragon_generate_video` command, so keep the SDK and Layla app versions
+synchronized.
 
 ## Music Generation (Ace-Step)
 

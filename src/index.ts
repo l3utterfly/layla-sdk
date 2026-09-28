@@ -33,6 +33,7 @@ export type {
   LaylaApiGetCharacters,
   LaylaApiGetCharacterImage,
   LaylaApiGenerateImage,
+  LaylaApiNeodragonGenerateVideo,
   LaylaApiGetImageGenerationModels,
   LaylaApiUpdateCharacter,
   LaylaApiGetChatHistory,
@@ -85,6 +86,7 @@ export type {
   LaylaApiEvent_onGetCharactersResponse,
   LaylaApiEvent_onGetCharacterImageResponse,
   LaylaApiEvent_onGenerateImageResponse,
+  LaylaApiEvent_onNeodragonGenerateVideoResponse,
   LaylaApiEvent_onGetImageGenerationModelsResponse,
   LaylaApiEvent_onUpdateCharacterResponse,
   LaylaApiEvent_onGetChatHistoryResponse,
@@ -138,6 +140,7 @@ export type { LaylaApiRequest, LaylaApiEvent } from './interface';
 export type {
   LaylaApiEvent_onMsg,
   LaylaApiEvent_onGenerateImageProgress,
+  LaylaApiEvent_onNeodragonGenerateVideoProgress,
   LaylaApiEvent_onAceStepGenerateProgress,
 } from './typescript-protocol';
 
@@ -175,6 +178,16 @@ export type {
 // Image resource surface.
 export { Images } from './resources/images';
 export type { LaylaImageGenerationModel } from './resources/images';
+
+// NeoDragon video generation resource surface.
+export { NeoDragon } from './resources/neodragon';
+export type {
+  NeoDragonCrop,
+  NeoDragonGenerateVideoOptions,
+  NeoDragonGenerateVideoResult,
+  NeoDragonProgress,
+  NeoDragonProgressListener,
+} from './resources/neodragon';
 
 // Ace-Step music generation resource surface.
 export { AceStep } from './resources/acestep';
