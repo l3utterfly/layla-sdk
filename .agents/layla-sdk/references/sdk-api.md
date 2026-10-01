@@ -44,6 +44,7 @@ import LaylaSDK, {
   type ChatContextStartedSpeakingListener,
   type ChatContextStartedThinking,
   type ChatContextStartedThinkingListener,
+  type SendOutOfBandMessageOptions,
   type LaylaApiSaveChatMessage,
   type LaylaApiScheduledChatMessage,
   type LaylaApiGetScheduledChatMessages,
@@ -71,6 +72,7 @@ import LaylaSDK, {
   type LaylaApiGetInferenceEngines,
   type LaylaApiSetInferenceEngine,
   type LaylaApiGetExecutionContext,
+  type LaylaApiSendOutOfBandMessage,
   type LaylaApiEvent_onGetChatSessionsResponse,
   type LaylaApiEvent_onSaveChatMessageResponse,
   type LaylaApiEvent_onScheduledChatMessage,
@@ -92,6 +94,7 @@ import LaylaSDK, {
   type LaylaApiEvent_onChatContextSentimentUpdate,
   type LaylaApiEvent_onChatContextStartedSpeaking,
   type LaylaApiEvent_onChatContextStartedThinking,
+  type LaylaApiEvent_onSendOutOfBandMessageResponse,
   type LaylaApiEvent_onFinishedSpeaking,
   type LaylaApiEvent_onGenerateVoiceToFileResponse,
   type LaylaApiEvent_onNeodragonGenerateVideoResponse,
@@ -259,6 +262,83 @@ The host uses the shared wire event `on_finished_speaking` for both contextual
 speech completion and TTS playback completion. Consequently,
 `chatContextFinishedSpeaking` can also fire when a TTS request finishes; use the
 event as a speech-finished signal rather than as a uniquely identifiable source.
+
+## `layla.contextual.sendOutOfBandMessage(message, options?)`
+
+Sends an "out-of-band" message, as the user, to the current chat service and
+resolves with the full reply text once it has finished generating. The reply is
+generated against the conversation built up by `layla.chat.completions`
+requests (or an empty one if no chat has been sent yet), but neither the
+message nor its reply is added to that conversation's history.
+
+Use it for quick judgement calls about the ongoing conversation — the kind of
+side question a mini-app asks to decide what to do next, not something the user
+should see in the chat:
+
+```ts
+const reply = await layla.contextual.sendOutOfBandMessage(
+  'Should the character send a picture now? Answer yes or no.',
+);
+
+if (reply.trim().toLowerCase().startsWith('yes')) {
+  await sendPicture();
+}
+```
+
+Nothing is streamed: no `on_message` events are emitted, so there is no
+`ChatCompletionStream` and the promise is the only result. The resolved string
+has any reasoning and tool calls stripped.
+
+Options:
+
+| Option | Type | Description |
+| --- | --- | --- |
+| `imageBase64` | `string` | An image to send with the message, base64-encoded including its data URI prefix. |
+| `jsonSchema` | `Record<string, unknown>` | A JSON Schema the reply should conform to — the schema object itself. Best-effort; see below. |
+| `signal` | `AbortSignal` | Abort the request. |
+
+`jsonSchema` is best-effort: inference engines that support constrained
+decoding enforce it, and the rest silently ignore it. Always describe the
+expected format in `message` too, and validate the reply before relying on it:
+
+```ts
+const reply = await layla.contextual.sendOutOfBandMessage(
+  'Should the character send a picture now? Reply only with JSON like ' +
+    '{"send": true, "reason": "..."}.',
+  {
+    jsonSchema: {
+      type: 'object',
+      properties: {
+        send: { type: 'boolean' },
+        reason: { type: 'string' },
+      },
+      required: ['send'],
+    },
+  },
+);
+
+let decision: { send: boolean } | null = null;
+try {
+  const parsed = JSON.parse(reply);
+  if (typeof parsed?.send === 'boolean') decision = parsed;
+} catch {
+  // The engine ignored the schema and answered in prose.
+}
+```
+
+Attach an image with `imageBase64`:
+
+```ts
+const caption = await layla.contextual.sendOutOfBandMessage(
+  'Describe this picture in one short sentence.',
+  { imageBase64: 'data:image/png;base64,...' },
+);
+```
+
+The promise rejects with `LaylaError` when generation fails or produces an empty
+reply, and with `LaylaAbortError` when the signal aborts. Aborting an in-flight
+request posts a `cancel` stamped with that request's correlation id, so the host
+stops this generation and not a chat stream running beside it.
 
 ## `layla.chat.completions.create(...)`
 
@@ -2006,7 +2086,7 @@ await layla.utils.deleteFileOrDir('logs/hello.txt', {
 
 ## Abort Signals
 
-Chat, character requests, classifier requests, image generation, and music generation can be cancelled from the mini-app.
+Chat, out-of-band messages, character requests, classifier requests, image generation, and music generation can be cancelled from the mini-app.
 
 ```ts
 const controller = new AbortController();
@@ -2265,6 +2345,25 @@ is omitted, the mock replies with a canned placeholder token
 (`'mock-layla-cloud-access-token'`) so the signed-in path runs locally. Return
 `null` from the handler to exercise the declined-login path, or return a token
 after a delay of your own to exercise the waiting state.
+
+Answer out-of-band messages:
+
+```ts
+installLaylaMock({
+  outOfBandMessage: ({ message, image_base64, json_schema }) =>
+    json_schema ? JSON.stringify({ send: true }) : 'yes',
+});
+
+const reply = await layla.contextual.sendOutOfBandMessage('Send a picture?');
+```
+
+The handler receives the wire payload and returns the reply text; it may be
+async. Return an empty string to exercise the empty-reply error. When the
+handler is omitted, the mock answers with the simplest value the request's
+`json_schema` accepts (every required property filled with a type default, or
+the first `enum` entry), serialized as JSON, or with a canned sentence echoing
+the message when no schema was sent. The mock does not keep chat history, so
+replies do not reflect earlier `chat.completions` requests.
 
 Customize video generation and drive progress through the same SDK path used by
 the native host:
@@ -3049,6 +3148,19 @@ type ChatContextStartedThinking = null;
 
 Each has a matching listener alias, e.g.
 `ChatContextNewMessageListener = (data: ChatContextNewMessage) => void`.
+
+### Out-of-band messages
+
+```ts
+interface SendOutOfBandMessageOptions extends RequestOptions {
+  /** Image to send with the message, base64 including its data URI prefix. */
+  imageBase64?: string;
+  /** JSON Schema the reply should conform to. Best-effort. */
+  jsonSchema?: Record<string, unknown>;
+}
+```
+
+`sendOutOfBandMessage` resolves with a plain `string`: the reply text.
 
 ### Background audio
 

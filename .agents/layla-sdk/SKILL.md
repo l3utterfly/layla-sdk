@@ -1,6 +1,6 @@
 ---
 name: layla-sdk
-description: Use @layla-network/sdk when building or debugging third-party Layla mini-apps, WebView integrations, or task.js background scripts. Covers the public TypeScript client for chat and contextual events, characters, scheduled chat and notifications, image/video/music media generation, memories and personas, private sqlite and files, Layla Cloud sign-in, local mocks, errors, and runtime packaging.
+description: Use @layla-network/sdk when building or debugging third-party Layla mini-apps, WebView integrations, or task.js background scripts. Covers the public TypeScript client for chat, contextual events and out-of-band side questions, characters, scheduled chat and notifications, image/video/music media generation, memories and personas, private sqlite and files, Layla Cloud sign-in, local mocks, errors, and runtime packaging.
 ---
 
 # Layla SDK
@@ -69,6 +69,7 @@ import LaylaSDK, {
   type ChatContextSentimentUpdateListener,
   type ChatContextStartedSpeakingListener,
   type ChatContextStartedThinkingListener,
+  type SendOutOfBandMessageOptions,
   type SentimentValues,
   type TavernCardV2,
 } from '@layla-network/sdk';
@@ -107,6 +108,7 @@ await layla.acestep.understand({ audioBase64 });
 await layla.acestep.vaeEncode(audioBase64);
 await layla.acestep.vaeDecode(latentsBase64);
 await layla.contextual.getExecutionContext();
+await layla.contextual.sendOutOfBandMessage(message, options);
 await layla.chat.completions.create({ messages });
 await layla.chat.getInferenceEngines();
 await layla.chat.setInferenceEngine(engineName);
@@ -189,11 +191,54 @@ The host uses `on_finished_speaking` for both contextual speech completion and
 TTS playback completion, so treat `chatContextFinishedSpeaking` as a shared
 speech-finished signal rather than a source-specific event.
 
+### Out-of-band messages
+
+Use `layla.contextual.sendOutOfBandMessage(message, options?)` for a quick side
+question about the ongoing conversation. It sends `message` as the user to the
+current chat service and resolves with the full reply `string`. The reply is
+generated against the conversation built up by `layla.chat.completions`
+requests (or an empty one before any chat), but neither the message nor the
+reply is added to that history, and nothing is streamed — there is no stream
+object and no `on_message` events.
+
+```ts
+const reply = await layla.contextual.sendOutOfBandMessage(
+  'Should the character send a picture now? Reply only with JSON like {"send": true}.',
+  {
+    jsonSchema: {
+      type: 'object',
+      properties: { send: { type: 'boolean' } },
+      required: ['send'],
+    },
+    // imageBase64: 'data:image/png;base64,...', // optional, data URI prefix included
+    // signal: controller.signal,
+  },
+);
+
+let send = false;
+try {
+  send = JSON.parse(reply).send === true;
+} catch {
+  // The engine ignored the schema; fall back to the default decision.
+}
+```
+
+`jsonSchema` is best-effort: engines without constrained decoding silently
+ignore it. Always describe the expected format in `message` as well, and
+validate the reply before relying on it. The reply has reasoning and tool calls
+stripped. The promise rejects with `LaylaError` when generation fails or the
+reply is empty, and with `LaylaAbortError` on abort; aborting asks the host to
+stop that generation only. Use it for decisions the mini-app makes, not for
+text the user should see in the chat — use `layla.chat.completions` for that.
+
 For local testing, set `executionContext` (including `app_version`) in
 `installLaylaMock(...)`, or omit it to use a standalone mock context. Drive
 events with the returned handle's `emitChatContextNewMessage(...)`,
 `emitChatContextSentimentUpdate(...)`, `emitChatContextStartedSpeaking()`,
 `emitChatContextFinishedSpeaking()`, and `emitChatContextStartedThinking()`.
+Pass an `outOfBandMessage: (request) => string` handler to answer
+`sendOutOfBandMessage` calls; without one, the mock replies with a value shaped
+by the request's `json_schema`, or a canned sentence when no schema was sent.
 Read `references/sdk-api.md` for full payloads, mock examples, and abort handling.
 
 ## Chat

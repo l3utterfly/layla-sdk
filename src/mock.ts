@@ -35,6 +35,7 @@ import type {
   LaylaApiEvent_onGetImageGenerationModelsResponse,
   LaylaApiEvent_onNeodragonGenerateVideoResponse,
   LaylaApiNeodragonGenerateVideo,
+  LaylaApiSendOutOfBandMessage,
   LaylaApiAceStepGetModelsResponse,
   LaylaApiEvent_onAceStepGenerateResponse,
   LaylaApiEvent_onAceStepLmResponse,
@@ -129,6 +130,8 @@ type MockExecuteSqlResult = LaylaApiEvent_onExecuteSqlResponse['data'];
 
 type MockCloudLoginResult =
   LaylaApiEvent_onCloudLogin['data']['access_token'];
+
+type MockOutOfBandMessageRequest = LaylaApiSendOutOfBandMessage['data'];
 
 type MockSaveFileResult = LaylaApiEvent_onSaveFileResponse['data'];
 
@@ -340,6 +343,17 @@ export interface LaylaMockOptions {
    * with a canned placeholder token.
    */
   cloudLogin?: () => MockCloudLoginResult | Promise<MockCloudLoginResult>;
+  /**
+   * Handle `contextual.sendOutOfBandMessage(message, options)` calls. Receives
+   * the wire payload (`message`, and `image_base64` / `json_schema` when the
+   * mini-app sent them) and returns the full reply text. May be async. Return
+   * an empty string to simulate the host's empty-reply error. When omitted, the
+   * mock replies with a placeholder value shaped by `json_schema` if one was
+   * sent, or a canned sentence echoing the message otherwise.
+   */
+  outOfBandMessage?: (
+    request: MockOutOfBandMessageRequest,
+  ) => string | Promise<string>;
   /**
    * Handle
    * `acestep.generateMusic(prompt, onProgress, lyrics, duration, options)`
@@ -599,6 +613,51 @@ const mockAudioTickMs = 250;
 const mockFileStorageKey = (filename: string): string =>
   `${mockFileStoragePrefix}${filename}`;
 
+/**
+ * The simplest value a JSON Schema accepts, for the mock's default
+ * out-of-band reply: `const`/first `enum` entry, else a type default, with
+ * every required property of an object filled in. It only needs to be
+ * plausible enough for a mini-app's validator; it is not a schema engine.
+ */
+function mockValueForSchema(schema: unknown): unknown {
+  if (!schema || typeof schema !== 'object') return null;
+  const s = schema as Record<string, unknown>;
+  if ('const' in s) return s.const;
+  if (Array.isArray(s.enum) && s.enum.length > 0) return s.enum[0];
+  for (const key of ['anyOf', 'oneOf', 'allOf']) {
+    const options = s[key];
+    if (Array.isArray(options) && options.length > 0) {
+      return mockValueForSchema(options[0]);
+    }
+  }
+  const type = Array.isArray(s.type) ? s.type[0] : s.type;
+  switch (type) {
+    case 'object': {
+      const properties =
+        s.properties && typeof s.properties === 'object'
+          ? (s.properties as Record<string, unknown>)
+          : {};
+      const required = Array.isArray(s.required) ? s.required : [];
+      return Object.fromEntries(
+        required
+          .filter((name): name is string => typeof name === 'string')
+          .map((name) => [name, mockValueForSchema(properties[name])]),
+      );
+    }
+    case 'array':
+      return [];
+    case 'string':
+      return 'mock';
+    case 'number':
+    case 'integer':
+      return 0;
+    case 'boolean':
+      return false;
+    default:
+      return null;
+  }
+}
+
 const storageErrorMessage = (error: unknown): string =>
   error instanceof Error
     ? error.message
@@ -756,6 +815,9 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
 
   // The single in-flight generation, mirroring the SDK's one-active-job model.
   let current: { cancelled: boolean } | null = null;
+  // Out-of-band generations run beside chat streams, so they are tracked (and
+  // cancelled) by the correlation id the SDK stamped on the request.
+  const outOfBand = new Map<string, { cancelled: boolean }>();
   let currentSpeech: { cancelled: boolean } | null = null;
   let backgroundAudio: {
     queueAudioFiles: string[];
@@ -872,7 +934,23 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     }
   }
 
-  function handleCancel(): void {
+  function handleCancel(id?: string): void {
+    const oob = id === undefined ? undefined : outOfBand.get(id);
+    if (oob) {
+      // A cancelled out-of-band message ends in on_error, echoing the id so it
+      // fails only that request and not a chat stream running beside it.
+      if (!oob.cancelled) {
+        oob.cancelled = true;
+        queueMicrotask(() =>
+          emit({
+            event: 'on_error',
+            data: { message: 'Out-of-band message cancelled' },
+            id,
+          } as LaylaApiEvent),
+        );
+      }
+      return;
+    }
     // Native contract: stop generating, then send the terminating on_message_end
     // that the SDK waits on before starting the next queued request. Emit it
     // asynchronously — a real RN bridge never delivers events synchronously
@@ -2141,6 +2219,48 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     });
   }
 
+  async function handleSendOutOfBandMessage(
+    data: MockOutOfBandMessageRequest,
+    id?: string,
+  ): Promise<void> {
+    const gen = { cancelled: false };
+    if (id !== undefined) outOfBand.set(id, gen);
+    // Echo the request id, as the real host does, so replies and errors reach
+    // exactly this request even while a chat stream is in flight.
+    const reply = (event: LaylaApiEvent) =>
+      emit((id === undefined ? event : { ...event, id }) as LaylaApiEvent);
+    try {
+      await delay(latencyMs);
+      if (gen.cancelled) return; // cancel error already emitted
+
+      if (shouldError()) {
+        reply({
+          event: 'on_error',
+          data: { message: 'Simulated out-of-band message error' },
+        });
+        return;
+      }
+
+      const msg = options.outOfBandMessage
+        ? await options.outOfBandMessage(data)
+        : data.json_schema
+          ? JSON.stringify(mockValueForSchema(data.json_schema))
+          : `This is a mock out-of-band reply. You asked: "${data.message}".`;
+      if (gen.cancelled) return;
+
+      if (!msg) {
+        reply({
+          event: 'on_error',
+          data: { message: 'Out-of-band message produced an empty reply' },
+        });
+        return;
+      }
+      reply({ event: 'on_send_out_of_band_message_response', data: { msg } });
+    } finally {
+      if (id !== undefined) outOfBand.delete(id);
+    }
+  }
+
   function emitBackgroundAudioStatus(): void {
     if (!backgroundAudio) return;
     emit({
@@ -2324,7 +2444,7 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
           void handleSendV2(msg.data);
           break;
         case 'cancel':
-          handleCancel();
+          handleCancel((msg as { id?: string }).id);
           break;
         case 'get_characters':
           void handleGetCharacters(msg.data);
@@ -2466,6 +2586,12 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
           break;
         case 'layla_cloud_login':
           void handleCloudLogin();
+          break;
+        case 'send_out_of_band_message':
+          void handleSendOutOfBandMessage(
+            msg.data,
+            (msg as { id?: string }).id,
+          );
           break;
         default:
           break;

@@ -6,7 +6,7 @@
       <img src="assets/layla.png" alt="Layla butterfly logo" width="160">
     </td>
     <td>
-      The Layla SDK project provides the public TypeScript SDK for building custom Layla mini-apps. Mini-apps run inside Layla's WebView and can use <code>@layla-network/sdk</code> to talk to Layla app host through an OpenAI-shaped API for chat, tool calling, multimodal image input, streaming responses, contextual character-chat state and events, inference engine selection, scheduled chat messages and mini-app notifications, characters, character images, personas, memories, TTS playback and audio-file generation, speech-to-text microphone input, background audio playback, image generation, still-image-to-video generation with NeoDragon, music generation with the Ace-Step model (the one-call pipeline plus its raw passes), a private per-mini-app sqlite database, private file utilities, Layla Cloud sign-in, and local development mocks.
+      The Layla SDK project provides the public TypeScript SDK for building custom Layla mini-apps. Mini-apps run inside Layla's WebView and can use <code>@layla-network/sdk</code> to talk to Layla app host through an OpenAI-shaped API for chat, tool calling, multimodal image input, streaming responses, contextual character-chat state and events, out-of-band side questions about the current chat, inference engine selection, scheduled chat messages and mini-app notifications, characters, character images, personas, memories, TTS playback and audio-file generation, speech-to-text microphone input, background audio playback, image generation, still-image-to-video generation with NeoDragon, music generation with the Ace-Step model (the one-call pipeline plus its raw passes), a private per-mini-app sqlite database, private file utilities, Layla Cloud sign-in, and local development mocks.
     </td>
   </tr>
 </table>
@@ -48,6 +48,31 @@ await layla.backgroundAudio.start([
 ```
 
 Track objects use the host's `start_background_audio_player_v2` command. The existing `start(['chapter-1.mp3'], { title: 'Book' })` signature is deprecated but still sends the original command unchanged. An empty array also uses the original command to preserve compatibility. The `BackgroundAudioTrack` type is exported for typed queues.
+
+## Out-of-Band Messages
+
+Ask the current chat a quick side question without adding anything to its history:
+
+```ts
+const reply = await layla.contextual.sendOutOfBandMessage(
+  'Should the character send a picture now? Reply as JSON: {"send": true|false}.',
+  {
+    jsonSchema: {
+      type: 'object',
+      properties: { send: { type: 'boolean' } },
+      required: ['send'],
+    },
+  },
+);
+
+const { send } = JSON.parse(reply);
+```
+
+The reply is generated against the conversation built up by
+`chat.completions` requests, but neither the message nor the reply enters that
+history, and nothing is streamed. An `imageBase64` option attaches an image.
+`jsonSchema` is best-effort — engines without constrained decoding ignore it —
+so describe the format in the message too and validate the reply.
 
 ## Video Generation
 
@@ -129,6 +154,7 @@ The SDK talks to whatever Layla app it finds itself in, and takes the richest ro
 | Tool calling — `tools`, `tool_choice`, `tool` messages, and `tool_calls` on the reply | Layla **v7.5.0-alpha** or newer, and `@layla-network/sdk` **7.5.0** or newer |
 | The full OpenAI request body reaching the model untranslated (multi-part content, several images per turn, an assistant turn's `tool_calls`) | Layla **v7.5.0-alpha** or newer, and `@layla-network/sdk` **7.5.0** or newer |
 | Still-image-to-video generation | A Layla host build with `neodragon_generate_video` support and an SDK release exposing `layla.neodragon` |
+| Out-of-band messages | A Layla host build with `send_out_of_band_message` support and an SDK release exposing `layla.contextual.sendOutOfBandMessage` |
 | Everything else — chat, streaming, one image per message, characters, memories, TTS, images, music, database, files | Any supported Layla version |
 
 Call sites are identical on both paths: the SDK reads the host version itself and routes accordingly. On an older host the request is translated into Layla's narrower native protocol, and anything it cannot carry — `tools` among it — is dropped with a `console.warn` rather than rejected. A mini-app that depends on tool calling should check the host version before offering the feature:
@@ -171,7 +197,7 @@ Each release contains:
 ## Learn More
 
 - Read the [mini-apps overview](.agents/layla-sdk/references/mini-apps-overview.md) to understand app packaging, metadata, and the Layla WebView runtime.
-- Read the [SDK API reference](.agents/layla-sdk/references/sdk-api.md) for imports, contextual execution state and chat events, chat completions, streaming, tool calling, inference engine selection, chat sessions, session history, message saves, scheduled chat messages and mini-app notifications, memory list/top/save APIs, personas, TTS playback and audio-file generation, speech-to-text microphone input and events, background audio controls and events, characters, image generation, still-image-to-video generation, music generation and the raw Ace-Step passes, a private per-mini-app sqlite database, file utilities, Layla Cloud sign-in, abort handling, and errors.
+- Read the [SDK API reference](.agents/layla-sdk/references/sdk-api.md) for imports, contextual execution state, chat events, and out-of-band messages, chat completions, streaming, tool calling, inference engine selection, chat sessions, session history, message saves, scheduled chat messages and mini-app notifications, memory list/top/save APIs, personas, TTS playback and audio-file generation, speech-to-text microphone input and events, background audio controls and events, characters, image generation, still-image-to-video generation, music generation and the raw Ace-Step passes, a private per-mini-app sqlite database, file utilities, Layla Cloud sign-in, abort handling, and errors.
 - Browse the [examples guide](examples/ReadMe.md) to choose a starting mini-app.
 
 ## Layla App

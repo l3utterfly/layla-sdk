@@ -963,6 +963,24 @@ export interface LaylaApiCloudLogin {
 }
 
 /**
+ * Ask the host to send an "out-of-band" message to the current chat service and return the reply in one piece.
+ * The message is generated against the conversation built up by `send_message` / `send_message_v2` (or an empty one if no chat has been sent yet), but neither the message nor its reply is added to that conversation's history.
+ * Nothing is streamed: no `on_message` events are emitted for this request. Useful for quick "judgement calls" about the ongoing conversation (e.g. "Should the character send a picture now? Answer yes or no.").
+ * The host should respond with an `on_send_out_of_band_message_response` event containing the reply, or 'on_error' if generation failed or was cancelled (via `cancel`).
+ *
+ * `json_schema` asks for the reply to be constrained to a JSON Schema. It is best-effort: inference engines that support constrained decoding enforce it, and the rest silently ignore it.
+ * Because of that, also describe the expected format in `message` itself, and validate the reply before relying on it.
+ */
+export interface LaylaApiSendOutOfBandMessage {
+  cmd: 'send_out_of_band_message';
+  data: {
+    message: string; // the message to send, as the user role
+    image_base64?: string; // optional image to send along with the message, encoded in base64 (including the data URI prefix)
+    json_schema?: Record<string, unknown>; // optional JSON Schema the reply should conform to (the schema object itself, e.g. { type: 'object', properties: {...}, required: [...] }). Best-effort, see above.
+  };
+}
+
+/**
  * A request command (anything that opens a job and expects events back).
  * Add new one-shot commands here. `cancel` is not a request — it's a control
  * signal for an already-open job — so it lives outside this union.
@@ -1017,7 +1035,8 @@ export type BaseApiRequest =
   | LaylaApiAceStepVae
   | LaylaApiListDir
   | LaylaApiDeleteFileOrDir
-  | LaylaApiCloudLogin;
+  | LaylaApiCloudLogin
+  | LaylaApiSendOutOfBandMessage;
 
 /* ---- RN -> Web events ------------------------------------------------------ */
 
@@ -1616,6 +1635,18 @@ export interface LaylaApiEvent_onCloudLogin {
   };
 }
 
+/**
+ * The response for a `send_out_of_band_message` request, containing the full reply text.
+ * This event is emitted by the host once the reply has finished generating. The reply is not added to the chat history.
+ * If generation failed, was cancelled, or produced an empty reply, the host emits an `on_error` event instead of this event.
+ */
+export interface LaylaApiEvent_onSendOutOfBandMessageResponse {
+  event: 'on_send_out_of_band_message_response';
+  data: {
+    msg: string; // the reply text, without any reasoning or tool calls
+  };
+}
+
 export type BaseApiEvent =
   | LaylaApiEvent_onMsgEnd
   | LaylaApiEvent_onError
@@ -1667,4 +1698,5 @@ export type BaseApiEvent =
   | LaylaApiEvent_onAceStepVaeResponse
   | LaylaApiEvent_onListDirResponse
   | LaylaApiEvent_onDeleteFileOrDirResponse
-  | LaylaApiEvent_onCloudLogin;
+  | LaylaApiEvent_onCloudLogin
+  | LaylaApiEvent_onSendOutOfBandMessageResponse;

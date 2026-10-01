@@ -2,6 +2,10 @@
  * resources/contextual.ts
  * -----------------------
  * Helpers for mini-apps launched inside a character chat context.
+ *
+ * Besides the execution context and the pushed chat-activity events, this
+ * surface carries `sendOutOfBandMessage()`: a one-shot, non-streaming side
+ * question asked against the current chat that never enters its history.
  */
 
 import type { LaylaApiEvent } from '../interface';
@@ -11,10 +15,29 @@ import type {
   LaylaApiEvent_onChatContextSentimentUpdate,
   LaylaApiEvent_onChatContextStartedSpeaking,
   LaylaApiEvent_onChatContextStartedThinking,
+  LaylaApiEvent_onSendOutOfBandMessageResponse,
   LaylaExecutionContext,
 } from '../protocol';
 import { getExecutionContext } from '../internal/execution-context';
-import { type RequestOptions } from '../internal/one-shot';
+import { oneShot, type RequestOptions } from '../internal/one-shot';
+
+/** Options for {@link Contextual.sendOutOfBandMessage}. */
+export interface SendOutOfBandMessageOptions extends RequestOptions {
+  /**
+   * An image to send along with the message, base64-encoded including its data
+   * URI prefix (e.g. `data:image/png;base64,...`).
+   */
+  imageBase64?: string;
+  /**
+   * A JSON Schema the reply should conform to — the schema object itself, e.g.
+   * `{ type: 'object', properties: {...}, required: [...] }`.
+   *
+   * Best-effort: inference engines that support constrained decoding enforce
+   * it, the rest silently ignore it. Describe the expected format in the
+   * message as well, and validate the reply before relying on it.
+   */
+  jsonSchema?: Record<string, unknown>;
+}
 
 export type ChatContextNewMessage =
   LaylaApiEvent_onChatContextNewMessage['data'];
@@ -90,6 +113,46 @@ export class Contextual {
     options: RequestOptions = {},
   ): Promise<LaylaExecutionContext> {
     return getExecutionContext(options.signal);
+  }
+
+  /**
+   * Send an "out-of-band" message, as the user, to the current chat service and
+   * resolve with the full reply text.
+   *
+   * The reply is generated against the conversation built up by
+   * `chat.completions` requests (or an empty one if no chat has been sent yet),
+   * but neither the message nor its reply is added to that conversation's
+   * history. Nothing is streamed. Use it for quick judgement calls about the
+   * ongoing conversation, e.g. "Should the character send a picture now?
+   * Answer yes or no."
+   *
+   * The reply has reasoning and tool calls stripped. Rejects with `LaylaError`
+   * when generation fails or produces an empty reply, and with
+   * `LaylaAbortError` when `options.signal` aborts; aborting an in-flight
+   * request asks the host to stop generating.
+   */
+  sendOutOfBandMessage(
+    message: string,
+    options: SendOutOfBandMessageOptions = {},
+  ): Promise<string> {
+    const { signal, imageBase64, jsonSchema } = options;
+    return oneShot<string>(
+      {
+        cmd: 'send_out_of_band_message',
+        data: {
+          message,
+          image_base64: imageBase64,
+          json_schema: jsonSchema,
+        },
+      },
+      'on_send_out_of_band_message_response',
+      (event: LaylaApiEvent) =>
+        (event as LaylaApiEvent_onSendOutOfBandMessageResponse).data.msg,
+      signal,
+      // The bridge stamps the cancel with this request's id, so the host stops
+      // this generation rather than an unrelated chat stream.
+      () => ({ cmd: 'cancel' }),
+    );
   }
 
   /** Listen for activity in the surrounding character chat. */

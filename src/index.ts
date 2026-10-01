@@ -78,6 +78,7 @@ export type {
   LaylaApiListDir,
   LaylaApiDeleteFileOrDir,
   LaylaApiCloudLogin,
+  LaylaApiSendOutOfBandMessage,
   LaylaApiCancel,
 
   // event types
@@ -132,6 +133,7 @@ export type {
   LaylaApiEvent_onListDirResponse,
   LaylaApiEvent_onDeleteFileOrDirResponse,
   LaylaApiEvent_onCloudLogin,
+  LaylaApiEvent_onSendOutOfBandMessageResponse,
 } from './protocol';
 export { SENTIMENT_THRESHOLDS } from './protocol';
 
@@ -273,6 +275,7 @@ export type {
   ChatContextStartedSpeakingListener,
   ChatContextStartedThinking,
   ChatContextStartedThinkingListener,
+  SendOutOfBandMessageOptions,
 } from './resources/contextual';
 
 // Client.

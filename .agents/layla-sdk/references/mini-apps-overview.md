@@ -131,6 +131,7 @@ The SDK exposes this as higher-level APIs such as:
 - `layla.chat.scheduleChatMessage(...)`
 - `layla.chat.getScheduledChatMessages(...)`
 - `layla.chat.cancelScheduledChatMessage(...)`
+- `layla.contextual.sendOutOfBandMessage(...)`
 - `layla.characters.list(...)`
 - `layla.characters.getImage(...)`
 - `layla.characters.update(...)`
