@@ -25,7 +25,8 @@ The banner in the toolbar shows which environment was detected: *Browser mock*,
 ## Using it
 
 - **Run all** runs every check except the *heavy* ones. Tick **include heavy** to
-  also run the chat interfaces, tool calling, TTS synthesis/playback, image
+  also run the chat interfaces, tool calling, out-of-band messages, TTS
+  synthesis/playback, image
   generation, video generation, music generation, the microphone, and the
   background-audio player.
 - Each check (and each group) has its own **Run** button.
@@ -79,6 +80,26 @@ It is *safe* (it runs with **Run all**), but exempt from the watchdog, because
 the host may put an interactive sign-in in front of the user, which easily
 outlasts 45s. The browser mock answers with a placeholder token, so the check is
 green there without a real account.
+
+## The out-of-band message checks
+
+The **Contextual** group has four *heavy* checks for
+`contextual.sendOutOfBandMessage`, each of which runs a generation:
+
+- **plain text** — asks for a single marker word and fails unless the reply
+  contains it.
+- **+jsonSchema** — sends a JSON Schema and validates the reply against it.
+  Because `jsonSchema` is best-effort, a reply that isn't schema-shaped JSON is
+  a *skip* (the engine doesn't constrain decoding), not a fail.
+- **+imageBase64** — attaches the bundled `icon.png` and passes on any
+  non-empty reply; whether the description is accurate depends on the engine's
+  vision support.
+- **abort** — aborting an in-flight request must reject with `LaylaAbortError`.
+  On the host this also sends a `cancel` stamped with the request's id.
+
+Each check logs the full reply. The browser mock answers the plain-text check
+by echoing the question and the schema check with schema-shaped JSON, so all
+four are green there.
 
 ## Concurrency checks
 

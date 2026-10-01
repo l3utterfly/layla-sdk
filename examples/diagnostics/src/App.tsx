@@ -915,7 +915,7 @@ const groups: Group[] = [
   {
     id: "contextual",
     title: "Contextual",
-    blurb: "Execution context + push-event subscription.",
+    blurb: "Execution context, push-event subscription, and out-of-band messages (heavy).",
     checks: [
       {
         id: "contextual.getExecutionContext",
@@ -924,9 +924,8 @@ const groups: Group[] = [
         weight: "safe",
         run: async ({ layla }) => {
           const ctx = await layla.contextual.getExecutionContext();
-          return `appVersion: ${truncate(
-            String((ctx as { appVersion?: unknown }).appVersion ?? "?"),
-          )}`;
+          assert(ctx.app_version, "missing app_version");
+          return `app_version: ${truncate(ctx.app_version)}`;
         },
       },
       {
@@ -963,6 +962,126 @@ const groups: Group[] = [
           } as Parameters<LaylaMockHandle["emitChatContextNewMessage"]>[0]);
           await received;
           return "listener received a synthetic context event";
+        },
+      },
+      {
+        id: "contextual.sendOutOfBandMessage",
+        name: "sendOutOfBandMessage (plain text)",
+        desc: "Asks a one-shot side question and checks the reply followed its instruction.",
+        weight: "heavy",
+        run: async ({ layla, signal, log }) => {
+          const reply = await layla.contextual.sendOutOfBandMessage(
+            "This is a diagnostics check. Reply with exactly the single word PERIWINKLE and nothing else.",
+            { signal },
+          );
+          log(`Reply:
+${reply}`);
+          assert(reply.length > 0, "empty reply");
+          assert(
+            reply.toLowerCase().includes("periwinkle"),
+            `reply did not include PERIWINKLE: "${truncate(reply)}"`,
+          );
+          return `reply: "${truncate(reply)}"`;
+        },
+      },
+      {
+        id: "contextual.sendOutOfBandMessage.jsonSchema",
+        name: "sendOutOfBandMessage (+jsonSchema)",
+        desc: "Sends a JSON Schema with the side question and validates the reply against it.",
+        weight: "heavy",
+        run: async ({ layla, signal, log }) => {
+          const jsonSchema = {
+            type: "object",
+            properties: {
+              answer: { type: "string", enum: ["yes", "no"] },
+              reason: { type: "string" },
+            },
+            required: ["answer"],
+          };
+          log(`Schema:
+${JSON.stringify(jsonSchema, null, 2)}`);
+          const reply = await layla.contextual.sendOutOfBandMessage(
+            'Is the sky usually blue on a clear day? Reply only with JSON like {"answer": "yes", "reason": "..."}, where answer is "yes" or "no".',
+            { jsonSchema, signal },
+          );
+          log(`Reply:
+${reply}`);
+          assert(reply.length > 0, "empty reply");
+
+          // `jsonSchema` is best-effort: engines without constrained decoding
+          // ignore it. A reply that doesn't follow it means the endpoint works
+          // but the engine didn't constrain, which is a skip rather than a fail.
+          let parsed: unknown;
+          try {
+            parsed = JSON.parse(reply);
+          } catch {
+            return skip(
+              "reply is not JSON — the engine likely ignores jsonSchema (best-effort)",
+            );
+          }
+          const answer = (parsed as { answer?: unknown } | null)?.answer;
+          if (answer !== "yes" && answer !== "no") {
+            return skip(
+              "reply JSON does not match the schema — the engine likely ignores jsonSchema (best-effort)",
+            );
+          }
+          return `answer: ${answer}`;
+        },
+      },
+      {
+        id: "contextual.sendOutOfBandMessage.image",
+        name: "sendOutOfBandMessage (+imageBase64)",
+        desc: "Sends the bundled mini-app icon with the side question.",
+        weight: "heavy",
+        run: async ({ layla, signal, log }) => {
+          const response = await fetch("./icon.png", { signal });
+          assert(
+            response.ok,
+            `failed to download ./icon.png (${response.status} ${response.statusText})`,
+          );
+          const imageBytes = new Uint8Array(await response.arrayBuffer());
+          assert(imageBytes.length > 0, "downloaded icon is empty");
+          log(`source: ./icon.png (${imageBytes.length} bytes)`);
+
+          const reply = await layla.contextual.sendOutOfBandMessage(
+            "Describe the attached image in one short sentence.",
+            {
+              imageBase64: `data:image/png;base64,${toBase64(imageBytes)}`,
+              signal,
+            },
+          );
+          log(`Reply:
+${reply}`);
+          // Whether the description is accurate depends on the engine's vision
+          // support; this check proves the image travels and a reply comes back.
+          assert(reply.length > 0, "empty reply");
+          return `reply: "${truncate(reply)}"`;
+        },
+      },
+      {
+        id: "contextual.sendOutOfBandMessage.abort",
+        name: "sendOutOfBandMessage abort -> LaylaAbortError",
+        desc: "Aborting an in-flight out-of-band message rejects with LaylaAbortError.",
+        weight: "heavy",
+        run: async ({ layla }) => {
+          const ctrl = new AbortController();
+          const pending = layla.contextual.sendOutOfBandMessage(
+            "Abort me.",
+            { signal: ctrl.signal },
+          );
+          setTimeout(() => ctrl.abort(), 5);
+          let err: unknown;
+          try {
+            await pending;
+          } catch (e) {
+            err = e;
+          }
+          assert(err, "request resolved instead of aborting");
+          assert(
+            err instanceof LaylaAbortError,
+            `expected LaylaAbortError, got ${String(err)}`,
+          );
+          return "rejected with LaylaAbortError";
         },
       },
     ],
