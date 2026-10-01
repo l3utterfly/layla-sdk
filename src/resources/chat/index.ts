@@ -17,6 +17,7 @@ import type {
   LaylaApiEvent_onCancelScheduledChatMessage,
   LaylaApiEvent_onScheduledChatMessage,
   LaylaApiEvent_onSetInferenceEngineResponse,
+  LaylaApiSaveChatMessage,
   LaylaChatHistoryEntry,
   LaylaChatMessage,
   LaylaChatRole,
@@ -36,6 +37,12 @@ import { oneShot, type RequestOptions } from '../../internal/one-shot';
 
 const BASE64_IMAGE_DATA_URL =
   /^data:image\/(?:gif|jpe?g|png|webp);base64,/i;
+
+/** The complete entry to create or overwrite, with separate display and LLM text. */
+export type SaveChatMessageParams = LaylaApiSaveChatMessage['data'];
+
+/** The entry as stored, including its assigned ID and resolved timestamp. */
+export type SaveChatMessageResult = LaylaApiEvent_onSaveChatMessageResponse['data'];
 
 /**
  * On the `send_message` path the SDK forwards only the part of the OpenAI
@@ -296,15 +303,19 @@ export class Chat {
   /**
    * Create or update a chat history entry. Pass an id less than or equal to
    * zero to create a message, or an existing positive id to update it.
-   * @param message The complete chat history entry to save.
+   * Updates overwrite every supplied field and reject if the ID does not exist.
+   * Use character_id 'user' for user messages; otherwise pass the character ID.
+   * A timestamp <= 0 uses the host's current time. Existing images are retained;
+   * new entries have no image. Only character entries create missing sessions.
+   * @param message The complete entry, with display_message and message text.
    * @param options Additional request options.
    * @returns A promise that resolves to the saved entry, including its assigned id.
    */
   saveChatMessage(
-    message: LaylaChatHistoryEntry,
+    message: SaveChatMessageParams,
     options: RequestOptions = {},
-  ): Promise<LaylaChatHistoryEntry> {
-    return oneShot<LaylaChatHistoryEntry>(
+  ): Promise<SaveChatMessageResult> {
+    return oneShot<SaveChatMessageResult>(
       { cmd: 'save_chat_message', data: message },
       'on_save_chat_message_response',
       (event: LaylaApiEvent) =>

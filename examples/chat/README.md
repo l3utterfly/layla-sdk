@@ -37,6 +37,11 @@ parameterised `INSERT`, and the header **Clear** button runs a `DELETE` to wipe
 the transcript. This is separate from `layla.chat.saveChatMessage(...)`, which
 writes to Layla's native chat history.
 
+Native history saves send the text as both `display_message` and `message`, with
+`character_id: 'user'` for user entries and the character ID for assistant entries.
+New native entries have no image; image attachments remain in this mini-app's
+private transcript.
+
 The browser mock has no real sqlite, so `main.tsx` passes an `executeSql` handler
 to `installLaylaMock(...)` that backs the four statements this app issues with a
 small `localStorage` store. That makes the load-on-reload flow work end to end in

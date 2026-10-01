@@ -50,6 +50,8 @@ import type {
   LaylaApiAceStepVae,
   LaylaApiEvent_onSaveFileResponse,
   LaylaApiEvent_onReadFileResponse,
+  LaylaApiEvent_onSaveChatMessageResponse,
+  LaylaApiSaveChatMessage,
   LaylaApiEvent_onListDirResponse,
   LaylaApiEvent_onSTTSpeechRecognized,
   LaylaApiStartBackgroundAudioPlayer,
@@ -1051,7 +1053,7 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
   }): Promise<LaylaChatHistoryEntry[]> {
     return chatHistory.filter(
       (entry) => entry.session_id === data.session_id,
-    );
+    ).sort((a, b) => b.timestamp - a.timestamp);
   }
 
   function getChatSessions(characterId: string): MockChatSession[] {
@@ -1101,7 +1103,7 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
   }
 
   async function handleSaveChatMessage(
-    message: LaylaChatHistoryEntry,
+    message: LaylaApiSaveChatMessage['data'],
   ): Promise<void> {
     await delay(latencyMs);
     if (shouldError()) {
@@ -1113,20 +1115,35 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
       message.id > 0
         ? chatHistory.findIndex((entry) => entry.id === message.id)
         : -1;
-    const saved =
-      message.id > 0
-        ? { ...message }
-        : {
-            ...message,
-            id:
-              chatHistory.reduce(
-                (maxId, entry) => Math.max(maxId, entry.id),
-                0,
-              ) + 1,
-          };
+    if (message.id > 0 && existingIndex < 0) {
+      emitError(`Chat history entry ${message.id} does not exist`);
+      return;
+    }
 
-    if (existingIndex >= 0) chatHistory[existingIndex] = saved;
-    else chatHistory.push(saved);
+    const saved: LaylaApiEvent_onSaveChatMessageResponse['data'] = {
+      ...message,
+      id: message.id > 0
+        ? message.id
+        : chatHistory.reduce((maxId, entry) => Math.max(maxId, entry.id), 0) + 1,
+      timestamp: message.timestamp > 0 ? message.timestamp : Date.now(),
+      content: message.message,
+      role: message.character_id === 'user' ? 'user' : 'assistant',
+    };
+    const existing = chatHistory[existingIndex];
+    const historyEntry: LaylaChatHistoryEntry = {
+      id: saved.id,
+      character_id: saved.character_id,
+      session_id: saved.session_id,
+      timestamp: saved.timestamp,
+      content: saved.message,
+      role: saved.role,
+      ...(existing?.image_base64 !== undefined
+        ? { image_base64: existing.image_base64 }
+        : {}),
+    };
+
+    if (existingIndex >= 0) chatHistory[existingIndex] = historyEntry;
+    else chatHistory.push(historyEntry);
 
     emit({
       event: 'on_save_chat_message_response',

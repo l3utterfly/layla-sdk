@@ -54,10 +54,14 @@ const readImageAsDataUrl = (file: File): Promise<string> =>
 const toCompletionMessage = (
   message: ChatMessage,
 ): ChatCompletionMessageParam => {
+  if (message.role === "assistant") {
+    return { role: "assistant", content: message.content };
+  }
+
   if (!message.imageBase64) {
     return {
-      role: message.role,
-      content: message.content,
+      role: "user",
+      content: message.content ?? "",
     };
   }
 
@@ -74,7 +78,7 @@ const toCompletionMessage = (
   });
 
   return {
-    role: message.role,
+    role: "user",
     content,
   };
 };
@@ -85,11 +89,8 @@ const saveChatMessage = async (
 ) => {
   try {
     await layla.chat.saveChatMessage({
-      role: message.role,
-      content: message.content,
-      ...(message.imageBase64
-        ? { image_base64: message.imageBase64 }
-        : {}),
+      display_message: message.content ?? "",
+      message: message.content ?? "",
       id: 0,
       character_id: characterId,
       session_id: sessionId,

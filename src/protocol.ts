@@ -360,14 +360,25 @@ export interface LaylaApiGetChatSessions {
 }
 
 /**
- * Ask the host to save a chat message to the history of a specific session.
- * A new session will be created if the provided `session_id` does not exist.
- * If provided id <= 0, a new chat message will be created. Otherwise, the existing chat message with the provided id will be updated.
- * The host should respond with an `on_save_chat_message_response` event containing the saved chat message.
+ * Ask the host to save a single entry to the chat history of a specific session.
+ * If `id` <= 0, a new entry is created and assigned a new ID. Otherwise, the existing entry with that ID is overwritten; if no such entry exists, the host responds with `on_error`.
+ * An update rewrites every field below, so it can also move an entry to another session, change its speaker or re-date it.
+ * Any image attached to an existing entry is kept; new entries have no image.
+ * If `session_id` does not exist yet and the entry is from a character (not the user), a new session is created for that character.
+ * The host should respond with an `on_save_chat_message_response` event containing the entry as stored.
+ *
+ * Older clients sent a `LaylaChatHistoryEntry` here instead (`content` in place of `message` and `display_message`, plus `role`). The host still accepts that shape, using `content` for both fields, but new code should send the fields below.
  */
 export interface LaylaApiSaveChatMessage {
   cmd: 'save_chat_message';
-  data: LaylaChatHistoryEntry;
+  data: {
+    id: number;              // ID of the entry to update, or <= 0 to create a new one
+    session_id: string;      // the chat session the entry belongs to
+    character_id: string;    // character_id or 'user' (if user message)
+    display_message: string; // the message content to display in the chat history
+    message: string;         // the message content to send to the LLM (may differ from display_message)
+    timestamp: number;       // Unix timestamp in milliseconds; if <= 0, the host will use the current time
+  };
 }
 
 /**
@@ -1147,13 +1158,18 @@ export interface LaylaApiEvent_onGetChatSessionsResponse {
 }
 
 /**
- * The response for a `save_chat_message` request, containing the updated chat message after the save is applied.
- * Note: if the provided `id` in the request was <= 0, this indicates that a new chat message was created. In that case, the response will contain the new chat message with its assigned ID and other details.
- * If the provided `id` in the request was > 0, this indicates that an existing chat message was updated. In that case, the response will contain the updated chat message with the same ID and updated details.
+ * The response for a `save_chat_message` request, containing the entry as stored by the host.
+ * If the request's `id` was <= 0, `id` is the newly assigned ID; otherwise it is the ID that was updated.
+ * `timestamp` is the stored time, i.e. the current time if the request's `timestamp` was <= 0.
  */
 export interface LaylaApiEvent_onSaveChatMessageResponse {
   event: 'on_save_chat_message_response';
-  data: LaylaChatHistoryEntry;
+  data: LaylaApiSaveChatMessage['data'] & {
+    /** @deprecated Same as `message`. Kept for clients written against the older `LaylaChatHistoryEntry` response. */
+    content: string;
+    /** @deprecated 'user' if `character_id` is 'user', otherwise 'assistant'. Kept for clients written against the older `LaylaChatHistoryEntry` response. */
+    role: LaylaChatRole;
+  };
 }
 
 /**

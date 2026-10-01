@@ -36,6 +36,31 @@ const layla = new LaylaSDK();
 
 The SDK is designed for Layla's WebView runtime. It does not require an API key, base URL, or direct network LLM endpoint; requests are sent through the Layla host bridge.
 
+## Saving Chat History
+
+Save separate text for chat display and for the LLM:
+
+```ts
+const saved = await layla.chat.saveChatMessage({
+  id: 0,
+  session_id: sessionId,
+  character_id: character.id,
+  display_message: 'Here is your summary.',
+  message: 'Here is your summary. Additional context for the next turn: ...',
+  timestamp: 0,
+});
+console.log(saved.id, saved.timestamp);
+```
+
+`SaveChatMessageParams` and `SaveChatMessageResult` are exported from the package
+root. Use `character_id: 'user'` for a user entry. An `id <= 0` creates an entry;
+a positive ID overwrites all fields of an existing entry and rejects if that ID
+does not exist. A `timestamp <= 0` uses the host's current time. Updates keep an
+existing image; new entries have no image. Only character entries create missing
+sessions.
+
+The result includes both text fields, the assigned ID, and the stored timestamp.
+
 ## Background Audio
 
 Start a queue with metadata for each track:
@@ -155,6 +180,7 @@ The SDK talks to whatever Layla app it finds itself in, and takes the richest ro
 | The full OpenAI request body reaching the model untranslated (multi-part content, several images per turn, an assistant turn's `tool_calls`) | Layla **v7.5.0-alpha** or newer, and `@layla-network/sdk` **7.5.0** or newer |
 | Still-image-to-video generation | A Layla host build with `neodragon_generate_video` support and an SDK release exposing `layla.neodragon` |
 | Out-of-band messages | A Layla host build with `send_out_of_band_message` support and an SDK release exposing `layla.contextual.sendOutOfBandMessage` |
+| Separate display and LLM text in saved chat entries | A Layla host build implementing the updated `save_chat_message` contract |
 | Everything else — chat, streaming, one image per message, characters, memories, TTS, images, music, database, files | Any supported Layla version |
 
 Call sites are identical on both paths: the SDK reads the host version itself and routes accordingly. On an older host the request is translated into Layla's narrower native protocol, and anything it cannot carry — `tools` among it — is dropped with a `console.warn` rather than rejected. A mini-app that depends on tool calling should check the host version before offering the feature:

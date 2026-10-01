@@ -584,13 +584,12 @@ const groups: Group[] = [
         desc: "Persists a diagnostics message and gets its id.",
         weight: "heavy",
         run: async (ctx) => {
-          const cid = await firstCharacterId(ctx);
           const saved = await ctx.layla.chat.saveChatMessage({
             id: 0,
-            character_id: cid,
+            character_id: "user",
             session_id: ctx.sessionId,
-            role: "user",
-            content: "[diagnostics] saveChatMessage probe",
+            display_message: "[diagnostics] saveChatMessage probe",
+            message: "[diagnostics] saveChatMessage probe",
             timestamp: Date.now(),
           });
           assert(typeof saved.id === "number", "no id returned");

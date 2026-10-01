@@ -46,6 +46,8 @@ import LaylaSDK, {
   type ChatCompletionMessageParam,
   type LaylaChatMessage,
   type LaylaChatHistoryEntry,
+  type SaveChatMessageParams,
+  type SaveChatMessageResult,
   type LaylaScheduledChatMessage,
   type LaylaScheduledNotification,
   type LaylaCharacter,
@@ -454,21 +456,28 @@ const history: LaylaChatHistoryEntry[] = latestSessionId
 The returned history entries are useful when building per-session summaries, transcript views, or follow-up prompts that depend on prior context.
 
 Use `layla.chat.saveChatMessage(message, options?)` to create or update a
-message in chat history. Pass a non-positive `id` to create a message, or an
-existing positive `id` to update it. The resolved entry contains the ID and
-other values returned by the host.
+message in chat history. Use `SaveChatMessageParams`, with `display_message`
+for the visible text and `message` for the LLM text. Set `character_id` to
+`'user'` for user entries or to the character's ID for character entries.
+Pass a non-positive `id` to create an entry, or an existing positive `id` to
+overwrite every field; a missing positive ID rejects. A `timestamp <= 0` uses
+the host's current time. Updates retain an existing image; new entries have no
+image. Only character entries create missing sessions.
 
 ```ts
-const saved = await layla.chat.saveChatMessage({
+const saved: SaveChatMessageResult = await layla.chat.saveChatMessage({
   id: 0,
-  role: 'user',
-  name: 'alex',
-  content: 'Remember this message.',
-  character_id: character.id,
+  display_message: 'Remember this message.',
+  message: 'Remember this message. Context for the LLM: ...',
+  character_id: 'user',
   session_id: latestSessionId ?? crypto.randomUUID(),
   timestamp: Date.now(),
 });
 ```
+
+The result includes both text fields, the assigned ID, and the stored timestamp.
+History reads return `LaylaChatHistoryEntry[]`. See `references/sdk-api.md` for
+the full save contract and abort handling.
 
 Use `layla.chat.scheduleChatMessage(message, options?)` to create a scheduled
 message. Pass a non-positive `id` when creating a scheduled message; the host

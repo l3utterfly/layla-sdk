@@ -22,6 +22,8 @@ import LaylaSDK, {
   type ChatCompletionContentPartImage,
   type LaylaChatMessage,
   type LaylaChatHistoryEntry,
+  type SaveChatMessageParams,
+  type SaveChatMessageResult,
   type LaylaScheduledChatMessage,
   type LaylaScheduledNotification,
   type LaylaMemory,
@@ -801,22 +803,46 @@ const historyPage = await layla.chat.getChatHistory(sessionId, 20, 10, {
 ## `layla.chat.saveChatMessage(message, options?)`
 
 Creates or updates a message in chat history and returns the saved
-`LaylaChatHistoryEntry`. Pass `id: 0` (or another non-positive value) to create
-a message. Pass an existing positive `id` to update it.
+`SaveChatMessageResult`. The input is `SaveChatMessageParams`, an alias of
+`LaylaApiSaveChatMessage['data']`; the result is an alias of
+`LaylaApiEvent_onSaveChatMessageResponse['data']`. Both are exported from the
+package root.
+
+| Required field | Meaning |
+| --- | --- |
+| `id: number` | Non-positive to create; existing positive ID to overwrite. |
+| `session_id: string` | Session the entry belongs to. |
+| `character_id: string` | `'user'` for a user entry; the character's ID otherwise. |
+| `display_message: string` | Text displayed in the chat history. |
+| `message: string` | Text sent to the LLM; may differ from the displayed text. |
+| `timestamp: number` | Unix milliseconds; non-positive values use the host's current time. |
+
+An update overwrites every field, so it can move an entry to a different session,
+change its speaker, or re-date it. Updating an ID that does not exist rejects with
+`LaylaError` from the host's `on_error`. An existing image is retained; new entries
+have no image. If the session does not exist, only a character entry creates it.
+The save input does not accept `role`, `name`, or `image_base64`.
 
 ```ts
-const saved = await layla.chat.saveChatMessage({
+const saved: SaveChatMessageResult = await layla.chat.saveChatMessage({
   id: 0,
-  role: 'user',
-  name: 'alex',
-  content: 'Remember this message.',
-  character_id: character.id,
+  display_message: 'Remember this message.',
+  message: 'Remember this message. Context for the LLM: ...',
+  character_id: 'user',
   session_id: sessionId,
   timestamp: Date.now(),
 });
 
 console.log(saved.id);
 ```
+
+The result contains the entry as stored, including its assigned `id` and resolved
+`timestamp`, both text fields, `session_id`, and `character_id`.
+`getChatHistory()` returns `LaylaChatHistoryEntry[]`.
+
+The browser mock supports creates, overwrites, missing-ID errors, resolved
+timestamps, and image preservation in its in-memory history. It returns both
+texts in save responses; history reads expose the model text through `content`.
 
 Pass an abort signal as the second argument:
 

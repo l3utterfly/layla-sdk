@@ -159,6 +159,8 @@ export type { RequestOptions } from './internal/one-shot';
 // Chat resource surface.
 export { ChatCompletionStream } from './resources/chat';
 export type {
+  SaveChatMessageParams,
+  SaveChatMessageResult,
   ChatCompletion,
   ChatCompletionChoice,
   ChatCompletionChunk,
