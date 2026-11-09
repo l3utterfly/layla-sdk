@@ -96,13 +96,15 @@ lets the user trigger it manually and inspect each run's output and logs.
 
 `task.js` does not run in the WebView. The host evaluates it in an isolated
 QuickJS runtime with the SDK preinjected as a global `layla` instance, so the
-script calls `layla.*` immediately with no imports and no bundling. Top-level
-`await` is supported, `console.*` output is buffered into the run's log, and
-the script's completion value (its last expression, awaited if it is a
-promise) is recorded as the run's output. There is no DOM, `fetch`,
-`localStorage`, or timer support, and no state survives between runs — use
-`layla.db.executeSql(...)` (the mini-app's private database, shared with the
-WebView app) to persist results.
+script calls `layla.*` immediately with no imports and no bundling. It runs as
+a classic script, so top-level `await` is a syntax error — wrap awaited work in
+an async IIFE. `console.*` output is buffered into the run's log, and the
+script's completion value (its last expression, awaited if it is a promise) is
+recorded as the run's output. `fetch` (http(s) only, bodies read whole) and
+`setTimeout` / `setInterval` are available, but pending timers do not keep the
+run alive, so await what you start. There is no DOM or `localStorage`, and no
+state survives between runs — use `layla.db.executeSql(...)` (the mini-app's
+private database, shared with the WebView app) to persist results.
 
 See the "Background Tasks (task.js)" section of the skill for the full
 execution model, constraints, and an example script.

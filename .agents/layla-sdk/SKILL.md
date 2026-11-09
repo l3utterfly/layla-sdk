@@ -1253,12 +1253,43 @@ mini-app.
 
 ### Environment constraints
 
-The QuickJS runtime is not a browser:
+The QuickJS runtime is not a browser, but it has the common non-DOM globals:
 
-- No DOM, `document`, `fetch`, `XMLHttpRequest`, or `localStorage`.
-- No timers — `setTimeout` and `setInterval` do not exist, so do not poll or
-  sleep; SDK promises are the only way to wait.
+- `fetch` works for any absolute `http(s)` URL; the host performs the request.
+  `Headers`, `Response`, `AbortController` / `AbortSignal` (including
+  `AbortSignal.timeout()` and `AbortSignal.any()`) come with it. Request bodies
+  are a string, `URLSearchParams`, an `ArrayBuffer`, or a typed array — no
+  `FormData` or `Blob`. Response bodies are read whole with `text()`, `json()`,
+  `arrayBuffer()`, or `bytes()`; there are no streams (`response.body`).
+  Redirects are always followed (`redirect: 'follow'` only). A network failure
+  rejects with a `TypeError`, as in browsers; an HTTP error status still
+  resolves, so check `response.ok`.
+- `setTimeout`, `setInterval`, `clearTimeout`, and `clearInterval` work, so a
+  script can sleep, retry with backoff, or poll. Pending timers do **not** keep
+  the run alive: the run ends — and the runtime is destroyed — as soon as the
+  completion value settles, so `await` every delay and request you start.
+- `TextEncoder` / `TextDecoder` (UTF-8 only, no streaming decode) and
+  `atob` / `btoa` are available.
 - `Promise`, `async`/`await`, `queueMicrotask`, and `JSON` work normally.
+- No DOM, `document`, `XMLHttpRequest`, `localStorage`, `URL`, or `Buffer`.
+
+```js
+(async () => {
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const response = await fetch('https://example.com/feed.json', {
+        signal: AbortSignal.timeout(10000),
+      });
+      if (response.ok) return await response.json();
+    } catch (error) {
+      console.warn('Fetch failed:', error.message);
+    }
+    await sleep(2000 * (attempt + 1));
+  }
+  throw new Error('Feed unavailable.');
+})();
+```
 
 Each run starts a fresh runtime, so no global state survives between runs.
 Persist state with `layla.db.executeSql(...)` — the task shares the mini-app's
