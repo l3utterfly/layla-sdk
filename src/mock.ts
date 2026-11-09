@@ -33,6 +33,7 @@ import type {
   LaylaApiEvent_onExecuteSqlResponse,
   LaylaApiEvent_onCloudLogin,
   LaylaApiEvent_onGetImageGenerationModelsResponse,
+  LaylaApiGenerateImage,
   LaylaApiEvent_onNeodragonGenerateVideoResponse,
   LaylaApiNeodragonGenerateVideo,
   LaylaApiSendOutOfBandMessage,
@@ -1164,11 +1165,7 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     });
   }
 
-  async function handleGenerateImage(_: {
-    prompt: string;
-    img2img_base64?: string;
-    model_id?: string;
-  }): Promise<void> {
+  async function handleGenerateImage(_: LaylaApiGenerateImage['data']): Promise<void> {
     await delay(latencyMs);
     if (shouldError()) {
       emitError('Simulated image generation error');

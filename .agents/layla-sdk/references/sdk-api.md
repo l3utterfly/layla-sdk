@@ -29,6 +29,7 @@ import LaylaSDK, {
   type LaylaMemory,
   type LaylaPersona,
   type LaylaTTSVoice,
+  type GenerateImageOptions,
   type GenerateVoiceToFileResult,
   type BackgroundAudioTrack,
   type BackgroundAudioMetadata, // deprecated: shared metadata for string queues
@@ -1497,6 +1498,54 @@ const imageSrc = await layla.images.generateImage(
   model?.id,
 );
 ```
+
+The fifth argument is a `GenerateImageOptions` object (exported from the package
+root). It extends `RequestOptions` with `referenceImages?: string[]`, forwarded
+unchanged as the wire field `reference_images`. Existing calls and `{ signal }`
+options remain compatible.
+
+Each reference must be a base64 image data URI, such as
+`data:image/png;base64,...` or `data:image/jpeg;base64,...`. Raw base64 and remote
+URLs are not accepted. References supply native edit conditioning; they are
+separate from, and can be combined with, the third argument's img2img base image.
+The order of references is preserved.
+
+```ts
+const options: GenerateImageOptions = {
+  referenceImages: [portraitDataUri, styleDataUri],
+  signal: new AbortController().signal,
+};
+
+try {
+  const imageSrc = await layla.images.generateImage(
+    'Paint the referenced subject using the style of the second image',
+    onProgress,
+    undefined, // optional img2img base image
+    referenceModelId,
+    options,
+  );
+  if (imageSrc) previewImage.src = imageSrc;
+} catch (error) {
+  if (error instanceof LaylaError) {
+    showError(error.message);
+  } else {
+    throw error;
+  }
+}
+```
+
+Reference images require a Layla host implementing
+`generate_image.reference_images` and a compatible image model. On such hosts,
+a non-empty array with an unsupported model rejects with `LaylaError`; omitted
+or empty references preserve ordinary generation. Invalid reference data URIs
+also reject with the host's error message. Older hosts may ignore the field, so
+use a compatible host when the result depends on reference conditioning.
+`getImageGenerationModels()` does not include capability flags: availability
+alone does not imply reference image support.
+
+The browser mock accepts references and returns its usual placeholder image;
+it does not emulate reference conditioning or model capability checks. Use a
+compatible Layla host to verify those behaviors.
 
 Use an abort signal when the UI can cancel image generation. `img2img_base64` and `modelId` come before the options argument, so pass `undefined` for the ones you are not using:
 

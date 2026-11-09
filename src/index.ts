@@ -181,7 +181,7 @@ export type {
 
 // Image resource surface.
 export { Images } from './resources/images';
-export type { LaylaImageGenerationModel } from './resources/images';
+export type { GenerateImageOptions, LaylaImageGenerationModel } from './resources/images';
 
 // NeoDragon video generation resource surface.
 export { NeoDragon } from './resources/neodragon';

@@ -99,6 +99,34 @@ history, and nothing is streamed. An `imageBase64` option attaches an image.
 `jsonSchema` is best-effort — engines without constrained decoding ignore it —
 so describe the format in the message too and validate the reply.
 
+## Image Generation with References
+
+Pass reference images in the fifth argument's `referenceImages` option:
+
+```ts
+const imageSrc = await layla.images.generateImage(
+  'Paint the subject from these references in a watercolor garden',
+  (status, step, totalSteps) => console.log(status, step, totalSteps),
+  undefined, // optional img2img base image
+  referenceModelId, // an available model that supports reference images
+  { referenceImages: [portraitDataUri, styleDataUri] },
+);
+
+if (imageSrc) imageElement.src = imageSrc;
+```
+
+Each reference must be a base64 image data URI, including a prefix such as
+`data:image/png;base64,`. Raw base64 and remote URLs are not accepted. References
+provide native edit conditioning and can be combined with the existing
+`img2img_base64` base image. `GenerateImageOptions` is exported from the package
+root and also accepts an abort `signal`.
+
+This requires a Layla host build implementing `generate_image.reference_images`.
+On such a host, a model without reference image support rejects a non-empty array
+with `LaylaError`; omitted or empty references preserve ordinary generation.
+Older hosts may ignore the field. The browser mock returns its placeholder image
+and does not simulate model support.
+
 ## Video Generation
 
 Generate an MP4 from a still image with NeoDragon:
@@ -181,6 +209,7 @@ The SDK talks to whatever Layla app it finds itself in, and takes the richest ro
 | Still-image-to-video generation | A Layla host build with `neodragon_generate_video` support and an SDK release exposing `layla.neodragon` |
 | Out-of-band messages | A Layla host build with `send_out_of_band_message` support and an SDK release exposing `layla.contextual.sendOutOfBandMessage` |
 | Separate display and LLM text in saved chat entries | A Layla host build implementing the updated `save_chat_message` contract |
+| Reference images for image generation | A Layla host build implementing `generate_image.reference_images`, a compatible image model, and an SDK release exposing `GenerateImageOptions.referenceImages` |
 | Everything else — chat, streaming, one image per message, characters, memories, TTS, images, music, database, files | Any supported Layla version |
 
 Call sites are identical on both paths: the SDK reads the host version itself and routes accordingly. On an older host the request is translated into Layla's narrower native protocol, and anything it cannot carry — `tools` among it — is dropped with a `console.warn` rather than rejected. A mini-app that depends on tool calling should check the host version before offering the feature:

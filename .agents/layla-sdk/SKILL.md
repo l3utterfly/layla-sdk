@@ -54,6 +54,7 @@ import LaylaSDK, {
   type LaylaMemory,
   type LaylaPersona,
   type LaylaTTSVoice,
+  type GenerateImageOptions,
   type GenerateVoiceToFileResult,
   type NeoDragonGenerateVideoOptions,
   type NeoDragonGenerateVideoResult,
@@ -880,6 +881,33 @@ const imageSrc = await layla.images.generateImage(
   models[0]?.id, // modelId — omit to use the host default
 );
 ```
+
+For native edit conditioning, pass base64 image data URIs in the fifth argument's
+`referenceImages` option. Keep the URI prefix; raw base64 and remote image URLs
+are not accepted. References can be combined with the third argument's img2img
+base image:
+
+```ts
+const options: GenerateImageOptions = {
+  referenceImages: [portraitDataUri, styleDataUri],
+  signal: controller.signal,
+};
+const imageSrc = await layla.images.generateImage(
+  'Paint the referenced subject in the style of the second image',
+  onProgress,
+  undefined,
+  referenceModelId,
+  options,
+);
+```
+
+Requires a host implementing `generate_image.reference_images` and a compatible
+model. On such hosts, a non-empty array with an unsupported model rejects with
+`LaylaError`; omitted or empty references preserve ordinary generation. Older
+hosts may ignore references. `getImageGenerationModels()` lists available models
+but does not advertise reference image support, so do not assume every returned
+model accepts them. The browser mock returns a placeholder and does not simulate
+model capabilities. See `references/sdk-api.md` for error handling.
 
 Character images follow the same convention:
 

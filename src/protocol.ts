@@ -36,6 +36,10 @@ export interface LaylaChatHistoryEntry extends LaylaChatMessage {
   character_id: string;
   session_id: string;
   timestamp: number;
+  // The message as the chat shows it: the generation verbatim, with its thinking, options and
+  // translation markup. `content` is the canonical text the model sees. Sent by `get_chat_history`;
+  // absent from older hosts. Pass it back as `display_message` when saving an edited message.
+  display_message?: string;
 }
 
 export interface LaylaScheduledChatMessage {
@@ -49,7 +53,7 @@ export interface LaylaScheduledChatMessage {
 /** A pending notification scheduled by the calling mini-app. */
 export interface LaylaScheduledNotification {
   id: string; // opaque ID assigned by the host; pass this to cancel_scheduled_notification
-  icon: string | null; // image path relative to the mini-app folder, or null to use the mini-app's default icon
+  icon: string | null; // accepted image path relative to the mini-app folder, or null when the Layla icon is used
   message: string;
   timestamp: number; // scheduled delivery time as a Unix timestamp in milliseconds
 }
@@ -153,14 +157,24 @@ export const SENTIMENT_THRESHOLDS = {
 
 export type SentimentValues = typeof SENTIMENT_THRESHOLDS;
 
+export type LaylaTavernCardExtensions = {
+  // The following fields are used by Layla to store additional information about the character card.
+  // They are not part of the official Tavern spec, but are used by Layla to enhance the character card functionality.
+  sillytavern_preset_filename?: string; // The filename of the preset character card in SillyTavern.
+  impression?: string; // The character's stored impression of the persona, injected into the prompt.
+  disable_ltm_auto_collect?: boolean; // Whether automatic long-term memory collection is disabled for this character.
+  image?: string; // Base64-encoded character image (data URI, e.g. "data:image/png;base64,...").
+  imageUrl?: string; // Remote URL to download the character image from.
+}
+
 /**
  * A character card following the Character Card V2 spec (`chara_card_v2`), as
  * returned by the host's `get_characters` handler. If your app already exports
  * its own `TavernCardV2`, prefer importing that — they describe the same shape.
  */
-export interface TavernCardV2 {
+export type TavernCardV2 = {
   spec: 'chara_card_v2';
-  spec_version: '2.0';
+  spec_version: '2.0'; // May 8th addition
   data: {
     name: string;
     description: string;
@@ -168,17 +182,24 @@ export interface TavernCardV2 {
     scenario: string;
     first_mes: string;
     mes_example: string;
+
+    // New fields start here
     creator_notes: string;
     system_prompt: string;
     post_history_instructions: string;
     alternate_greetings: string[];
     character_book?: TavernCharacterBook;
+
+    // May 8th additions
     tags: string[];
     creator: string;
     character_version: string;
-    extensions: Record<string, unknown>;
+    extensions: LaylaTavernCardExtensions & Record<string, unknown>; // known Layla fields, plus arbitrary namespaced key-value pairs
+
+    // additions by Layla
+    source?: string;
   };
-}
+};
 
 export interface TavernCharacterBook {
   name?: string;
@@ -264,6 +285,8 @@ export interface LaylaApiGenerateImage {
   data: {
     prompt: string;
     img2img_base64?: string; // optional base64-encoded image for img2img generation (including the data URI prefix)
+    /** Reference images as base64 image data URIs. Models without reference image support reject non-empty arrays. */
+    reference_images?: string[];
     model_id?: string; // optional model ID to use for image generation (if not provided, the host will use the default model)
   };
 }
@@ -478,24 +501,29 @@ export interface LaylaApiCancelScheduledChatMessage {
 
 /**
  * Ask the host to schedule a one-time notification for the calling mini-app.
- * The timestamp must be a Unix timestamp in milliseconds in the future.
- * If `icon` is provided, it must be a relative path to an existing image within the mini-app folder (e.g., `images/reminder.png`).
- * URLs, absolute paths, and paths that resolve outside the mini-app folder are not allowed. Null uses the mini-app's default icon.
- * The host should respond with an `on_schedule_notification_response` event containing the scheduled notification and its assigned ID.
+ * A valid future Unix timestamp in milliseconds is preserved. Invalid or expired timestamps
+ * are replaced with ten seconds after icon resolution and notification permission are complete.
+ * A valid relative `icon` path to an existing file within the mini-app folder is used as supplied.
+ * Null, missing, invalid, or unavailable icons use the bundled Layla icon (`layla.png`).
+ * URLs, absolute paths, and paths that escape the mini-app folder are ignored and use that fallback.
+ * Mini-app icon metadata is not needed to schedule a notification.
+ * The host should respond with an `on_schedule_notification_response` event containing the
+ * assigned ID, effective timestamp, and accepted icon path (null for the fallback).
  * If scheduling fails, the host should emit an `on_error` event instead.
  */
 export interface LaylaApiScheduleNotification {
   cmd: 'schedule_notification';
   data: {
-    icon: string | null; // image path relative to the mini-app folder, or null to use the mini-app's default icon
+    icon: string | null; // valid relative file path, or null to use the bundled Layla icon; invalid values also fall back
     message: string;
-    timestamp: number; // scheduled delivery time as a Unix timestamp in milliseconds; must be in the future
+    timestamp: number; // future Unix time in milliseconds; invalid or expired values become ten seconds from now
   };
 }
 
 /**
  * Ask the host for all pending notifications scheduled by the calling mini-app.
  * Delivered and cancelled notifications are excluded. This request does not support pagination or filtering.
+ * Malformed stored values use safe defaults so older pending notifications remain cancellable.
  * The host should respond with an `on_get_scheduled_notifications_response` event, or `on_error` if retrieval fails.
  */
 export interface LaylaApiGetScheduledNotifications {
