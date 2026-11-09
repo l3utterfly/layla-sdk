@@ -6,7 +6,7 @@
       <img src="assets/layla.png" alt="Layla butterfly logo" width="160">
     </td>
     <td>
-      The Layla SDK project provides the public TypeScript SDK for building custom Layla mini-apps. Mini-apps run inside Layla's WebView and can use <code>@layla-network/sdk</code> to talk to Layla app host through an OpenAI-shaped API for chat, tool calling, multimodal image input, streaming responses, contextual character-chat state and events, out-of-band side questions about the current chat, inference engine selection, scheduled chat messages and mini-app notifications, characters, character images, personas, memories, TTS playback and audio-file generation, speech-to-text microphone input, background audio playback, image generation, still-image-to-video generation with NeoDragon, music generation with the Ace-Step model (the one-call pipeline plus its raw passes), a private per-mini-app sqlite database, private file utilities, Layla Cloud sign-in, and local development mocks.
+      The Layla SDK project provides the public TypeScript SDK for building custom Layla mini-apps. Mini-apps run inside Layla's WebView and can use <code>@layla-network/sdk</code> to talk to Layla app host through an OpenAI-shaped API for chat, tool calling, multimodal image input, streaming responses, contextual character-chat state and events, out-of-band side questions about the current chat, inference engine selection, scheduled chat messages and mini-app notifications, characters, character images, personas, memories, TTS playback and audio-file generation, speech-to-text microphone input, background audio playback, image generation, still-image-to-video generation with NeoDragon, WAN video generation with Nightmare Mobile, music generation with the Ace-Step model (the one-call pipeline plus its raw passes), a private per-mini-app sqlite database, private file utilities, Layla Cloud sign-in, and local development mocks.
     </td>
   </tr>
 </table>
@@ -153,6 +153,45 @@ signal. The host must implement the `neodragon_generate_video` protocol
 command; keep the SDK and Layla host versions synchronized when using this
 surface.
 
+## Nightmare Mobile Video Generation
+
+List the WAN model catalog, then choose a downloaded model:
+
+```ts
+const models = await layla.nightmareMobile.getModels();
+const model = models.find(({ downloaded }) => downloaded);
+if (!model) throw new Error('Download a Nightmare Mobile model in Layla first');
+
+const result = await layla.nightmareMobile.generateVideo(
+  model.id,
+  'Waves roll onto the beach, fixed camera',
+  {
+    width: 640,
+    height: 352,
+    frames: 49,
+    fps: 24,
+    onProgress: (progress) => console.log(progress.stage, progress),
+  },
+);
+videoElement.src = result.video_data_base64;
+```
+
+Options also accept `negativePrompt`, `seed` (number or decimal string),
+`imageDataBase64`, `endImageDataBase64`, `denoiseStrength`, and an abort `signal`.
+Image inputs must include their base64 data URI prefixes. The returned seed is a
+decimal string, preserving 64-bit precision.
+
+Each call reads the latest UI-saved `sdcpp.json` and overrides only supplied
+controls. Omitted settings, including saved start/end images, are inherited.
+Model capabilities and UI limits returned by `getModels()` are advisory; the
+host applies basic input validation and lets the engine determine support.
+LoRAs and sampling remain in the saved configuration. Use `width`/`height` and
+`frames`/`fps`; there are no aspect-ratio or duration request options.
+
+Progress describes phases, sampling passes/steps, and encoded frames. Aborting
+rejects locally while native generation continues. Requires a Layla host build
+with `nightmaremobile_get_models` and `nightmaremobile_generate_video` support.
+
 ## Ace-Step Models
 
 List locally known music-model bundles and select one per generation request:
@@ -207,6 +246,7 @@ The SDK talks to whatever Layla app it finds itself in, and takes the richest ro
 | Tool calling — `tools`, `tool_choice`, `tool` messages, and `tool_calls` on the reply | Layla **v7.5.0-alpha** or newer, and `@layla-network/sdk` **7.5.0** or newer |
 | The full OpenAI request body reaching the model untranslated (multi-part content, several images per turn, an assistant turn's `tool_calls`) | Layla **v7.5.0-alpha** or newer, and `@layla-network/sdk` **7.5.0** or newer |
 | Still-image-to-video generation | A Layla host build with `neodragon_generate_video` support and an SDK release exposing `layla.neodragon` |
+| Nightmare Mobile WAN video generation | A Layla host build implementing `nightmaremobile_get_models` and `nightmaremobile_generate_video`, and an SDK release exposing `layla.nightmareMobile` |
 | Out-of-band messages | A Layla host build with `send_out_of_band_message` support and an SDK release exposing `layla.contextual.sendOutOfBandMessage` |
 | Separate display and LLM text in saved chat entries | A Layla host build implementing the updated `save_chat_message` contract |
 | Reference images for image generation | A Layla host build implementing `generate_image.reference_images`, a compatible image model, and an SDK release exposing `GenerateImageOptions.referenceImages` |

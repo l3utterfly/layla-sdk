@@ -25,6 +25,25 @@ export interface LaylaApiEvent_onNeodragonGenerateVideoProgress {
   };
 }
 
+/**
+ * Nightmare Mobile progress within the current phase. Sampling steps restart
+ * for each expert pass; encoding reports frames. Other stages are indeterminate.
+ * Preview images and local filesystem paths are not sent across the bridge.
+ */
+export interface LaylaApiEvent_onNightmareMobileGenerateVideoProgress {
+  event: 'on_nightmaremobile_generate_video_progress';
+  data: {
+    stage: 'loading' | 'preparing' | 'sampling' | 'decoding' | 'encoding' | 'saving';
+    /** 1-based sampling pass and total expert passes. */
+    pass?: number;
+    total_passes?: number;
+    step?: number;
+    total_steps?: number;
+    frame?: number;
+    total_frames?: number;
+  };
+}
+
 /** A streamed token. `msg` is the full snapshot, `delta` is new. */
 export interface LaylaApiEvent_onMsg {
   event: 'on_message';
@@ -62,10 +81,12 @@ export type TypescriptApiEvent =
   | LaylaApiEvent_onMsg
   | LaylaApiEvent_onGenerateImageProgress
   | LaylaApiEvent_onNeodragonGenerateVideoProgress
+  | LaylaApiEvent_onNightmareMobileGenerateVideoProgress
   | LaylaApiEvent_onAceStepGenerateProgress;
 
 export const isTypescriptApiEvent = (event: { event: string }): event is TypescriptApiEvent =>
   event.event === 'on_message' ||
   event.event === 'on_generate_image_progress' ||
   event.event === 'on_neodragon_generate_video_progress' ||
+  event.event === 'on_nightmaremobile_generate_video_progress' ||
   event.event === 'on_ace_step_generate_progress';

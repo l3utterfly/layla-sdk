@@ -36,6 +36,9 @@ import type {
   LaylaApiGenerateImage,
   LaylaApiEvent_onNeodragonGenerateVideoResponse,
   LaylaApiNeodragonGenerateVideo,
+  LaylaApiNightmareMobileGenerateVideo,
+  LaylaApiEvent_onNightmareMobileGetModelsResponse,
+  LaylaApiEvent_onNightmareMobileGenerateVideoResponse,
   LaylaApiSendOutOfBandMessage,
   LaylaApiAceStepGetModelsResponse,
   LaylaApiEvent_onAceStepGenerateResponse,
@@ -122,6 +125,10 @@ type MockChatSession =
 
 type MockImageGenerationModel =
   LaylaApiEvent_onGetImageGenerationModelsResponse['data'][number];
+
+type MockNightmareMobileModel = LaylaApiEvent_onNightmareMobileGetModelsResponse['data'][number];
+type MockNightmareMobileResult = LaylaApiEvent_onNightmareMobileGenerateVideoResponse['data'];
+type MockNightmareMobileProgress = import('./typescript-protocol').LaylaApiEvent_onNightmareMobileGenerateVideoProgress['data'];
 
 type MockNeodragonGenerateVideoResult =
   LaylaApiEvent_onNeodragonGenerateVideoResponse['data'];
@@ -309,6 +316,17 @@ export interface LaylaMockOptions {
    * Defaults to two sample models.
    */
   imageGenerationModels?: MockImageGenerationModel[];
+  /** Nightmare Mobile catalog, including download state and advisory UI limits. */
+  nightmareMobileModels?: MockNightmareMobileModel[];
+  /**
+   * Handle nightmareMobile.generateVideo() with the native wire payload.
+   * Report phase progress and return an MP4 data URI plus metadata. Throw to
+   * simulate a host error. The default returns a placeholder; it has no saved UI config.
+   */
+  nightmareMobileGenerateVideo?: (
+    request: LaylaApiNightmareMobileGenerateVideo['data'],
+    reportProgress: (progress: MockNightmareMobileProgress) => void,
+  ) => MockNightmareMobileResult | Promise<MockNightmareMobileResult>;
   /**
    * Handle `neodragon.generateVideo(imageDataBase64, prompt, options)` calls.
    * Return the generated MP4 data URI and metadata. Call `reportProgress` to
@@ -816,6 +834,21 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     { modelId: 'mock-imported-ace-step', ready_for_use: true },
   ];
 
+  const nightmareMobileModels = options.nightmareMobileModels ?? [
+    { id: 'wan22_ti2v_turbo', name: 'Mock Wan 2.2 TI2V Turbo',
+      description: 'Placeholder model for local development.', downloaded: true,
+      start_image: 'optional', end_image: false,
+      size_presets: [{ width: 1280, height: 704 }], size_multiple: 32,
+      min_size: 320, max_size: 1280, max_area: 1280 * 704, trained_fps: 24,
+      max_duration: 5, frame_options: [25, 49, 73, 97, 121], fps_options: [8, 12, 16, 24] },
+    { id: 'wan22_i2v_a14b', name: 'Mock Wan 2.2 I2V A14B',
+      description: 'An unavailable sample model.', downloaded: false,
+      start_image: 'required', end_image: true,
+      size_presets: [{ width: 1280, height: 720 }], size_multiple: 16,
+      min_size: 320, max_size: 1280, max_area: 1280 * 720, trained_fps: 16,
+      max_duration: 3, frame_options: [17, 33, 49], fps_options: [8, 12, 16, 24] },
+  ] satisfies MockNightmareMobileModel[];
+
   // The single in-flight generation, mirroring the SDK's one-active-job model.
   let current: { cancelled: boolean } | null = null;
   // Out-of-band generations run beside chat streams, so they are tracked (and
@@ -836,7 +869,7 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
   };
 
   /** RN -> web: dispatch an event exactly the way the WebView host does. */
-  const emit = (event: LaylaApiEvent): void => {
+  const emit = (event: LaylaApiEvent & { id?: string }): void => {
     log('RN->web', event);
     window.dispatchEvent(new MessageEvent('message', { data: JSON.stringify(event) }));
   };
@@ -1243,6 +1276,54 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
         generation_time_ms: stages.length * latencyMs,
       },
     });
+  }
+
+  async function handleNightmareMobileGetModels(id?: string): Promise<void> {
+    await delay(latencyMs);
+    const event: LaylaApiEvent = shouldError()
+      ? { event: 'on_error', data: { message: 'Simulated Nightmare Mobile models error' } }
+      : { event: 'on_nightmaremobile_get_models_response', data: nightmareMobileModels };
+    emit(id === undefined ? event : { ...event, id });
+  }
+
+  async function handleNightmareMobileGenerateVideo(
+    data: LaylaApiNightmareMobileGenerateVideo['data'],
+    id?: string,
+  ): Promise<void> {
+    const reply = (event: LaylaApiEvent) => emit(id === undefined ? event : { ...event, id });
+    try {
+      await delay(latencyMs);
+      if (shouldError()) throw new Error('Simulated Nightmare Mobile generation error');
+      const reportProgress = (progress: MockNightmareMobileProgress) =>
+        reply({ event: 'on_nightmaremobile_generate_video_progress', data: progress });
+      let result: MockNightmareMobileResult;
+      if (options.nightmareMobileGenerateVideo) {
+        result = await options.nightmareMobileGenerateVideo({ ...data }, reportProgress);
+      } else {
+        const model = nightmareMobileModels.find((entry) => entry.id === data.model_id);
+        if (!model?.downloaded) throw new Error('Nightmare Mobile model is not downloaded');
+        reportProgress({ stage: 'loading' });
+        reportProgress({ stage: 'preparing' });
+        await delay(latencyMs);
+        reportProgress({ stage: 'sampling', pass: 1, total_passes: 1, step: 1, total_steps: 4 });
+        reportProgress({ stage: 'decoding' });
+        const frameCount = data.frames ?? model.frame_options[0] ?? 25;
+        const fps = data.fps ?? model.trained_fps;
+        reportProgress({ stage: 'encoding', frame: frameCount, total_frames: frameCount });
+        reportProgress({ stage: 'saving' });
+        result = {
+          model_id: data.model_id, video_data_base64: mockVideoDataUri,
+          seed: data.seed === undefined || String(data.seed) === '-1' ? '1234' : String(data.seed),
+          width: data.width ?? model.size_presets[0]?.width ?? 1280,
+          height: data.height ?? model.size_presets[0]?.height ?? 704,
+          frame_count: frameCount, fps, duration_ms: Math.round(frameCount / fps * 1000),
+          generation_time_ms: 2 * latencyMs,
+        };
+      }
+      reply({ event: 'on_nightmaremobile_generate_video_response', data: result });
+    } catch (error) {
+      reply({ event: 'on_error', data: { message: error instanceof Error ? error.message : String(error) } });
+    }
   }
 
   async function handleAceStepGetModels(): Promise<void> {
@@ -2474,6 +2555,12 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
           break;
         case 'neodragon_generate_video':
           void handleNeodragonGenerateVideo(msg.data);
+          break;
+        case 'nightmaremobile_get_models':
+          void handleNightmareMobileGetModels((msg as { id?: string }).id);
+          break;
+        case 'nightmaremobile_generate_video':
+          void handleNightmareMobileGenerateVideo(msg.data, (msg as { id?: string }).id);
           break;
         case 'get_image_generation_models':
           void handleGetImageGenerationModels();

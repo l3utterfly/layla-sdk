@@ -59,6 +59,10 @@ import LaylaSDK, {
   type NeoDragonGenerateVideoOptions,
   type NeoDragonGenerateVideoResult,
   type NeoDragonProgress,
+  type NightmareMobileModel,
+  type NightmareMobileGenerateVideoOptions,
+  type NightmareMobileGenerateVideoResult,
+  type NightmareMobileProgress,
   type ExecuteSqlResult,
   type CloudLoginResult,
   type STTSpeechRecognizedListener,
@@ -103,6 +107,8 @@ await layla.characters.update(character);
 await layla.classifier.getSentiment('This is a happy message.');
 await layla.images.generateImage(prompt, onProgress);
 await layla.neodragon.generateVideo(imageDataBase64, prompt, options);
+await layla.nightmareMobile.getModels();
+await layla.nightmareMobile.generateVideo(modelId, prompt, options);
 await layla.acestep.getModels();
 await layla.acestep.generateMusic(prompt, onProgress);
 await layla.acestep.lm(request);
@@ -959,6 +965,54 @@ The browser mock supports this surface. Pass a
 progress sequence and placeholder MP4. The host must implement the
 `neodragon_generate_video` command, so keep the SDK and Layla app versions
 synchronized.
+
+## Nightmare Mobile Video Generation
+
+Use `layla.nightmareMobile.getModels(options?)` to list WAN model IDs, download
+state, and advisory UI capabilities. Select a model with `downloaded: true`;
+the catalog also includes models not yet downloaded and follows the host's
+content visibility settings.
+
+```ts
+const models = await layla.nightmareMobile.getModels();
+const model = models.find(({ downloaded }) => downloaded);
+if (!model) throw new Error('Download a video model in Nightmare Mobile first');
+
+const result: NightmareMobileGenerateVideoResult =
+  await layla.nightmareMobile.generateVideo(
+    model.id,
+    'Waves roll onto the beach, fixed camera',
+    {
+      width: 640, height: 352, frames: 49, fps: 24,
+      onProgress: (progress: NightmareMobileProgress) => setVideoProgress(progress),
+    },
+  );
+videoElement.src = result.video_data_base64;
+```
+
+`NightmareMobileGenerateVideoOptions` also accepts `negativePrompt`, `seed`,
+`imageDataBase64`, `endImageDataBase64`, `denoiseStrength`, and `signal`. Image
+inputs are base64 data URIs. Use decimal strings for large seeds; the resolved
+seed is always a string. Supply pixel `width`/`height` and `frames`/`fps`; no
+aspect-ratio, duration, LoRA, sampler, step, CFG, or sigma options are exposed.
+
+The host reads the latest UI-saved `sdcpp.json` for each run. Only supplied
+controls override it, so omitted settings (including start/end images and
+preview settings) are inherited. Capability flags, presets and limits describe
+the UI; do not reject API inputs based on them. The host performs basic type and
+value checks, while the engine determines what can run.
+
+Progress uses `stage`; sampling adds `pass`, `total_passes`, `step`,
+`total_steps`, and encoding adds `frame`, `total_frames`. Steps restart per pass;
+there is no overall progress fraction. Generation calls queue; model listing is
+independent. Aborting rejects locally and does not stop native generation; the
+lane releases on the terminal response. Successful clips also remain in the
+Nightmare Mobile history.
+
+The host must implement both `nightmaremobile_*` commands. The browser mock
+accepts `nightmareMobileModels` and a `nightmareMobileGenerateVideo(request,
+reportProgress)` handler. Its default uses a placeholder and has no real UI-saved
+config or engine; use a custom handler to test inherited settings and errors.
 
 ## Music Generation (Ace-Step)
 

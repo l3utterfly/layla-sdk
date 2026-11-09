@@ -321,6 +321,53 @@ export interface LaylaApiNeodragonGenerateVideo {
 }
 
 /**
+ * List the Nightmare Mobile video model catalog, including models not yet
+ * downloaded. Visibility follows the mini-app's build and content settings.
+ */
+export interface LaylaApiNightmareMobileGetModels {
+  cmd: 'nightmaremobile_get_models';
+  data: null;
+}
+
+/**
+ * Generate a WAN video using a downloaded Nightmare Mobile model. All options
+ * not listed here (including LoRAs, sampling, steps, CFG and sigmas) come from
+ * the latest UI-saved sdcpp.json. Only supplied API settings override that file;
+ * omitted options, including saved start/end images and preview settings, are
+ * inherited. Model capabilities and UI limits are advisory and are not enforced
+ * on API inputs; the generation engine determines what it can run.
+ *
+ * Binary inputs and the MP4 response are base64 data URIs. The host may emit
+ * TypeScript-only on_nightmaremobile_generate_video_progress events; Python
+ * callers receive only the terminal response. Errors use on_error.
+ */
+export interface LaylaApiNightmareMobileGenerateVideo {
+  cmd: 'nightmaremobile_generate_video';
+  data: {
+    /** An id returned by nightmaremobile_get_models with downloaded: true. */
+    model_id: string;
+    /** Non-empty scene and motion description. */
+    prompt: string;
+    negative_prompt?: string;
+    /** Positive integer pixel dimensions. Omitted sides retain their saved values. */
+    width?: number;
+    height?: number;
+    /** Any positive integer frame count. */
+    frames?: number;
+    /** Any positive, finite playback FPS. */
+    fps?: number;
+    /** -1 for random; otherwise an unsigned 64-bit integer. Use a string for large seeds. */
+    seed?: number | string;
+    /** Start image as a base64 image data URI. Omit to retain the saved start image. */
+    image_data_base64?: string;
+    /** Final image as a base64 image data URI. Omit to retain the saved end image. */
+    end_image_data_base64?: string;
+    /** Finite denoise strength; forwarded without model capability checks. */
+    denoise_strength?: number;
+  };
+}
+
+/**
  * Ask the host for the list of available image generation models. The host should respond with an `on_get_image_generation_models_response` event containing an array of model names.
  * The host will only return image models that are immediately available for use (so this will not include models that are not downloaded)
  */
@@ -1032,6 +1079,8 @@ export type BaseApiRequest =
   | LaylaApiCancel
   | LaylaApiGenerateImage
   | LaylaApiNeodragonGenerateVideo
+  | LaylaApiNightmareMobileGetModels
+  | LaylaApiNightmareMobileGenerateVideo
   | LaylaApiUpdateCharacter
   | LaylaApiGetChatHistory
   | LaylaApiGetSentiment
@@ -1126,6 +1175,49 @@ export interface LaylaApiEvent_onNeodragonGenerateVideoResponse {
     video_data_base64: string;
     /** Resolved seed, so the generation can be reproduced. */
     seed: number;
+    width: number;
+    height: number;
+    frame_count: number;
+    fps: number;
+    duration_ms: number;
+    generation_time_ms: number;
+  };
+}
+
+/** Available Nightmare Mobile models and advisory UI capabilities/limits, not enforced on API inputs. */
+export interface LaylaApiEvent_onNightmareMobileGetModelsResponse {
+  event: 'on_nightmaremobile_get_models_response';
+  data: {
+    id: string;
+    name: string;
+    description: string;
+    /** False for missing models and models still downloading or unpacking. */
+    downloaded: boolean;
+    start_image: 'none' | 'optional' | 'required';
+    end_image: boolean;
+    size_presets: { width: number; height: number }[];
+    size_multiple: number;
+    min_size: number;
+    max_size: number;
+    max_area: number;
+    trained_fps: number;
+    /** Maximum clip length at trained_fps, in seconds. */
+    max_duration: number;
+    /** The frame counts offered by the UI for whole-second lengths. */
+    frame_options: number[];
+    fps_options: number[];
+  }[];
+}
+
+/** A generated Nightmare Mobile MP4. The clip also remains in the mini-app's history. */
+export interface LaylaApiEvent_onNightmareMobileGenerateVideoResponse {
+  event: 'on_nightmaremobile_generate_video_response';
+  data: {
+    model_id: string;
+    /** Generated MP4 including its data:video/mp4;base64, prefix. */
+    video_data_base64: string;
+    /** Resolved 64-bit seed as a decimal string. */
+    seed: string;
     width: number;
     height: number;
     frame_count: number;
@@ -1698,6 +1790,8 @@ export type BaseApiEvent =
   | LaylaApiEvent_onGetCharacterImageResponse
   | LaylaApiEvent_onGenerateImageResponse
   | LaylaApiEvent_onNeodragonGenerateVideoResponse
+  | LaylaApiEvent_onNightmareMobileGetModelsResponse
+  | LaylaApiEvent_onNightmareMobileGenerateVideoResponse
   | LaylaApiEvent_onUpdateCharacterResponse
   | LaylaApiEvent_onGetChatHistoryResponse
   | LaylaApiEvent_onGetSentimentResponse

@@ -34,6 +34,8 @@ export type {
   LaylaApiGetCharacterImage,
   LaylaApiGenerateImage,
   LaylaApiNeodragonGenerateVideo,
+  LaylaApiNightmareMobileGetModels,
+  LaylaApiNightmareMobileGenerateVideo,
   LaylaApiGetImageGenerationModels,
   LaylaApiUpdateCharacter,
   LaylaApiGetChatHistory,
@@ -88,6 +90,8 @@ export type {
   LaylaApiEvent_onGetCharacterImageResponse,
   LaylaApiEvent_onGenerateImageResponse,
   LaylaApiEvent_onNeodragonGenerateVideoResponse,
+  LaylaApiEvent_onNightmareMobileGetModelsResponse,
+  LaylaApiEvent_onNightmareMobileGenerateVideoResponse,
   LaylaApiEvent_onGetImageGenerationModelsResponse,
   LaylaApiEvent_onUpdateCharacterResponse,
   LaylaApiEvent_onGetChatHistoryResponse,
@@ -143,6 +147,7 @@ export type {
   LaylaApiEvent_onMsg,
   LaylaApiEvent_onGenerateImageProgress,
   LaylaApiEvent_onNeodragonGenerateVideoProgress,
+  LaylaApiEvent_onNightmareMobileGenerateVideoProgress,
   LaylaApiEvent_onAceStepGenerateProgress,
 } from './typescript-protocol';
 
@@ -192,6 +197,16 @@ export type {
   NeoDragonProgress,
   NeoDragonProgressListener,
 } from './resources/neodragon';
+
+// Nightmare Mobile WAN video generation resource surface.
+export { NightmareMobile } from './resources/nightmare-mobile';
+export type {
+  NightmareMobileModel,
+  NightmareMobileGenerateVideoOptions,
+  NightmareMobileGenerateVideoResult,
+  NightmareMobileProgress,
+  NightmareMobileProgressListener,
+} from './resources/nightmare-mobile';
 
 // Ace-Step music generation resource surface.
 export { AceStep } from './resources/acestep';

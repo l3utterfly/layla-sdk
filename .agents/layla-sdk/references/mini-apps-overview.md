@@ -146,6 +146,7 @@ The SDK exposes this as higher-level APIs such as:
 - `layla.backgroundAudio.pause()` / `resume()` / `skip()` / `stop()`
 - `layla.images.generateImage(...)`
 - `layla.neodragon.generateVideo(...)`
+- `layla.nightmareMobile.getModels()` / `generateVideo(...)`
 
 ## Runtime Expectations
 

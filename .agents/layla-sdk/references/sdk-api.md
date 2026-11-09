@@ -115,6 +115,11 @@ import LaylaSDK, {
   type NeoDragonGenerateVideoResult,
   type NeoDragonProgress,
   type NeoDragonProgressListener,
+  type NightmareMobileModel,
+  type NightmareMobileGenerateVideoOptions,
+  type NightmareMobileGenerateVideoResult,
+  type NightmareMobileProgress,
+  type NightmareMobileProgressListener,
   type AceStepModel,
   type AceStepRequest,
   type AceStepProgress,
@@ -1637,6 +1642,94 @@ video-cancel command; the next queued video starts after the host sends the
 terminal response. The Layla host must implement `neodragon_generate_video`, so
 keep host and SDK versions synchronized for this API.
 
+## `layla.nightmareMobile.getModels(options?)`
+
+Lists the Nightmare Mobile WAN model catalog, including undownloaded models.
+Returns `NightmareMobileModel[]`. Models follow the host's build/content
+visibility settings. Check `downloaded` before offering a model for generation;
+it is false while downloading or unpacking, as well as when missing.
+
+```ts
+const models = await layla.nightmareMobile.getModels();
+for (const model of models) {
+  console.log(model.id, model.name, model.downloaded);
+}
+```
+
+Each model has `id`, `name`, `description`, `downloaded`, `start_image`
+(`'none' | 'optional' | 'required'`), `end_image`, `size_presets` (width/height
+pairs), `size_multiple`, `min_size`, `max_size`, `max_area`, `trained_fps`,
+`max_duration`, `frame_options`, and `fps_options`. Capability fields and limits
+describe the mini-app UI; they are advisory and are not enforced on API inputs.
+Listing takes optional `RequestOptions` and runs independently of generation.
+
+## `layla.nightmareMobile.generateVideo(modelId, prompt, options?)`
+
+Generates a WAN MP4 with a downloaded model. The host reads the latest UI-saved
+`sdcpp.json` on every request and applies only supplied public options. Omitted
+values, including saved start/end images, preview, LoRAs, and sampling settings,
+are inherited from that file. The generated clip also remains in the host's
+Nightmare Mobile history.
+
+```ts
+const models = await layla.nightmareMobile.getModels();
+const model = models.find(({ downloaded }) => downloaded);
+if (!model) throw new Error('Download a Nightmare Mobile model in Layla first');
+
+const result = await layla.nightmareMobile.generateVideo(
+  model.id,
+  'Waves roll onto the beach, fixed camera',
+  {
+    width: 640, height: 352, frames: 49, fps: 24,
+    seed: '18446744073709551615',
+    onProgress: (progress) => setVideoProgress(progress),
+  },
+);
+videoElement.src = result.video_data_base64;
+```
+
+`NightmareMobileGenerateVideoOptions` extends `RequestOptions`:
+
+| Option | Meaning / wire field |
+| --- | --- |
+| `negativePrompt?: string` | `negative_prompt`; empty string explicitly clears the saved negative prompt |
+| `width?: number`, `height?: number` | Positive integer pixel dimensions; each omitted side keeps its saved value |
+| `frames?: number` | Positive integer frame count; forwarded exactly without duration conversion |
+| `fps?: number` | Positive finite playback FPS; forwarded independently of frames |
+| `seed?: number \| string` | `-1` for random, otherwise an unsigned 64-bit integer; use decimal strings for large values |
+| `imageDataBase64?: string` | `image_data_base64`, a base64 image data URI including its prefix |
+| `endImageDataBase64?: string` | `end_image_data_base64`, a base64 image data URI including its prefix |
+| `denoiseStrength?: number` | Finite `denoise_strength` |
+| `onProgress?: NightmareMobileProgressListener` | Receives phase updates while generation runs |
+| `signal?: AbortSignal` | Reject the local request with `LaylaAbortError` |
+
+There are no duration or aspect-ratio request options; use `frames`/`fps` and
+`width`/`height`. LoRA, sampler, step count, CFG, and sigma controls are not
+exposed by this API. Neither the SDK nor the host rejects inputs based on the
+catalog's model capability limits. The host applies basic type/value checks;
+the engine determines support and may reject a request it cannot execute.
+
+The result is `NightmareMobileGenerateVideoResult`: `model_id`,
+`video_data_base64` (including `data:video/mp4;base64,`), `seed` (a decimal string),
+`width`, `height`, `frame_count`, `fps`, `duration_ms`, and `generation_time_ms`.
+Keep the string seed intact to preserve 64-bit precision.
+
+`NightmareMobileProgress` has a `stage` (`loading`, `preparing`, `sampling`,
+`decoding`, `encoding`, or `saving`). Sampling includes `pass`, `total_passes`,
+`step`, `total_steps`; encoding includes `frame`, `total_frames`. Steps restart
+per expert pass, and other stages are indeterminate. There is no overall
+fraction or preview image in the progress event. Progress is TypeScript-only;
+the terminal model and video responses are in the base protocol.
+
+Generations serialize in one lane; model listing is independent. Aborting an
+active request rejects locally and suppresses later progress, but does not stop
+native generation because there is no video-cancel command. That lane stays
+occupied until the host sends the terminal response/error. An aborted queued
+request is removed before it is posted. Host errors reject with `LaylaError`.
+
+Requires a host implementing `nightmaremobile_get_models` and
+`nightmaremobile_generate_video`; keep the SDK and Layla host versions aligned.
+
 ## `layla.acestep.getModels(options?)`
 
 Returns every Ace-Step model bundle known to the host. Built-in bundles appear
@@ -2471,6 +2564,33 @@ The handler receives the native `neodragon_generate_video` data shape,
 including `image_data_base64` and `cinematic_prompt`, plus a `reportProgress`
 function. When omitted, the mock reports `loading`, `text`, `sampling`, and
 `decoding` stages and returns a small placeholder MP4 data URI with metadata.
+
+Nightmare Mobile uses `nightmareMobileModels` for its catalog and
+`nightmareMobileGenerateVideo(request, reportProgress)` for custom output:
+
+```ts
+installLaylaMock({
+  latencyMs: 0,
+  nightmareMobileGenerateVideo: async (request, reportProgress) => {
+    reportProgress({ stage: 'sampling', pass: 1, total_passes: 1, step: 2, total_steps: 4 });
+    return {
+      model_id: request.model_id,
+      video_data_base64: 'data:video/mp4;base64,AAAA...',
+      seed: '1234', width: request.width ?? 640, height: request.height ?? 352,
+      frame_count: request.frames ?? 49, fps: request.fps ?? 24,
+      duration_ms: 2042, generation_time_ms: 1000,
+    };
+  },
+});
+```
+
+The custom handler receives native snake_case fields, including `model_id`,
+`image_data_base64`, and `denoise_strength`. It may be async; thrown errors
+become correlated `on_error` events. The default mock lists both downloaded and
+unavailable sample models, emits canned phase progress, and returns a placeholder
+MP4. It has no real saved `sdcpp.json`, engine, or generation history, so use a
+custom handler to simulate inherited UI settings or native failures. Advisory
+capabilities do not restrict custom options in the mock.
 
 Configure the model listing returned by the mock, including unavailable
 built-in bundles:
@@ -3307,6 +3427,16 @@ type NeoDragonGenerateVideoResult = {
 };
 ```
 
+### Nightmare Mobile
+
+`NightmareMobileModel` and `NightmareMobileGenerateVideoResult` alias the model
+and video response payloads described above. `NightmareMobileProgress` aliases
+the TypeScript progress payload, and `NightmareMobileProgressListener` receives
+one such payload. `NightmareMobileGenerateVideoOptions` is the options object
+documented above. All five types, the `NightmareMobile` resource class, both
+request/response wire types, and the progress event type are exported from the
+package root. Complete declarations are bundled in `references/types.d.ts`.
+
 ### Ace-Step
 
 `AceStepRequest` is documented in full under "Raw Ace-Step passes" above.
@@ -3378,6 +3508,7 @@ of truth for current signatures:
 - `src/resources/characters.ts`
 - `src/resources/classifier.ts`
 - `src/resources/images.ts`
+- `src/resources/nightmare-mobile.ts`
 - `src/resources/acestep.ts`
 - `src/resources/memories.ts`
 - `src/resources/personas.ts`
