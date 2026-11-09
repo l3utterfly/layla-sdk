@@ -118,6 +118,36 @@ The **Concurrency** group covers the per-lane bridge change:
 
 ## Notes for the host run
 
+The media group includes these pinned-model checks:
+
+- **images.generateImage (+referenceImages)** — **heavy**, using
+  `qwen-image-2.1-turbo-htp`. Sends `apple.png` as a base64 image data URI in
+  `referenceImages`, asking to turn the red apple green while retaining the blue
+  mug and composition. This uses native reference conditioning, without an
+  img2img base image.
+- **nightmareMobile.getModels** — safe; lists model IDs and downloaded state.
+- **nightmareMobile.generateVideo (+image, progress)** — **heavy**, using
+  `wan22_ti2v_turbo`. Animates the same apple image at 512x320, 25 frames, 24 FPS,
+  seed 42. Verifies the MP4 data URI, returned metadata, and phase progress.
+
+Both heavy checks are excluded from **Run all** unless **include heavy** is
+enabled, and are exempt from the watchdog. They skip with the exact model ID
+when the pinned model is not installed; there is no fallback to another model.
+Download the Qwen model in Local Dream and the WAN model in Nightmare Mobile
+before running them on-device. Generation uses the host's current model settings
+apart from the explicit API overrides.
+
+`public/apple.png` is copied unchanged from the Local Dream integration-test
+output at
+`Layla/modules/local-dream/tests/out/windows-sdcpp/20261107-021601-316f9b59/vulkan-qwen21turbo/txt2img_0.png`.
+It depicts a red apple beside a blue mug on a wooden table. Vite copies it to
+`dist/apple.png`; include it when zipping the contents of `dist/`. Both checks
+fetch `./apple.png` and convert its bytes to a data URI at runtime.
+
+The browser mock advertises the pinned Qwen model and already includes the WAN
+model. Its image and video outputs are placeholders; the checks verify the API
+round trips, not whether the apple was visually edited or animated correctly.
+
 - *Heavy* checks include chat interfaces, tool calling, and operations with real
   host side effects (audio playback, image generation, video generation, music
   generation, microphone access). Leave them off unless you're testing them.

@@ -7,6 +7,7 @@ import {
   type ChatCompletionMessageParam,
   type LaylaCharacter,
   type NeoDragonProgress,
+  type NightmareMobileProgress,
 } from "../../../src/index";
 import type { LaylaMockHandle } from "../../../src/mock";
 import "./App.css";
@@ -28,6 +29,8 @@ import "./App.css";
 
 const layla = new LaylaSDK();
 const sessionId = `diag-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+const REFERENCE_IMAGE_MODEL_ID = "qwen-image-2.1-turbo-htp";
+const WAN_VIDEO_MODEL_ID = "wan22_ti2v_turbo";
 
 const mockHandle = (): LaylaMockHandle | null =>
   (window as unknown as { __laylaDiagMock?: LaylaMockHandle }).__laylaDiagMock ??
@@ -178,6 +181,16 @@ function toBase64(bytes: Uint8Array): string {
     binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
   }
   return btoa(binary);
+}
+
+/** A real Local Dream integration-test image, packaged alongside the mini-app. */
+async function appleDataUri(signal: AbortSignal, log: CheckCtx["log"]): Promise<string> {
+  const response = await fetch("./apple.png", { signal });
+  assert(response.ok, `failed to download ./apple.png (${response.status} ${response.statusText})`);
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  assert(bytes.length > 0, "bundled apple image is empty");
+  log(`source: ./apple.png (${bytes.length} bytes; red apple and blue mug on a wooden table)`);
+  return `data:image/png;base64,${toBase64(bytes)}`;
 }
 
 /**
@@ -1326,6 +1339,39 @@ ${reply}`);
         },
       },
       {
+        id: "images.generate.referenceImages",
+        name: "images.generateImage (+referenceImages)",
+        desc: "Edits the bundled apple image with qwen-image-2.1-turbo-htp using native reference conditioning.",
+        weight: "heavy",
+        noTimeout: true,
+        run: async ({ layla, mock, signal, log }) => {
+          log(`model: ${REFERENCE_IMAGE_MODEL_ID}`);
+          const models = await layla.images.getImageGenerationModels({ signal });
+          if (!models.some((model) => model.id === REFERENCE_IMAGE_MODEL_ID)) {
+            return skip(`Download ${REFERENCE_IMAGE_MODEL_ID} in Local Dream before running this check.`);
+          }
+          const reference = await appleDataUri(signal, log);
+          let ticks = 0;
+          let lastProgress = "";
+          const src = await layla.images.generateImage(
+            "Change the red apple into a green apple. Keep the blue mug, wooden table, lighting, and composition unchanged.",
+            (status, step, totalSteps) => {
+              ticks += 1;
+              lastProgress = `${status} ${step}/${totalSteps}`;
+            },
+            undefined,
+            REFERENCE_IMAGE_MODEL_ID,
+            { referenceImages: [reference], signal },
+          );
+          assert(typeof src === "string" && src.length > 0, "reference edit returned no image");
+          if (!mock) {
+            assert(/^data:image\/[^;,]+;base64,.+/.test(src), "expected a base64 image data URI");
+          }
+          log(`result: image (${src.length} chars); ${ticks} progress events${lastProgress ? `; last: ${lastProgress}` : ""}`);
+          return `${REFERENCE_IMAGE_MODEL_ID}; 1 reference, image (${src.length} chars), ${ticks} progress events`;
+        },
+      },
+      {
         id: "neodragon.generateVideo",
         name: "neodragon.generateVideo (+progress)",
         desc: "Downloads the bundled mini-app icon and animates it with NeoDragon.",
@@ -1389,6 +1435,61 @@ ${reply}`);
             `@ ${result.fps} fps, ${result.duration_ms}ms, ` +
             `${ticks.length} progress events`
           );
+        },
+      },
+      {
+        id: "nightmareMobile.getModels",
+        name: "nightmareMobile.getModels",
+        desc: "Lists WAN video models with download state and advisory UI capabilities.",
+        weight: "safe",
+        run: async ({ layla, signal, log }) => {
+          const models = await layla.nightmareMobile.getModels({ signal });
+          assert(Array.isArray(models), "expected an array");
+          assert(models.every((model) => typeof model.id === "string" && typeof model.downloaded === "boolean"),
+            "expected every model to have id and downloaded");
+          log(models.map((model) => `${model.id}: ${model.downloaded ? "downloaded" : "not downloaded"}`).join("\n") || "No WAN models listed.");
+          const selected = models.find((model) => model.id === WAN_VIDEO_MODEL_ID);
+          return `${models.length} models; ${WAN_VIDEO_MODEL_ID}: ${selected?.downloaded ? "downloaded" : "not installed"}`;
+        },
+      },
+      {
+        id: "nightmareMobile.generateVideo",
+        name: "nightmareMobile.generateVideo (+image, progress)",
+        desc: "Animates the bundled apple image with wan22_ti2v_turbo at 512x320, 25 frames, 24 fps.",
+        weight: "heavy",
+        noTimeout: true,
+        run: async ({ layla, signal, log }) => {
+          log(`model: ${WAN_VIDEO_MODEL_ID}`);
+          const models = await layla.nightmareMobile.getModels({ signal });
+          if (!models.some((model) => model.id === WAN_VIDEO_MODEL_ID && model.downloaded)) {
+            return skip(`Download ${WAN_VIDEO_MODEL_ID} in Nightmare Mobile before running this check.`);
+          }
+          const imageDataBase64 = await appleDataUri(signal, log);
+          const ticks: NightmareMobileProgress[] = [];
+          log("request: 512x320, 25 frames @ 24 fps, seed 42; bundled apple as start image");
+          const result = await layla.nightmareMobile.generateVideo(
+            WAN_VIDEO_MODEL_ID,
+            "The apple gently turns on the wooden table beside the blue mug, subtle natural motion, fixed camera.",
+            {
+              width: 512, height: 320, frames: 25, fps: 24, seed: 42,
+              imageDataBase64, signal,
+              onProgress: (progress) => ticks.push(progress),
+            },
+          );
+          assert(result.model_id === WAN_VIDEO_MODEL_ID, "unexpected WAN model in result");
+          assert(result.video_data_base64.startsWith("data:video/mp4;base64,") && result.video_data_base64.length > "data:video/mp4;base64,".length,
+            "expected a non-empty MP4 data URI");
+          assert(result.width === 512 && result.height === 320, "unexpected video dimensions");
+          assert(result.frame_count === 25 && result.fps === 24, "unexpected frame count or FPS");
+          assert(typeof result.seed === "string" && result.seed === "42", "expected resolved seed string 42");
+          assert(result.duration_ms > 0 && result.generation_time_ms >= 0, "invalid video timing metadata");
+          assert(ticks.length > 0, "no WAN progress events received");
+          log(`progress: ${ticks.length} events — ${[...new Set(ticks.map((tick) => tick.stage))].join(", ")}`);
+          log(ticks.slice(0, 20).map((tick) => tick.stage === "sampling"
+            ? `  sampling pass ${tick.pass}/${tick.total_passes}, step ${tick.step}/${tick.total_steps}`
+            : tick.stage === "encoding" ? `  encoding frame ${tick.frame}/${tick.total_frames}` : `  ${tick.stage}`).join("\n"));
+          log(`result: ${result.width}x${result.height}, ${result.frame_count} frames @ ${result.fps} fps; seed ${result.seed}; ${result.duration_ms}ms; generated in ${result.generation_time_ms}ms`);
+          return `${WAN_VIDEO_MODEL_ID}; ${result.width}x${result.height}, ${result.frame_count} frames @ ${result.fps} fps, ${ticks.length} progress events`;
         },
       },
       {

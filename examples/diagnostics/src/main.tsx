@@ -20,6 +20,12 @@ if (import.meta.env.DEV) {
       sql.match(re)?.[1]?.toLowerCase() ?? "";
 
     const handle = installLaylaMock({
+      // Keep the pinned reference-edit diagnostic runnable in the browser.
+      imageGenerationModels: [{
+        id: "qwen-image-2.1-turbo-htp",
+        name: "Mock Qwen Image 2.1 Turbo",
+        description: "Placeholder model for the reference-image diagnostic.",
+      }],
       // Answering the tool-calling check takes a model that uses the tools it
       // is offered, so stand in for one: ask for the first declared tool, then
       // answer from the result once it comes back. Everything else honors the
