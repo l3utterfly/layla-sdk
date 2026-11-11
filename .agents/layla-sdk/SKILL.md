@@ -1337,14 +1337,31 @@ mini-app.
 
 The QuickJS runtime is not a browser, but it has the common non-DOM globals:
 
-- `fetch` works for any absolute `http(s)` URL; the host performs the request.
-  `Headers`, `Response`, `AbortController` / `AbortSignal` (including
-  `AbortSignal.timeout()` and `AbortSignal.any()`) come with it. Request bodies
-  are a string, `URLSearchParams`, an `ArrayBuffer`, or a typed array — no
-  `FormData` or `Blob`. Response bodies are read whole with `text()`, `json()`,
-  `arrayBuffer()`, or `bytes()`; there are no streams (`response.body`).
-  Redirects are always followed (`redirect: 'follow'` only). A network failure
-  rejects with a `TypeError`, as in browsers; an HTTP error status still
+- `fetch(url, options?)` is available globally without imports or SDK calls.
+  Pass an absolute `http://` or `https://` URL; the host performs the request
+  through its native networking, separately from the `layla.*` bridge APIs.
+  Relative URLs and other schemes such as `file:` are rejected.
+- Fetch options include `method` (default `GET`), `headers` (a plain object,
+  an array of `[name, value]` pairs, or `Headers`), `body`, and `signal`.
+  Request bodies can be strings, `ArrayBuffer`s, typed arrays, or `DataView`s;
+  `GET` and `HEAD` cannot have a body. For JSON, pass `JSON.stringify(data)`
+  and set `Content-Type: application/json`. For form-encoded data, build an
+  encoded string and set `Content-Type: application/x-www-form-urlencoded`;
+  the runtime does not provide a `URLSearchParams` constructor.
+- `Headers`, `Response`, `AbortController`, and `AbortSignal` are available,
+  including `AbortSignal.timeout(ms)` and `AbortSignal.any(signals)`. Use a
+  signal for timeouts or cancellation; aborting also cancels the host request.
+  Requests still in flight are cancelled when the runtime is destroyed.
+- Responses expose `ok`, `status`, `statusText`, `headers`, `url`,
+  `redirected`, and `bodyUsed`. Read the whole body with `text()`, `json()`,
+  `arrayBuffer()`, or `bytes()`. A body can only be consumed once; call
+  `response.clone()` before reading if you need another copy. There are no
+  response streams (`response.body`), `blob()`, or `formData()`.
+- Redirects are always followed; only `redirect: 'follow'` is supported.
+  `credentials: 'include'` enables credentials on the host request; other
+  values leave them disabled. Do not assume other browser fetch options
+  such as `mode`, `cache`, or `keepalive` are implemented.
+  A network failure rejects with a `TypeError`; an HTTP error status still
   resolves, so check `response.ok`.
 - `setTimeout`, `setInterval`, `clearTimeout`, and `clearInterval` work, so a
   script can sleep, retry with backoff, or poll. Pending timers do **not** keep
@@ -1353,7 +1370,8 @@ The QuickJS runtime is not a browser, but it has the common non-DOM globals:
 - `TextEncoder` / `TextDecoder` (UTF-8 only, no streaming decode) and
   `atob` / `btoa` are available.
 - `Promise`, `async`/`await`, `queueMicrotask`, and `JSON` work normally.
-- No DOM, `document`, `XMLHttpRequest`, `localStorage`, `URL`, or `Buffer`.
+- No DOM, `document`, `XMLHttpRequest`, `localStorage`, `URL`, `Request`,
+  `URLSearchParams`, `FormData`, `Blob`, or `Buffer`.
 
 ```js
 (async () => {
