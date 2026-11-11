@@ -106,6 +106,10 @@ await layla.characters.getImage(characterId);
 await layla.characters.update(character);
 await layla.classifier.getSentiment('This is a happy message.');
 await layla.images.generateImage(prompt, onProgress);
+await layla.images.getTagDictionaries();
+await layla.images.getTags(dictionaryFilename, { offset: 0, limit: 50 });
+await layla.images.searchTags(dictionaryFilename, 'blue', { mode: 'prefix' });
+await layla.images.suggestTags(dictionaryFilename, 'blu hr', { limit: 40 });
 await layla.neodragon.generateVideo(imageDataBase64, prompt, options);
 await layla.nightmareMobile.getModels();
 await layla.nightmareMobile.generateVideo(modelId, prompt, options);
@@ -858,6 +862,38 @@ const sentiment: SentimentValues = await layla.classifier.getSentiment(
 This is useful for moderation, tone detection, UI reactions, or any feature that needs a lightweight emotional read on a message.
 
 ## Images
+
+Text tag dictionaries also live on `layla.images`. Discover filenames with
+`getTagDictionaries()`, then pass `dictionary.dictionary_filename` to each
+`getTags`, `getTag`, `upsertTag`, `deleteTag`, `searchTags`, or `suggestTags` call. Filenames
+are relative to the host's app-data tags folder. Calls do not share a selected
+dictionary; successful mutations are persisted by the host.
+
+Tags contain `{ english, category, post_count, aliases }`. `getTag` uses an exact
+English name and returns a tag or null. `upsertTag(filename, tag, replacing?,
+options?)` creates when `replacing` is omitted/null; an existing exact name
+replaces or renames that tag. `deleteTag` returns whether it removed a tag.
+Creating a tag with `replacing` omitted/null also creates a missing dictionary
+CSV and its parent folders, after validating the tag. Failed replacements do
+not create files; existing unreadable or malformed CSVs reject. Auto-created
+raw CSVs are accessed by filename and are not registered in dictionary discovery.
+Listing and search return pages with `tags`, `total`, `offset`, and `limit`.
+Search supports `mode: 'prefix' | 'name'` (substring by default), category
+filtering and pagination. These methods require a host with `image_gen_tag_*`
+support. Read the image tag section in `references/sdk-api.md` for signatures,
+return types, path rules and browser mock seeding.
+
+For prompt autocomplete, use `suggestTags(filename, currentTagToken, options?)`:
+it calls the native picker's indexed `suggest()` engine. Results are ranked by
+match quality and popularity, with aliases, typo correction and translation
+search. `options` accepts `limit` (default 40) and `signal`; blank queries and
+limit 0 return `[]`. Each result includes `replacement_tag`, `primary_text`,
+optional `secondary_text`, `match_type`, `category`, `post_count`, and `score`.
+There is no offset or total count. Debounce text input by 150 ms, as the picker
+does; the SDK does not debounce calls automatically. Loading/indexing is paid
+on first use or after a dictionary switch/edit. Use `searchTags` for paginated
+name/prefix browsing. Browser mock suggestions approximate fuzzy name/alias
+matching; the host supplies the actual picker ranking and translations.
 
 Image APIs return ready-to-use image source strings when successful. Do not add another `data:` prefix.
 

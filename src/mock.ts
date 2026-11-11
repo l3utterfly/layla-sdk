@@ -34,6 +34,7 @@ import type {
   LaylaApiEvent_onCloudLogin,
   LaylaApiEvent_onGetImageGenerationModelsResponse,
   LaylaApiGenerateImage,
+  LaylaImageGenTag,
   LaylaApiEvent_onNeodragonGenerateVideoResponse,
   LaylaApiNeodragonGenerateVideo,
   LaylaApiNightmareMobileGenerateVideo,
@@ -76,6 +77,7 @@ import type {
   LaylaApiEvent_onNeodragonGenerateVideoProgress,
 } from './typescript-protocol';
 import { makeMockChatHistory } from './mock-data/chat-history';
+import { createMockImageGenTagHandler, type MockImageGenTagRequest } from './mock-data/image-gen-tags';
 
 type MockReply =
   | string
@@ -316,6 +318,12 @@ export interface LaylaMockOptions {
    * Defaults to two sample models.
    */
   imageGenerationModels?: MockImageGenerationModel[];
+  /**
+   * Initial text tag dictionaries keyed by relative main CSV filename. Edits
+   * survive dictionary switches until uninstall, without touching real files.
+   * Defaults to mock/tags.csv with two sample tags; pass {} for no dictionaries.
+   */
+  imageTagDictionaries?: Record<string, LaylaImageGenTag[]>;
   /** Nightmare Mobile catalog, including download state and advisory UI limits. */
   nightmareMobileModels?: MockNightmareMobileModel[];
   /**
@@ -828,6 +836,8 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
       description: 'A higher-quality mock image model for local development.',
     },
   ];
+  const handleImageGenTag = createMockImageGenTagHandler(options.imageTagDictionaries);
+  let imageGenTagQueue = Promise.resolve();
   const aceStepModels = options.aceStepModels ?? [
     { modelId: 'ace-step-v1.5-turbo', ready_for_use: true },
     { modelId: 'ace-step-v1.5-sft', ready_for_use: false },
@@ -1195,6 +1205,17 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     emit({
       event: 'on_get_image_generation_models_response',
       data: imageGenerationModels.map((model) => ({ ...model })),
+    });
+  }
+
+  function enqueueImageGenTag(request: MockImageGenTagRequest, id?: string): void {
+    imageGenTagQueue = imageGenTagQueue.then(async () => {
+      await delay(latencyMs);
+      if (!installed) return;
+      if (shouldError()) throw new Error('Simulated image generation tag error');
+      emit({ ...handleImageGenTag(request), id });
+    }).catch((error: unknown) => {
+      emit({ event: 'on_error', data: { message: error instanceof Error ? error.message : String(error) }, id });
     });
   }
 
@@ -2564,6 +2585,15 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
           break;
         case 'get_image_generation_models':
           void handleGetImageGenerationModels();
+          break;
+        case 'image_gen_tag_get_dictionaries':
+        case 'image_gen_tag_get_tags':
+        case 'image_gen_tag_get_tag':
+        case 'image_gen_tag_upsert_tag':
+        case 'image_gen_tag_delete_tag':
+        case 'image_gen_tag_search_tags':
+        case 'image_gen_tag_suggest_tags':
+          enqueueImageGenTag(msg, (msg as { id?: string }).id);
           break;
         case 'ace_step_get_models':
           void handleAceStepGetModels();

@@ -1578,6 +1578,162 @@ try {
 }
 ```
 
+## Image generation tag dictionaries on `layla.images`
+
+These text-only APIs require a host implementing the `image_gen_tag_*`
+commands. Managed dictionaries are shared with Layla's tag manager. Discover
+those filenames first, or create a raw dictionary CSV by upserting its first tag.
+
+| Method | Resolves with |
+| --- | --- |
+| `getTagDictionaries(options?)` | `LaylaImageGenTagDictionaryData[]`: objects with `dictionary_filename` |
+| `getTags(dictionaryFilename, options?)` | `LaylaImageGenTagPage` |
+| `getTag(dictionaryFilename, english, options?)` | `LaylaImageGenTag \| null` |
+| `upsertTag(dictionaryFilename, tag, replacing?, options?)` | The persisted `LaylaImageGenTag` |
+| `deleteTag(dictionaryFilename, english, options?)` | `boolean`: false when already absent |
+| `searchTags(dictionaryFilename, query, options?)` | `ImageGenTagSearchResult` |
+| `suggestTags(dictionaryFilename, query, options?)` | `LaylaImageGenTagSuggestion[]`: picker-ranked autocomplete |
+
+All methods are on `layla.images`, and each dictionary operation requires a
+filename independently. A filename such as `my-dictionary/tags.csv` is relative
+to the host's app-data tags folder (`IMG_GEN_TAGS_PATH`), rather than the
+mini-app's private file directory. The host rejects absolute paths, URIs,
+backslashes, NULs, and empty, `.` or `..` path segments. Available managed
+dictionaries are returned in the tag library's order (most recently updated
+first). An empty list is valid. Other existing relative main CSV paths can also
+be supplied directly to the operations.
+
+`LaylaImageGenTag` contains:
+
+```ts
+{ english: string; category: number; post_count: number; aliases: string[] }
+```
+
+`category` and `post_count` are nonnegative integers. `english` is the canonical
+name and must be non-empty. This API edits main CSV fields; managed dictionary
+translations are preserved during updates and moved on renames, and removed
+when a tag is deleted. Names are unique within each dictionary.
+
+`getTags` accepts `ImageGenTagListOptions`: `{ offset?, limit?, category?, signal? }`.
+Offset defaults to 0 and limit to 50; both must be nonnegative integers.
+Omit category or pass null for all categories. `limit: 0` returns no entries but
+still reports the total, and offsets beyond the end produce an empty page.
+Listing follows dictionary file order. A `LaylaImageGenTagPage` contains
+`{ dictionary_filename, tags, total, offset, limit }`; total counts filtered
+matches before pagination.
+
+`searchTags` requires non-empty query text and accepts `ImageGenTagSearchOptions`,
+which adds `mode?: 'prefix' | 'name'` to the list options. The default is `'name'`
+(substring matching). Search covers canonical English names and aliases, ignores
+case, and normalizes spaces and dashes to underscores. Exact canonical names
+come first, then matches in file order. `ImageGenTagSearchResult` adds `query` and
+the resolved `mode` to the page. These searches do not search translations.
+
+For prompt autocomplete, prefer `suggestTags(filename, currentTagToken, options?)`.
+It calls the exact `ImgGenTagService.suggest()` implementation used by the native
+prompt picker, after `prepareSearch()` builds its index in short slices. This
+supports fuzzy subsequence matching, aliases, typo-correction fallback and
+popularity ranking. Queries containing non-ASCII letters select translation
+search, when the managed dictionary has a translations CSV. The API supplies no
+embedding names, so it does not produce pinned embedding suggestions.
+
+`ImageGenTagSuggestOptions` accepts `limit?: number` (default 40, matching the
+picker) and `signal?: AbortSignal`. Limit must be a nonnegative integer. An empty
+or whitespace-only query and limit 0 both return `[]`. Suggestions are bounded,
+with no offset, category filter, search mode, or total count. Each
+`LaylaImageGenTagSuggestion` has:
+
+```ts
+{
+  replacement_tag: string; // canonical tag to insert
+  primary_text: string; // display name
+  secondary_text?: string; // matching alias or translation, when present
+  match_type: 'fuzzy' | 'alias' | 'translation' | 'correction' | 'embedding';
+  category: number;
+  post_count: number;
+  score: number; // relevance, not a probability
+}
+```
+
+The SDK preserves the engine's relevance order and metadata. It extracts the
+`suggestions` array from `on_image_gen_tag_suggest_tags_response`; that wire
+response also includes `dictionary_filename`, `query`, and the resolved `limit`.
+`image_gen_tag_suggest_tags` takes those same three fields (limit is optional).
+
+```ts
+const suggestions = await layla.images.suggestTags(filename, 'blu hr', { limit: 40 });
+for (const suggestion of suggestions) {
+  console.log(suggestion.primary_text, suggestion.secondary_text, suggestion.score);
+  // Insert suggestion.replacement_tag when the user selects it.
+}
+```
+
+Pass only the tag being edited, rather than the whole comma-separated prompt.
+Debounce interactive calls by 150 ms, matching the picker; SDK calls are not
+debounced automatically. The first request or a dictionary switch still loads
+the CSVs and builds the index. Warm calls reuse the service/index, with no
+full-dictionary state scan to check the filename. Edits invalidate the index;
+the next suggestion rebuilds it. This endpoint requires a host implementing
+`image_gen_tag_suggest_tags`. `searchTags` retains its paginated name/prefix
+contract and is intended for dictionary browsing.
+
+```ts
+import type { LaylaImageGenTag, ImageGenTagSearchResult } from '@layla-network/sdk';
+
+const [dictionary] = await layla.images.getTagDictionaries();
+if (dictionary) {
+  const filename = dictionary.dictionary_filename;
+  const page = await layla.images.getTags(filename, { offset: 0, limit: 25, category: 0 });
+  const matches: ImageGenTagSearchResult = await layla.images.searchTags(
+    filename, 'blue', { mode: 'prefix', limit: 10 },
+  );
+  const entry: LaylaImageGenTag = {
+    english: 'custom_tag', category: 0, post_count: 0, aliases: ['custom_alias'],
+  };
+  const created = await layla.images.upsertTag(filename, entry);
+  const renamed = await layla.images.upsertTag(
+    filename, { ...created, english: 'renamed_tag' }, created.english,
+  );
+  const stored = await layla.images.getTag(filename, renamed.english);
+  const deleted = await layla.images.deleteTag(filename, renamed.english);
+}
+```
+
+Omitting `replacing` or passing null creates a tag; passing an exact existing
+name replaces its fields in place and can rename it. New tags appear first in
+file order. Duplicate names and missing replacement targets reject with
+`LaylaError`. Lookups return null only for absent tags in an existing dictionary;
+missing dictionaries, invalid paths and failed saves reject with `LaylaError`,
+except that creating a new tag with `upsertTag` creates a missing main CSV and
+parent folders. The dictionary starts empty in memory and is saved only after
+the tag validates; invalid tags leave no file behind. A non-null `replacing`
+still requires an existing dictionary and target tag. Existing unreadable or
+malformed files reject and are not overwritten as empty dictionaries.
+Auto-created raw CSVs can be used by filename with every tag operation, but
+`getTagDictionaries()` lists only dictionaries registered in the host tag manager.
+Mutations resolve after persistence. The host may reuse a cached service for
+the same filename and reloads when the filename changes.
+
+Every method accepts a `signal` in its final options argument. Aborting stops
+waiting locally; it does not roll back a host edit already in progress. For
+upserts, pass null as `replacing` when supplying options for creation:
+`upsertTag(filename, tag, null, { signal })`.
+
+For browser development, seed `installLaylaMock({ imageTagDictionaries: {
+  'demo/tags.csv': [{ english: 'blue_hair', category: 0, post_count: 100, aliases: [] }],
+} })`. The default is `mock/tags.csv` with two sample tags; pass `{}` for an
+empty library. The mock clones the seed, supports every tag operation, and keeps
+edits across dictionary switches until uninstall. It writes no real CSV files
+and does not persist these dictionaries in localStorage.
+
+Browser mock suggestions approximate fuzzy name/alias matching and popularity
+ranking on the seeded dictionaries. They are bounded and reflect mock edits,
+but do not reproduce the native translation or typo-correction engine.
+
+The tag DTOs, seven request types and seven response types are exported from the
+package root alongside the Images options/result types above. Exact
+declarations are in `references/types.d.ts`, generated when the skill is packaged.
+
 ## `layla.neodragon.generateVideo(imageDataBase64, prompt, options?)`
 
 Generates an MP4 video from a still image with NeoDragon. The source image must

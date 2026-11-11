@@ -1,7 +1,7 @@
 /**
  * resources/images.ts
  * -----------------------
- * The images resource: `layla.images.generateImage()`.
+ * Image generation and text-only tag dictionaries on `layla.images`.
  * 
  */
 
@@ -9,6 +9,17 @@ import type { LaylaApiEvent, LaylaApiRequest } from '../interface';
 import type {
   LaylaApiGenerateImage,
   LaylaApiEvent_onGetImageGenerationModelsResponse,
+  LaylaApiEvent_onImageGenTagGetDictionariesResponse,
+  LaylaApiEvent_onImageGenTagGetTagsResponse,
+  LaylaApiEvent_onImageGenTagGetTagResponse,
+  LaylaApiEvent_onImageGenTagUpsertTagResponse,
+  LaylaApiEvent_onImageGenTagDeleteTagResponse,
+  LaylaApiEvent_onImageGenTagSearchTagsResponse,
+  LaylaApiEvent_onImageGenTagSuggestTagsResponse,
+  LaylaImageGenTagDictionaryData,
+  LaylaImageGenTag,
+  LaylaImageGenTagPage,
+  LaylaImageGenTagSuggestion,
 } from '../protocol';
 import { oneShot, type RequestOptions } from '../internal/one-shot';
 import { type BridgeSink, LaylaBridge } from '../internal/bridge';
@@ -23,6 +34,30 @@ export interface GenerateImageOptions extends RequestOptions {
 /** A single image generation model available on the host. */
 export type LaylaImageGenerationModel =
   LaylaApiEvent_onGetImageGenerationModelsResponse['data'][number];
+
+/** Pagination and optional category filtering within one tag dictionary. */
+export interface ImageGenTagListOptions extends RequestOptions {
+  /** Zero-based offset. Defaults to 0. */
+  offset?: number;
+  /** Maximum number of tags. Defaults to 50; zero returns only the total. */
+  limit?: number;
+  /** Omit or pass null to include all categories. */
+  category?: number | null;
+}
+
+export interface ImageGenTagSearchOptions extends ImageGenTagListOptions {
+  /** Match the start of names/aliases, or anywhere in them. Defaults to 'name'. */
+  mode?: 'prefix' | 'name';
+}
+
+/** A tag page plus the query and resolved matching mode. */
+export type ImageGenTagSearchResult = LaylaApiEvent_onImageGenTagSearchTagsResponse['data'];
+
+/** Ranked autocomplete using the native prompt picker's suggestion engine. */
+export interface ImageGenTagSuggestOptions extends RequestOptions {
+  /** Maximum suggestions; defaults to 40, matching the picker. Zero returns none. */
+  limit?: number;
+}
 
 type Listener =
   ((image_data_base64: string | null) => void) |
@@ -98,6 +133,116 @@ class ImagesBridgeSink implements BridgeSink {
 }
 
 export class Images {
+  /**
+   * Suggest for the current tag token with the picker's indexed fuzzy search,
+   * aliases, popularity ranking, translation search and typo correction.
+   * Blank queries return []. Results are bounded, without pagination or totals.
+   * For an interactive input, debounce calls as the picker does (150 ms).
+   */
+  suggestTags(
+    dictionaryFilename: string,
+    query: string,
+    options: ImageGenTagSuggestOptions = {},
+  ): Promise<LaylaImageGenTagSuggestion[]> {
+    return oneShot(
+      { cmd: 'image_gen_tag_suggest_tags', data: {
+        dictionary_filename: dictionaryFilename, query, limit: options.limit ?? 40,
+      } },
+      'on_image_gen_tag_suggest_tags_response',
+      (event) => (event as LaylaApiEvent_onImageGenTagSuggestTagsResponse).data.suggestions,
+      options.signal,
+    );
+  }
+
+  /** List available dictionaries as filenames relative to the host's app-data tags folder. */
+  getTagDictionaries(options: RequestOptions = {}): Promise<LaylaImageGenTagDictionaryData[]> {
+    return oneShot(
+      { cmd: 'image_gen_tag_get_dictionaries', data: null },
+      'on_image_gen_tag_get_dictionaries_response',
+      (event) => (event as LaylaApiEvent_onImageGenTagGetDictionariesResponse).data,
+      options.signal,
+    );
+  }
+
+  /** List tags in file order. Every call identifies its dictionary independently. */
+  getTags(dictionaryFilename: string, options: ImageGenTagListOptions = {}): Promise<LaylaImageGenTagPage> {
+    return oneShot(
+      { cmd: 'image_gen_tag_get_tags', data: {
+        dictionary_filename: dictionaryFilename,
+        offset: options.offset ?? 0,
+        limit: options.limit ?? 50,
+        category: options.category,
+      } },
+      'on_image_gen_tag_get_tags_response',
+      (event) => (event as LaylaApiEvent_onImageGenTagGetTagsResponse).data,
+      options.signal,
+    );
+  }
+
+  /** Get an exact canonical English name, or null when that tag is absent. */
+  getTag(dictionaryFilename: string, english: string, options: RequestOptions = {}): Promise<LaylaImageGenTag | null> {
+    return oneShot(
+      { cmd: 'image_gen_tag_get_tag', data: { dictionary_filename: dictionaryFilename, english } },
+      'on_image_gen_tag_get_tag_response',
+      (event) => (event as LaylaApiEvent_onImageGenTagGetTagResponse).data.tag,
+      options.signal,
+    );
+  }
+
+  /**
+   * Persist a tag. Omit replacing or pass null to create a tag and, if needed,
+   * its dictionary CSV and parent folders. An exact existing name replaces it,
+   * including a rename. Invalid tags do not create a document.
+   * Duplicate names and missing replacement targets reject with LaylaError.
+   */
+  upsertTag(
+    dictionaryFilename: string,
+    tag: LaylaImageGenTag,
+    replacing: string | null = null,
+    options: RequestOptions = {},
+  ): Promise<LaylaImageGenTag> {
+    return oneShot(
+      { cmd: 'image_gen_tag_upsert_tag', data: { dictionary_filename: dictionaryFilename, tag, replacing } },
+      'on_image_gen_tag_upsert_tag_response',
+      (event) => (event as LaylaApiEvent_onImageGenTagUpsertTagResponse).data.tag,
+      options.signal,
+    );
+  }
+
+  /** Persist deletion by exact name. Returns false when the tag is already absent. */
+  deleteTag(dictionaryFilename: string, english: string, options: RequestOptions = {}): Promise<boolean> {
+    return oneShot(
+      { cmd: 'image_gen_tag_delete_tag', data: { dictionary_filename: dictionaryFilename, english } },
+      'on_image_gen_tag_delete_tag_response',
+      (event) => (event as LaylaApiEvent_onImageGenTagDeleteTagResponse).data.deleted,
+      options.signal,
+    );
+  }
+
+  /**
+   * Search names and aliases; case is ignored and spaces/dashes become
+   * underscores. Exact names come first, then matches in dictionary file order.
+   */
+  searchTags(
+    dictionaryFilename: string,
+    query: string,
+    options: ImageGenTagSearchOptions = {},
+  ): Promise<ImageGenTagSearchResult> {
+    return oneShot(
+      { cmd: 'image_gen_tag_search_tags', data: {
+        dictionary_filename: dictionaryFilename,
+        query,
+        mode: options.mode,
+        offset: options.offset ?? 0,
+        limit: options.limit ?? 50,
+        category: options.category,
+      } },
+      'on_image_gen_tag_search_tags_response',
+      (event) => (event as LaylaApiEvent_onImageGenTagSearchTagsResponse).data,
+      options.signal,
+    );
+  }
+
   /**
    * Ask the native host for the list of image generation models that are
    * immediately available for use. Models that are not downloaded are omitted.

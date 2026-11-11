@@ -376,6 +376,129 @@ export interface LaylaApiGetImageGenerationModels {
   data: null; // no additional data is needed for this request
 }
 
+/* ---- image generation tag dictionaries (text only) -------------------------- */
+
+/**
+ * Each tag request identifies its dictionary independently; there is no selected
+ * dictionary or load/save session shared between API calls. Mutations must be
+ * persisted before the host acknowledges them.
+ */
+export interface LaylaImageGenTagDictionaryData {
+  /**
+   * Main CSV filename, e.g. one returned by image_gen_tag_get_dictionaries or a
+   * new filename for an upsert that creates a tag. Example:
+   * "my-dictionary/tags.csv". A '/'-separated path relative to the service's
+   * app-data tags folder (IMG_GEN_TAGS_PATH), resolved internally by the service.
+   * Absolute paths, URIs, backslashes and empty, '.' or '..' segments are rejected.
+   */
+  dictionary_filename: string;
+}
+
+/** Text and metadata stored in a main tag CSV row. */
+export interface LaylaImageGenTag {
+  english: string;
+  /** Nonnegative integer category ID. */
+  category: number;
+  /** Nonnegative integer popularity count supplied by the dictionary. */
+  post_count: number;
+  aliases: string[];
+}
+
+/** A ranked picker suggestion. Scores are relevance values, not probabilities. */
+export interface LaylaImageGenTagSuggestion {
+  replacement_tag: string;
+  primary_text: string;
+  secondary_text?: string;
+  /** Embedding matches require consumer-supplied embedding names; this endpoint supplies none. */
+  match_type: 'fuzzy' | 'alias' | 'translation' | 'correction' | 'embedding';
+  category: number;
+  post_count: number;
+  score: number;
+}
+
+/** Use the prompt picker's indexed, popularity-ranked suggestion engine. */
+export interface LaylaApiImageGenTagSuggestTags {
+  cmd: 'image_gen_tag_suggest_tags';
+  data: LaylaImageGenTagDictionaryData & {
+    /** Current tag token, rather than the whole prompt. Blank queries return no suggestions. */
+    query: string;
+    /** Nonnegative integer result limit. Defaults to 40, matching the picker. */
+    limit?: number;
+  };
+}
+
+/** List all available tag dictionaries, returning relative dictionary filenames. */
+export interface LaylaApiImageGenTagGetDictionaries {
+  cmd: 'image_gen_tag_get_dictionaries';
+  data: null;
+}
+
+/** List tags in dictionary file order, with the total count for pagination. */
+export interface LaylaApiImageGenTagGetTags {
+  cmd: 'image_gen_tag_get_tags';
+  data: LaylaImageGenTagDictionaryData & {
+    /** Zero-based, nonnegative integer offset. */
+    offset: number;
+    /** Nonnegative integer maximum number of tags to return. */
+    limit: number;
+    /** Omit or pass null to include every category. */
+    category?: number | null;
+  };
+}
+
+/** Get one tag by its exact canonical English name; return null if absent. */
+export interface LaylaApiImageGenTagGetTag {
+  cmd: 'image_gen_tag_get_tag';
+  data: LaylaImageGenTagDictionaryData & {
+    english: string;
+  };
+}
+
+/**
+ * Create or replace a tag and persist the edit. With replacing: null, a missing
+ * main CSV is initialized empty and saved with the new tag (and parent folders).
+ * Invalid tags do not create files; existing unreadable or malformed files reject.
+ * A new name must be unique; replacing a missing tag is an error.
+ */
+export interface LaylaApiImageGenTagUpsertTag {
+  cmd: 'image_gen_tag_upsert_tag';
+  data: LaylaImageGenTagDictionaryData & {
+    tag: LaylaImageGenTag;
+    /** null creates a tag; an exact existing name replaces it, allowing a rename. */
+    replacing: string | null;
+  };
+}
+
+/** Delete a tag by its exact canonical English name and persist the edit. */
+export interface LaylaApiImageGenTagDeleteTag {
+  cmd: 'image_gen_tag_delete_tag';
+  data: LaylaImageGenTagDictionaryData & {
+    english: string;
+  };
+}
+
+/**
+ * Search canonical English names and aliases in one dictionary. Matching ignores
+ * case and treats spaces and dashes as underscores, as in the tag service.
+ * Exact canonical names come first, followed by matches in dictionary file order.
+ * Return the total match count alongside the requested page.
+ */
+export interface LaylaApiImageGenTagSearchTags {
+  cmd: 'image_gen_tag_search_tags';
+  data: LaylaImageGenTagDictionaryData & {
+    /** Non-empty search text. */
+    query: string;
+    /** 'prefix' matches the start; 'name' matches anywhere. Defaults to 'name'. */
+    mode?: 'prefix' | 'name';
+    /** Zero-based, nonnegative integer offset into the matches. */
+    offset: number;
+    /** Nonnegative integer maximum number of matches to return. */
+    limit: number;
+    /** Omit or pass null to include every category. */
+    category?: number | null;
+  };
+}
+
 /**
  * Ask the host to update a character's data. The host should update the character identified by `character_id` with the provided `character_data`.
  * If the character ID does not exist, the host will create a new character.
@@ -1112,6 +1235,13 @@ export type BaseApiRequest =
   | LaylaApiResumeBackgroundAudioPlayer
   | LaylaApiSkipBackgroundAudioTrack
   | LaylaApiGetImageGenerationModels
+  | LaylaApiImageGenTagGetDictionaries
+  | LaylaApiImageGenTagGetTags
+  | LaylaApiImageGenTagGetTag
+  | LaylaApiImageGenTagUpsertTag
+  | LaylaApiImageGenTagDeleteTag
+  | LaylaApiImageGenTagSearchTags
+  | LaylaApiImageGenTagSuggestTags
   | LaylaApiSTTStartListening
   | LaylaApiSTTStopListening
   | LaylaApiExecuteSql
@@ -1594,6 +1724,86 @@ export interface LaylaApiEvent_onGetImageGenerationModelsResponse {
   }[]; // an array of all available image generation models with their details
 }
 
+/* ---- image generation tag responses --------------------------------------- */
+
+/** A page of tags from one dictionary, using only JSON-serializable values. */
+export interface LaylaImageGenTagPage extends LaylaImageGenTagDictionaryData {
+  tags: LaylaImageGenTag[];
+  /** Number of matches after filtering, before pagination. */
+  total: number;
+  /** Zero-based offset requested by the caller. */
+  offset: number;
+  /** Maximum page size requested by the caller; tags may contain fewer entries. */
+  limit: number;
+}
+
+/**
+ * Available dictionaries for image_gen_tag_get_dictionaries. Filenames are
+ * relative to IMG_GEN_TAGS_PATH and can be passed directly to other tag requests.
+ * An empty array means no dictionaries are available. Tag request failures use
+ * on_error, including invalid paths, missing dictionaries and failed writes.
+ */
+export interface LaylaApiEvent_onImageGenTagGetDictionariesResponse {
+  event: 'on_image_gen_tag_get_dictionaries_response';
+  data: LaylaImageGenTagDictionaryData[];
+}
+
+/** Tags in dictionary file order for image_gen_tag_get_tags. */
+export interface LaylaApiEvent_onImageGenTagGetTagsResponse {
+  event: 'on_image_gen_tag_get_tags_response';
+  data: LaylaImageGenTagPage;
+}
+
+/** An exact-name lookup for image_gen_tag_get_tag; tag is null when absent. */
+export interface LaylaApiEvent_onImageGenTagGetTagResponse {
+  event: 'on_image_gen_tag_get_tag_response';
+  data: LaylaImageGenTagDictionaryData & {
+    /** Canonical English name requested by the caller. */
+    english: string;
+    tag: LaylaImageGenTag | null;
+  };
+}
+
+/** The tag as persisted after image_gen_tag_upsert_tag, including any rename. */
+export interface LaylaApiEvent_onImageGenTagUpsertTagResponse {
+  event: 'on_image_gen_tag_upsert_tag_response';
+  data: LaylaImageGenTagDictionaryData & {
+    tag: LaylaImageGenTag;
+  };
+}
+
+/** Acknowledges image_gen_tag_delete_tag after the deletion has been persisted. */
+export interface LaylaApiEvent_onImageGenTagDeleteTagResponse {
+  event: 'on_image_gen_tag_delete_tag_response';
+  data: LaylaImageGenTagDictionaryData & {
+    english: string;
+    /** false when the tag was already absent; a failed write emits on_error. */
+    deleted: boolean;
+  };
+}
+
+/** Matches for image_gen_tag_search_tags, with exact canonical names first. */
+export interface LaylaApiEvent_onImageGenTagSearchTagsResponse {
+  event: 'on_image_gen_tag_search_tags_response';
+  data: LaylaImageGenTagPage & {
+    /** Search text supplied by the caller. */
+    query: string;
+    /** Resolved search mode, including the default when omitted in the request. */
+    mode: 'prefix' | 'name';
+  };
+}
+
+/** Picker suggestions in descending relevance order, without pagination or a total count. */
+export interface LaylaApiEvent_onImageGenTagSuggestTagsResponse {
+  event: 'on_image_gen_tag_suggest_tags_response';
+  data: LaylaImageGenTagDictionaryData & {
+    query: string;
+    /** Resolved maximum number of suggestions, including the default when omitted. */
+    limit: number;
+    suggestions: LaylaImageGenTagSuggestion[];
+  };
+}
+
 /**
  * The event emitted by the host when the speech-to-text (STT) service starts listening for speech input using the device's microphone.
  * This event is emitted in response to a `stt_start_listening` request and indicates that the STT service has started successfully.
@@ -1824,6 +2034,13 @@ export type BaseApiEvent =
   | LaylaApiEvent_onBackgroundAudioStatus
   | LaylaApiEvent_onBackgroundAudioFinished
   | LaylaApiEvent_onGetImageGenerationModelsResponse
+  | LaylaApiEvent_onImageGenTagGetDictionariesResponse
+  | LaylaApiEvent_onImageGenTagGetTagsResponse
+  | LaylaApiEvent_onImageGenTagGetTagResponse
+  | LaylaApiEvent_onImageGenTagUpsertTagResponse
+  | LaylaApiEvent_onImageGenTagDeleteTagResponse
+  | LaylaApiEvent_onImageGenTagSearchTagsResponse
+  | LaylaApiEvent_onImageGenTagSuggestTagsResponse
   | LaylaApiEvent_onSTTListeningStarted
   | LaylaApiEvent_onSTTSpeechRecognized
   | LaylaApiEvent_onSTTListeningStopped

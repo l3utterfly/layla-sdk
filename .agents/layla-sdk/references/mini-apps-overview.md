@@ -145,6 +145,9 @@ The SDK exposes this as higher-level APIs such as:
 - `layla.backgroundAudio.start(...)`
 - `layla.backgroundAudio.pause()` / `resume()` / `skip()` / `stop()`
 - `layla.images.generateImage(...)`
+- `layla.images.getTagDictionaries()` / `getTags(...)` / `getTag(...)`
+- `layla.images.upsertTag(...)` / `deleteTag(...)` / `searchTags(...)`
+- `layla.images.suggestTags(...)` — ranked prompt autocomplete using the native picker engine
 - `layla.neodragon.generateVideo(...)`
 - `layla.nightmareMobile.getModels()` / `generateVideo(...)`
 

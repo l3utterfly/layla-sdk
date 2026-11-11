@@ -127,6 +127,62 @@ with `LaylaError`; omitted or empty references preserve ordinary generation.
 Older hosts may ignore the field. The browser mock returns its placeholder image
 and does not simulate model support.
 
+## Image Generation Tag Dictionaries
+
+Use the `images` surface to browse and edit text tag dictionaries:
+
+```ts
+const [dictionary] = await layla.images.getTagDictionaries();
+if (dictionary) {
+  const filename = dictionary.dictionary_filename;
+  const page = await layla.images.getTags(filename, { offset: 0, limit: 50 });
+  const suggestions = await layla.images.suggestTags(filename, 'blu hr', { limit: 40 });
+  const matches = await layla.images.searchTags(filename, 'blue', { mode: 'prefix' });
+  const tag = await layla.images.getTag(filename, 'blue_hair'); // null if absent
+  if (tag) {
+    // Supply the existing name to replace or rename it. Omit it to create a tag.
+    await layla.images.upsertTag(filename, { ...tag, english: 'azure_hair' }, tag.english);
+    await layla.images.deleteTag(filename, 'azure_hair'); // boolean: was a tag deleted?
+  }
+  console.log(page.total, matches.tags, suggestions);
+}
+```
+
+Each call supplies its own dictionary filename, such as `my-dictionary/tags.csv`,
+relative to Layla's app-data tags folder. Absolute paths, URIs, backslashes, and
+empty, `.` or `..` path segments are rejected. Dictionaries are shared with the
+host tag manager; successful edits are saved before the promise resolves.
+
+`upsertTag(filename, tag)` also creates the dictionary CSV and any parent folders
+when the filename does not exist. The tag is validated before the new file is
+written. Passing an existing name as `replacing` still requires that tag to
+exist. Existing unreadable or malformed files are rejected rather than reset.
+Auto-created raw CSVs can be accessed directly by filename; dictionary discovery
+continues to list dictionaries registered in the host tag manager.
+
+Tags have `{ english, category, post_count, aliases }`. Listing and search return
+`{ dictionary_filename, tags, total, offset, limit }`; search also returns `query`
+and the resolved `mode`. Both accept optional `category`, `offset` (default 0),
+and `limit` (default 50). Search defaults to substring matching (`mode: 'name'`),
+ignores case, and treats spaces/dashes as underscores. Exact canonical names
+come first. All seven methods accept an abort `signal` in their options.
+
+Use `suggestTags` for prompt autocomplete: it calls the same indexed engine as
+the native tag picker, with fuzzy matching, aliases, typo correction, translation
+search and popularity ranking. It returns up to 40 suggestions by default, with
+`replacement_tag`, `primary_text`, optional `secondary_text`, `match_type`,
+`category`, `post_count` and `score`. Blank queries and `limit: 0` return `[]`.
+Pass the current tag token, and debounce interactive calls by 150 ms as the
+picker does. Suggestions have no pagination or total count; `searchTags` remains
+the paginated name/prefix browsing API. First use or a dictionary change still
+requires loading and indexing; subsequent suggestions reuse the prepared index.
+
+Requires a host implementing the `image_gen_tag_*` commands. Browser development
+can seed `installLaylaMock({ imageTagDictionaries: { 'demo/tags.csv': tags } })`;
+mock edits last until uninstall and do not write real dictionaries.
+The browser mock approximates fuzzy name/alias suggestions; native translation
+and typo-correction ranking are tested on the host.
+
 ## Video Generation
 
 Generate an MP4 from a still image with NeoDragon:
@@ -250,6 +306,7 @@ The SDK talks to whatever Layla app it finds itself in, and takes the richest ro
 | Out-of-band messages | A Layla host build with `send_out_of_band_message` support and an SDK release exposing `layla.contextual.sendOutOfBandMessage` |
 | Separate display and LLM text in saved chat entries | A Layla host build implementing the updated `save_chat_message` contract |
 | Reference images for image generation | A Layla host build implementing `generate_image.reference_images`, a compatible image model, and an SDK release exposing `GenerateImageOptions.referenceImages` |
+| Image generation tag dictionaries | A Layla host build implementing the `image_gen_tag_*` commands and an SDK release exposing the tag methods on `layla.images` |
 | Everything else — chat, streaming, one image per message, characters, memories, TTS, images, music, database, files | Any supported Layla version |
 
 Call sites are identical on both paths: the SDK reads the host version itself and routes accordingly. On an older host the request is translated into Layla's narrower native protocol, and anything it cannot carry — `tools` among it — is dropped with a `console.warn` rather than rejected. A mini-app that depends on tool calling should check the host version before offering the feature:

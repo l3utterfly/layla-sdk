@@ -23,6 +23,10 @@ export type {
   LaylaPersona,
   LaylaTTSVoice,
   LaylaExecutionContext,
+  LaylaImageGenTagDictionaryData,
+  LaylaImageGenTag,
+  LaylaImageGenTagPage,
+  LaylaImageGenTagSuggestion,
   LaylaCharacter,
   TavernCardV2,
   TavernCharacterBook,
@@ -37,6 +41,13 @@ export type {
   LaylaApiNightmareMobileGetModels,
   LaylaApiNightmareMobileGenerateVideo,
   LaylaApiGetImageGenerationModels,
+  LaylaApiImageGenTagGetDictionaries,
+  LaylaApiImageGenTagGetTags,
+  LaylaApiImageGenTagGetTag,
+  LaylaApiImageGenTagUpsertTag,
+  LaylaApiImageGenTagDeleteTag,
+  LaylaApiImageGenTagSearchTags,
+  LaylaApiImageGenTagSuggestTags,
   LaylaApiUpdateCharacter,
   LaylaApiGetChatHistory,
   LaylaApiGetSentiment,
@@ -93,6 +104,13 @@ export type {
   LaylaApiEvent_onNightmareMobileGetModelsResponse,
   LaylaApiEvent_onNightmareMobileGenerateVideoResponse,
   LaylaApiEvent_onGetImageGenerationModelsResponse,
+  LaylaApiEvent_onImageGenTagGetDictionariesResponse,
+  LaylaApiEvent_onImageGenTagGetTagsResponse,
+  LaylaApiEvent_onImageGenTagGetTagResponse,
+  LaylaApiEvent_onImageGenTagUpsertTagResponse,
+  LaylaApiEvent_onImageGenTagDeleteTagResponse,
+  LaylaApiEvent_onImageGenTagSearchTagsResponse,
+  LaylaApiEvent_onImageGenTagSuggestTagsResponse,
   LaylaApiEvent_onUpdateCharacterResponse,
   LaylaApiEvent_onGetChatHistoryResponse,
   LaylaApiEvent_onGetChatSessionsResponse,
@@ -186,7 +204,14 @@ export type {
 
 // Image resource surface.
 export { Images } from './resources/images';
-export type { GenerateImageOptions, LaylaImageGenerationModel } from './resources/images';
+export type {
+  GenerateImageOptions,
+  LaylaImageGenerationModel,
+  ImageGenTagListOptions,
+  ImageGenTagSearchOptions,
+  ImageGenTagSearchResult,
+  ImageGenTagSuggestOptions,
+} from './resources/images';
 
 // NeoDragon video generation resource surface.
 export { NeoDragon } from './resources/neodragon';

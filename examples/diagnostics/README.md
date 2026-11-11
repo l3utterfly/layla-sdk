@@ -45,6 +45,26 @@ with unrelated system prompts. Each prompt requires a different marker word,
 which verifies that the host replaces the active system prompt between calls.
 Its log preserves both complete responses for debugging.
 
+## Image tag dictionary checks
+
+The **Image tag dictionaries** group covers all seven `layla.images` tag APIs and
+is included in **Run all** without **include heavy**. It checks discovery,
+paginated browsing (including count-only pages), exact and missing-name lookups,
+create/update/rename, deletion and repeated deletion, and name/prefix/alias
+search with category filtering. The `suggestTags` check exercises the native
+picker's ranked fuzzy/alias path, checks bounded and blank-query results, and
+logs first-after-edit versus repeated-call latency without imposing a device
+speed threshold. Browser mode uses the mock's approximate name/alias scorer.
+
+The write and search checks create unique `[diagnostics]` tags in the first
+available dictionary and remove their original and renamed names in `finally`,
+including after Stop. Existing tags are read but never edited. Cleanup failures
+fail the check and log the temporary name so it can be removed manually.
+Every check can run independently. If there are no dictionaries, discovery
+passes with an empty list and the other six checks skip; create or import a
+dictionary in the host tag manager and rerun them. Browser mode uses the SDK
+mock's default `mock/tags.csv` dictionary.
+
 ## The tool-calling check
 
 `tool calling (tools -> tool_calls -> result -> answer)` runs a full tool loop

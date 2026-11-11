@@ -10,6 +10,7 @@ import {
   type NightmareMobileProgress,
 } from "../../../src/index";
 import type { LaylaMockHandle } from "../../../src/mock";
+import { createImageGenTagGroup } from "./image-gen-tags";
 import "./App.css";
 
 /* ------------------------------------------------------------------ *
@@ -1245,6 +1246,7 @@ ${reply}`);
       },
     ],
   },
+  createImageGenTagGroup(skip),
   {
     id: "media",
     title: "Media & devices (heavy)",
