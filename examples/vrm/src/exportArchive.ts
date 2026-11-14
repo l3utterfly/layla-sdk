@@ -269,7 +269,16 @@ export async function buildVrmExportArchive({
 
   // VRM, GLB, and image files are already compressed. STORE avoids an expensive
   // second compression pass and keeps large-model exports responsive.
-  return zip.generateAsync({ type: "base64", compression: "STORE" });
+  //
+  // Generate a Blob, never `type: "base64"`: JSZip builds that from a binary
+  // string plus one array entry per 4 output characters, which took ~1.6 GB
+  // for a 60 MB model and gets the page killed on iOS. `saveFile` takes the
+  // Blob and sends it to Layla in parts.
+  return zip.generateAsync({
+    type: "blob",
+    mimeType: "application/zip",
+    compression: "STORE",
+  });
 }
 
 export function getVrmExportArchiveName(modelName: string) {

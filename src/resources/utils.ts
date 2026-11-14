@@ -15,6 +15,65 @@ import type {
   LaylaScheduledNotification,
 } from '../protocol';
 import { oneShot, type RequestOptions } from '../internal/one-shot';
+import {
+  base64ByteLength,
+  blobToBase64,
+  encodeBytes,
+} from '../internal/base64';
+
+/** File content for `saveFile`: base64 text (no data URI prefix) or raw bytes. */
+export type SaveFileContent = string | Blob | ArrayBuffer | ArrayBufferView;
+
+/**
+ * Raw bytes per `save_file` message when a file is sent in parts (4 MiB of
+ * base64, which the host decodes in one step).
+ */
+export const SAVE_FILE_PART_BYTES = 3 * 1024 * 1024;
+const PART_BASE64_CHARS = (SAVE_FILE_PART_BYTES / 3) * 4;
+
+interface SaveSource {
+  byteLength: number;
+  parts: number;
+  /** Base64 of part `index`. */
+  part(index: number): Promise<string>;
+  /** Base64 of the whole file. */
+  whole(): Promise<string>;
+}
+
+function toSaveSource(content: SaveFileContent): SaveSource {
+  if (typeof content === 'string') {
+    return {
+      byteLength: base64ByteLength(content),
+      parts: Math.max(1, Math.ceil(content.length / PART_BASE64_CHARS)),
+      part: async (i) =>
+        content.substring(i * PART_BASE64_CHARS, (i + 1) * PART_BASE64_CHARS),
+      whole: async () => content,
+    };
+  }
+
+  const parts = (byteLength: number) =>
+    Math.max(1, Math.ceil(byteLength / SAVE_FILE_PART_BYTES));
+  const start = (i: number) => i * SAVE_FILE_PART_BYTES;
+
+  if (typeof Blob !== 'undefined' && content instanceof Blob) {
+    return {
+      byteLength: content.size,
+      parts: parts(content.size),
+      part: (i) => blobToBase64(content.slice(start(i), start(i + 1))),
+      whole: () => blobToBase64(content),
+    };
+  }
+
+  const bytes = ArrayBuffer.isView(content)
+    ? new Uint8Array(content.buffer, content.byteOffset, content.byteLength)
+    : new Uint8Array(content as ArrayBuffer);
+  return {
+    byteLength: bytes.length,
+    parts: parts(bytes.length),
+    part: (i) => encodeBytes(bytes.subarray(start(i), start(i + 1))),
+    whole: () => encodeBytes(bytes),
+  };
+}
 
 export type SaveFileResult = LaylaApiEvent_onSaveFileResponse['data'];
 export type ReadFileResult = LaylaApiEvent_onReadFileResponse['data'];
@@ -90,30 +149,67 @@ export class Utils {
   }
 
   /**
-   * Ask the native host to save base64-encoded file content.
+   * Ask the native host to save a file in the app's private directory, and
+   * optionally offer it in the share sheet afterwards.
    *
-   * `contentBase64` must not include a data URI prefix.
+   * `content` is either a base64 string (without a data URI prefix) or the raw
+   * bytes as a `Blob`, `ArrayBuffer` or typed array. Prefer passing bytes for
+   * large files: the SDK then encodes one part at a time instead of holding
+   * the whole file as a base64 string.
+   *
+   * Files over {@link SAVE_FILE_PART_BYTES} are sent in parts, so no single
+   * WebView message carries the whole file. A message that large briefly
+   * exists in several copies at once, and on iOS that can exceed the memory
+   * limit for the web page; iOS then ends the page, which shows as a blank
+   * screen. On a Layla build that predates split saves, the SDK falls back to
+   * one message.
    */
-  saveFile(
+  async saveFile(
     filename: string,
-    contentBase64: string,
+    content: SaveFileContent,
     share = false,
     options: RequestOptions = {},
   ): Promise<SaveFileResult> {
-    return oneShot<SaveFileResult>(
-      {
-        cmd: 'save_file',
-        data: {
-          filename,
-          content_base64: contentBase64,
-          share,
+    const source = toSaveSource(content);
+    const send = (contentBase64: string, shareNow: boolean, append: boolean) =>
+      oneShot<SaveFileResult>(
+        {
+          cmd: 'save_file',
+          data: {
+            filename,
+            content_base64: contentBase64,
+            share: shareNow,
+            ...(append ? { append: true } : {}),
+          },
         },
-      },
-      'on_save_file_response',
-      (event: LaylaApiEvent) =>
-        (event as LaylaApiEvent_onSaveFileResponse).data,
-      options.signal,
-    );
+        'on_save_file_response',
+        (event: LaylaApiEvent) =>
+          (event as LaylaApiEvent_onSaveFileResponse).data,
+        options.signal,
+      );
+
+    if (source.parts <= 1) return send(await source.whole(), share, false);
+
+    // The first part replaces the file on every host. Only a host that honours
+    // `append` reports `size`; an older one would overwrite the file with each
+    // later part, so it gets the whole file in one message instead.
+    const first = await send(await source.part(0), false, false);
+    if (typeof first.size !== 'number') {
+      return send(await source.whole(), share, false);
+    }
+    let result = first;
+    for (let i = 1; i < source.parts && result.success; i++) {
+      const last = i === source.parts - 1;
+      result = await send(await source.part(i), last && share, true);
+    }
+    if (result.success && result.size !== source.byteLength) {
+      return {
+        filename,
+        success: false,
+        message: `Saved ${result.size} of ${source.byteLength} bytes; another write to ${filename} may have interleaved.`,
+      };
+    }
+    return result;
   }
 
   /**

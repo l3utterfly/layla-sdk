@@ -1195,12 +1195,18 @@ the calling mini-app; delivered and cancelled notifications are excluded.
 that pending notification. URLs, absolute icon paths, and relative paths that
 escape the mini-app folder are not allowed.
 
-Use `layla.utils.saveFile(filename, contentBase64, share?, options?)` to save
-base64-encoded content through the host, and
-`layla.utils.readFile(filename, options?)` to read it back. Both operate on the
-mini-app's private files. Omit the data URI prefix when passing content to
-`saveFile`; `readFile` returns `content_base64` with a data URI prefix (or
-`null` when the file cannot be read).
+Use `layla.utils.saveFile(filename, content, share?, options?)` to save a file
+through the host, and `layla.utils.readFile(filename, options?)` to read it
+back. Both operate on the mini-app's private files. `content` is base64 text
+without a data URI prefix, or raw bytes (`Blob`, `ArrayBuffer`, typed array);
+`readFile` returns `content_base64` with a data URI prefix (or `null` when the
+file cannot be read).
+
+For large files (zips, models, media), pass bytes, never a whole-file base64
+string: the SDK sends files over 3 MiB in parts and encodes bytes one part at a
+time. A single huge base64 message can exceed the iOS WebView's memory limit,
+which ends the page and leaves the mini-app blank. Avoid JSZip's
+`generateAsync({ type: 'base64' })` in particular; use `type: 'blob'`.
 
 `filename` may be a plain name or a relative path that includes folders (for
 example `logs/run.txt`). The host resolves it inside the mini-app's private
@@ -1227,7 +1233,8 @@ if (read.content_base64) {
 ```
 
 With the browser mock installed, `saveFile` stores the content in browser
-`localStorage` (keyed by the relative path) and `readFile` reads it back.
+`localStorage` (keyed by the relative path; in memory until reload when too
+large) and `readFile` reads it back.
 Passing `share: true` also downloads the content as a `Blob`.
 
 Use `layla.utils.listDir(path, options?)` to enumerate a directory and

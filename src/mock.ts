@@ -77,6 +77,7 @@ import type {
   LaylaApiEvent_onNeodragonGenerateVideoProgress,
 } from './typescript-protocol';
 import { makeMockChatHistory } from './mock-data/chat-history';
+import { bytesToBase64 } from './internal/base64';
 import { createMockImageGenTagHandler, type MockImageGenTagRequest } from './mock-data/image-gen-tags';
 
 type MockReply =
@@ -247,16 +248,23 @@ export interface LaylaMockOptions {
   /** Character-specific personas keyed by character id. */
   personas?: MockPersonaSource;
   /**
-   * Handle `utils.saveFile(filename, contentBase64, share)` calls. Return the
-   * result the mock should reply with (`filename`, `success`, optional
-   * `message`). May be async, so you can back it with your own store. When
-   * omitted, the mock stores files in browser `localStorage` (and triggers a
-   * browser download when `share` is true).
+   * Handle each `save_file` message. Return the result the mock should reply
+   * with (`filename`, `success`, optional `message` and `size`). May be async,
+   * so you can back it with your own store. When omitted, the mock stores files
+   * in browser `localStorage`, or in memory until the page reloads when they
+   * are too large for it (and triggers a browser download when `share` is
+   * true).
+   *
+   * `utils.saveFile` sends large files in parts: the first replaces the file,
+   * later ones have `append: true`, and only the last carries `share`. Report
+   * the file's `size` after the write to accept parts; without `size` the SDK
+   * treats the handler as an older host and resends the file in one message.
    */
   saveFile?: (request: {
     filename: string;
     contentBase64: string;
     share: boolean;
+    append: boolean;
   }) => MockSaveFileResult | Promise<MockSaveFileResult>;
   /**
    * Handle `utils.readFile(filename)` calls. Return the result the mock should
@@ -699,6 +707,15 @@ const writeStoredFile = (filename: string, contentBase64: string): void => {
 const readStoredFile = (filename: string): string | undefined => {
   const contentBase64 = window.localStorage.getItem(mockFileStorageKey(filename));
   return contentBase64 === null ? undefined : contentBase64;
+};
+
+/** Best-effort removal; a missing or blocked localStorage has nothing to forget. */
+const forgetStoredFile = (filename: string): void => {
+  try {
+    window.localStorage.removeItem(mockFileStorageKey(filename));
+  } catch {
+    // nothing stored
+  }
 };
 
 const base64ToBytes = (contentBase64: string): Uint8Array<ArrayBuffer> => {
@@ -1662,10 +1679,25 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     });
   }
 
+  // Files too large for localStorage (and parts of a split save, while they
+  // are assembled) live here until the page reloads. Checked before
+  // localStorage by every file handler.
+  const memoryFiles = new Map<string, Uint8Array<ArrayBuffer>>();
+
+  const currentFileBytes = (
+    filename: string,
+  ): Uint8Array<ArrayBuffer> | null => {
+    const inMemory = memoryFiles.get(filename);
+    if (inMemory) return inMemory;
+    const stored = readStoredFile(filename);
+    return stored === undefined ? null : base64ToBytes(stored);
+  };
+
   async function handleSaveFile(data: {
     filename: string;
     content_base64: string;
     share: boolean;
+    append?: boolean;
   }): Promise<void> {
     await delay(latencyMs);
     if (shouldError()) {
@@ -1673,23 +1705,49 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
       return;
     }
 
+    const append = data.append === true;
     if (options.saveFile) {
       const result = await options.saveFile({
         filename: data.filename,
         contentBase64: data.content_base64,
         share: data.share,
+        append,
       });
       emit({ event: 'on_save_file_response', data: result });
       return;
     }
 
     try {
-      const bytes = base64ToBytes(data.content_base64);
+      const part = base64ToBytes(data.content_base64);
+      const previous = append ? currentFileBytes(data.filename) : null;
+      let bytes = part;
+      if (previous) {
+        bytes = new Uint8Array(previous.length + part.length);
+        bytes.set(previous);
+        bytes.set(part, previous.length);
+      }
 
+      let message: string;
       if (data.share) {
         downloadFile(data.filename, bytes);
+        // A shared file was never kept by the mock; drop the assembled parts.
+        if (append) {
+          memoryFiles.delete(data.filename);
+          forgetStoredFile(data.filename);
+        }
+        message =
+          'Downloaded by the browser mock; share sheets are not available in browsers.';
       } else {
-        writeStoredFile(data.filename, data.content_base64);
+        try {
+          writeStoredFile(data.filename, bytesToBase64(bytes));
+          memoryFiles.delete(data.filename);
+          message = 'Saved to browser localStorage.';
+        } catch {
+          memoryFiles.set(data.filename, bytes);
+          forgetStoredFile(data.filename);
+          message =
+            'Too large for browser localStorage; the mock keeps it in memory until the page reloads.';
+        }
       }
 
       emit({
@@ -1697,9 +1755,8 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
         data: {
           filename: data.filename,
           success: true,
-          message: data.share
-            ? 'Downloaded by the browser mock; share sheets are not available in browsers.'
-            : 'Saved to browser localStorage.',
+          message,
+          size: bytes.length,
         },
       });
     } catch (error) {
@@ -1738,8 +1795,11 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     let contentBase64: string | undefined;
     let message: string | undefined;
 
+    const inMemory = memoryFiles.get(data.filename);
     try {
-      contentBase64 = readStoredFile(data.filename);
+      contentBase64 = inMemory
+        ? bytesToBase64(inMemory)
+        : readStoredFile(data.filename);
     } catch (error) {
       message = storageErrorMessage(error);
     }
@@ -1764,14 +1824,14 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
   // keyed by their full path. We derive a virtual directory tree from those
   // keys so `list_dir` can report immediate children (files and directories).
   function storedFilePaths(): string[] {
-    const paths: string[] = [];
+    const paths = new Set(memoryFiles.keys());
     for (let index = 0; index < window.localStorage.length; index++) {
       const key = window.localStorage.key(index);
       if (key && key.startsWith(mockFileStoragePrefix)) {
-        paths.push(key.slice(mockFileStoragePrefix.length));
+        paths.add(key.slice(mockFileStoragePrefix.length));
       }
     }
-    return paths;
+    return [...paths];
   }
 
   async function handleListDir(data: { path: string }): Promise<void> {
@@ -1834,6 +1894,7 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     try {
       for (const filePath of storedFilePaths()) {
         if (filePath === target || filePath.startsWith(`${target}/`)) {
+          memoryFiles.delete(filePath);
           window.localStorage.removeItem(mockFileStorageKey(filePath));
         }
       }

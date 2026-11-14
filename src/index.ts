@@ -253,9 +253,10 @@ export type {
 } from './resources/acestep';
 
 // Utility resource surface.
-export { Utils } from './resources/utils';
+export { Utils, SAVE_FILE_PART_BYTES } from './resources/utils';
 export type {
   ReadFileResult,
+  SaveFileContent,
   SaveFileResult,
   ListDirResult,
   DeleteFileOrDirResult,

@@ -2282,11 +2282,26 @@ await layla.utils.cancelScheduledNotification(notification.id, {
 });
 ```
 
-## `layla.utils.saveFile(filename, contentBase64, share?, options?)`
+## `layla.utils.saveFile(filename, content, share?, options?)`
 
-Saves raw base64-encoded content as a file. Do not include a data URI prefix.
-Set `share` to `true` to ask the native host to open its share sheet after
-saving. It defaults to `false`.
+Saves a file. `content` is either base64 text (without a data URI prefix) or
+the raw bytes as a `Blob`, `ArrayBuffer` or typed array. Set `share` to `true`
+to ask the native host to open its share sheet after saving. It defaults to
+`false`.
+
+Pass bytes rather than base64 for anything large, such as a generated zip:
+
+```ts
+const zipBlob = await zip.generateAsync({ type: 'blob' }); // not type: 'base64'
+await layla.utils.saveFile('exports/scene.zip', zipBlob, true);
+```
+
+Files over `SAVE_FILE_PART_BYTES` (3 MiB) are sent to the host in parts, and
+bytes are encoded one part at a time. One WebView message holding a whole
+large file exists in several copies at once, and on iOS that can push the page
+past its memory limit: iOS then ends the page and the mini-app goes blank.
+Layla builds without split-save support get the file in one message, as
+before.
 
 `filename` may be a plain name or a relative path that includes folders (for
 example `logs/2026-08-29.txt`). The host resolves it inside the mini-app's
@@ -2308,9 +2323,10 @@ if (!result.success) {
 }
 ```
 
-The browser mock stores files in browser `localStorage` when `share` is false.
-Browsers cannot reproduce the native share sheet, so `share: true` downloads
-the file instead without storing it.
+The browser mock stores files in browser `localStorage` when `share` is false,
+or in memory until the page reloads when a file is too large for it. Browsers
+cannot reproduce the native share sheet, so `share: true` downloads the file
+instead without storing it.
 
 Pass an abort signal as the fourth argument:
 
