@@ -257,6 +257,7 @@ export { Utils, SAVE_FILE_PART_BYTES } from './resources/utils';
 export type {
   ReadFileResult,
   SaveFileContent,
+  SaveFileOptions,
   SaveFileResult,
   ListDirResult,
   DeleteFileOrDirResult,

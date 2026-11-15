@@ -255,10 +255,12 @@ export interface LaylaMockOptions {
    * are too large for it (and triggers a browser download when `share` is
    * true).
    *
-   * `utils.saveFile` sends large files in parts: the first replaces the file,
+   * `utils.saveFile` sends large files in parts: the first replaces the file
+   * (or has `append: true` too, when the caller passed `{ append: true }`),
    * later ones have `append: true`, and only the last carries `share`. Report
-   * the file's `size` after the write to accept parts; without `size` the SDK
-   * treats the handler as an older host and resends the file in one message.
+   * the file's `size` after the write to accept parts and appends; without
+   * `size` the SDK treats the handler as an older host: it resends a split
+   * file in one message, and fails a save made with `{ append: true }`.
    */
   saveFile?: (request: {
     filename: string;

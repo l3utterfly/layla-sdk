@@ -579,11 +579,11 @@ export interface LaylaApiSaveChatMessage {
  * The host should respond with an `on_save_file_response` event indicating whether the file was saved successfully
  *
  * Large files are sent in parts so no single bridge message carries the whole
- * file: the first part replaces the file, every later part sets `append`, and
- * only the last part sets `share`. A host that supports `append` reports the
- * file's `size` in its response; one that does not ignores `append` (each part
- * would replace the file), so a sender must stop splitting when `size` is
- * missing.
+ * file: the first part replaces the file (unless the caller asked to append to
+ * it), every later part sets `append`, and only the last part sets `share`. A
+ * host that supports `append` reports the file's `size` in its response; one
+ * that does not ignores `append` (each part would replace the file), so a
+ * sender must stop splitting when `size` is missing.
  */
 export interface LaylaApiSaveFile {
   cmd: 'save_file';

@@ -2328,13 +2328,46 @@ or in memory until the page reloads when a file is too large for it. Browsers
 cannot reproduce the native share sheet, so `share: true` downloads the file
 instead without storing it.
 
-Pass an abort signal as the fourth argument:
+The fourth argument takes `SaveFileOptions`: `signal` to abort the request, and
+`append`.
 
 ```ts
 await layla.utils.saveFile('hello.txt', contentBase64, false, {
   signal: controller.signal,
 });
 ```
+
+### Appending to a file
+
+With `{ append: true }`, `content` is added to the end of the file instead of
+replacing it; a file that does not exist yet is created. `result.size` is the
+file's size after the write. This writes a file a piece at a time, so a
+download can be saved as it arrives without the page ever holding all of it:
+
+```ts
+const reader = (await fetch(url)).body!.getReader();
+let saved = 0;
+for (;;) {
+  const { done, value } = await reader.read();
+  if (done) break;
+  // The first piece replaces any old file; the rest are appended.
+  const result = await layla.utils.saveFile('models/model.onnx', value, false, {
+    append: saved > 0,
+  });
+  if (!result.success) throw new Error(result.message ?? 'Unable to save file');
+  saved += value.byteLength;
+  if (result.size !== saved) throw new Error('The file was changed by another write.');
+}
+```
+
+Network chunks are small, so collect a few MB before each call: every call is
+one round trip to the host. Wait for each call to resolve before the next one
+to the same file; appends are applied in the order the host receives them.
+`share: true` together with `append` shares the whole file after the write.
+
+A Layla build that predates appending ignores `append` and replaces the file
+with `content`. The SDK detects that (the response has no `size`) and resolves
+with `success: false`.
 
 ## `layla.utils.readFile(filename, options?)`
 

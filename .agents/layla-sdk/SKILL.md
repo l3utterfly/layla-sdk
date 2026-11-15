@@ -1208,6 +1208,27 @@ time. A single huge base64 message can exceed the iOS WebView's memory limit,
 which ends the page and leaves the mini-app blank. Avoid JSZip's
 `generateAsync({ type: 'base64' })` in particular; use `type: 'blob'`.
 
+To write a file a piece at a time, pass `{ append: true }` as `options`: the
+content is added to the end of the file (a missing file is created) instead of
+replacing it, and `result.size` is the file's size afterwards. Use it to save a
+download as it arrives, so the page never holds the whole file. Wait for each
+call to resolve before the next one to the same file. A Layla build that
+predates appending replaces the file instead, and the call resolves with
+`success: false`.
+
+```ts
+const reader = (await fetch(url)).body!.getReader();
+for (let first = true; ; first = false) {
+  const { done, value } = await reader.read();
+  if (done) break;
+  // The first piece replaces any old file; the rest are appended.
+  const result = await layla.utils.saveFile('models/model.onnx', value, false, {
+    append: !first,
+  });
+  if (!result.success) throw new Error(result.message ?? 'Unable to save file');
+}
+```
+
 `filename` may be a plain name or a relative path that includes folders (for
 example `logs/run.txt`). The host resolves it inside the mini-app's private
 directory and creates any missing parent folders on save. Paths stay inside that

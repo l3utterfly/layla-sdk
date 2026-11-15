@@ -75,6 +75,21 @@ function toSaveSource(content: SaveFileContent): SaveSource {
   };
 }
 
+/** Options for `saveFile`. */
+export interface SaveFileOptions extends RequestOptions {
+  /**
+   * Add `content` to the end of the file instead of replacing it; a file that
+   * does not exist yet is created. Use it to write a file a piece at a time,
+   * for example a download saved as it arrives, so the page never holds the
+   * whole file. Defaults to `false`.
+   *
+   * The result's `size` is the file's size after the write. A Layla build that
+   * predates appending replaces the file with `content` instead; the call then
+   * resolves with `success: false`.
+   */
+  append?: boolean;
+}
+
 export type SaveFileResult = LaylaApiEvent_onSaveFileResponse['data'];
 export type ReadFileResult = LaylaApiEvent_onReadFileResponse['data'];
 export type ListDirResult = LaylaApiEvent_onListDirResponse['data'];
@@ -163,14 +178,29 @@ export class Utils {
    * limit for the web page; iOS then ends the page, which shows as a blank
    * screen. On a Layla build that predates split saves, the SDK falls back to
    * one message.
+   *
+   * Pass `{ append: true }` to add `content` to the end of the file instead of
+   * replacing it (see {@link SaveFileOptions.append}). Wait for each call to
+   * resolve before the next one to the same file.
    */
   async saveFile(
     filename: string,
     content: SaveFileContent,
     share = false,
-    options: RequestOptions = {},
+    options: SaveFileOptions = {},
   ): Promise<SaveFileResult> {
     const source = toSaveSource(content);
+    const appending = options.append === true;
+    // Only a host that honours `append` reports `size`; an older one has
+    // replaced the file with this content.
+    const appended = (result: SaveFileResult): SaveFileResult =>
+      !result.success || typeof result.size === 'number'
+        ? result
+        : {
+            filename,
+            success: false,
+            message: `This version of Layla cannot append to a file; it replaced ${filename} with this content instead. Update Layla.`,
+          };
     const send = (contentBase64: string, shareNow: boolean, append: boolean) =>
       oneShot<SaveFileResult>(
         {
@@ -188,25 +218,34 @@ export class Utils {
         options.signal,
       );
 
-    if (source.parts <= 1) return send(await source.whole(), share, false);
+    if (source.parts <= 1) {
+      const result = await send(await source.whole(), share, appending);
+      return appending ? appended(result) : result;
+    }
 
-    // The first part replaces the file on every host. Only a host that honours
-    // `append` reports `size`; an older one would overwrite the file with each
-    // later part, so it gets the whole file in one message instead.
-    const first = await send(await source.part(0), false, false);
+    // Without `append`, the first part replaces the file on every host. Only a
+    // host that honours `append` reports `size`; an older one would overwrite
+    // the file with each later part, so it gets the whole file in one message
+    // instead (which cannot stand in for an append).
+    const first = await send(await source.part(0), false, appending);
+    if (!first.success) return first;
     if (typeof first.size !== 'number') {
-      return send(await source.whole(), share, false);
+      return appending ? appended(first) : send(await source.whole(), share, false);
     }
     let result = first;
     for (let i = 1; i < source.parts && result.success; i++) {
       const last = i === source.parts - 1;
       result = await send(await source.part(i), last && share, true);
     }
-    if (result.success && result.size !== source.byteLength) {
+    // When appending, the file started at its size after the first part minus that part.
+    const expected = appending
+      ? first.size - Math.min(SAVE_FILE_PART_BYTES, source.byteLength) + source.byteLength
+      : source.byteLength;
+    if (result.success && result.size !== expected) {
       return {
         filename,
         success: false,
-        message: `Saved ${result.size} of ${source.byteLength} bytes; another write to ${filename} may have interleaved.`,
+        message: `${filename} is ${result.size} bytes after the save, expected ${expected}; another write to it may have interleaved.`,
       };
     }
     return result;
