@@ -883,6 +883,9 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
   // Out-of-band generations run beside chat streams, so they are tracked (and
   // cancelled) by the correlation id the SDK stamped on the request.
   const outOfBand = new Map<string, { cancelled: boolean }>();
+  // The in-flight image generation. Its id is echoed on the cancel error so
+  // that error fails only the image request.
+  let currentImage: { cancelled: boolean; id?: string } | null = null;
   let currentSpeech: { cancelled: boolean } | null = null;
   let backgroundAudio: {
     queueAudioFiles: string[];
@@ -1023,6 +1026,19 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     if (current && !current.cancelled) {
       current.cancelled = true;
       queueMicrotask(() => emit({ event: 'on_message_end', data: null }));
+    }
+    // Like the host, `cancel` also stops image generation, whichever request
+    // it was sent for. A stopped image ends in on_error, as on the host.
+    if (currentImage && !currentImage.cancelled) {
+      currentImage.cancelled = true;
+      const imageId = currentImage.id;
+      queueMicrotask(() =>
+        emit({
+          event: 'on_error',
+          data: { message: 'Generation cancelled' },
+          id: imageId,
+        } as LaylaApiEvent),
+      );
     }
   }
 
@@ -1238,34 +1254,45 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
     });
   }
 
-  async function handleGenerateImage(_: LaylaApiGenerateImage['data']): Promise<void> {
-    await delay(latencyMs);
-    if (shouldError()) {
-      emitError('Simulated image generation error');
-      return;
-    }
-
-    // Simulate progress events
-    const totalSteps = 5;
-    for (let step = 1; step <= totalSteps; step++) {
+  async function handleGenerateImage(
+    _: LaylaApiGenerateImage['data'],
+    id?: string,
+  ): Promise<void> {
+    const gen = { cancelled: false, id };
+    currentImage = gen;
+    try {
       await delay(latencyMs);
+      if (gen.cancelled) return; // cancel error already emitted
+      if (shouldError()) {
+        emitError('Simulated image generation error');
+        return;
+      }
+
+      // Simulate progress events
+      const totalSteps = 5;
+      for (let step = 1; step <= totalSteps; step++) {
+        await delay(latencyMs);
+        if (gen.cancelled) return;
+        emit({
+          event: 'on_generate_image_progress',
+          data: {
+            status: `Generating image... (${step}/${totalSteps})`,
+            steps: step,
+            total_steps: totalSteps,
+          },
+        });
+      }
+
+      // Emit the final image response (using a placeholder image URL for the mock)
       emit({
-        event: 'on_generate_image_progress',
+        event: 'on_generate_image_response',
         data: {
-          status: `Generating image... (${step}/${totalSteps})`,
-          steps: step,
-          total_steps: totalSteps,
+          image_data_base64: 'https://picsum.photos/200/300', // Placeholder image URL for the mock
         },
       });
+    } finally {
+      if (currentImage === gen) currentImage = null;
     }
-
-    // Emit the final image response (using a placeholder image URL for the mock)
-    emit({
-      event: 'on_generate_image_response',
-      data: {
-        image_data_base64: 'https://picsum.photos/200/300', // Placeholder image URL for the mock
-      },
-    });
   }
 
   async function handleNeodragonGenerateVideo(
@@ -2635,7 +2662,7 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
           void handleGetChatHistory(msg.data);
           break;
         case 'generate_image':
-          void handleGenerateImage(msg.data);
+          void handleGenerateImage(msg.data, (msg as { id?: string }).id);
           break;
         case 'neodragon_generate_video':
           void handleNeodragonGenerateVideo(msg.data);
@@ -2860,6 +2887,7 @@ export function installLaylaMock(options: LaylaMockOptions = {}): LaylaMockHandl
       if (!installed) return;
       installed = false;
       if (current) current.cancelled = true;
+      if (currentImage) currentImage.cancelled = true;
       if (currentSpeech) currentSpeech.cancelled = true;
       if (customBackgroundAudio) {
         try {

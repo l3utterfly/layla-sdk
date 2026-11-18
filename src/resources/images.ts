@@ -5,8 +5,9 @@
  * 
  */
 
-import type { LaylaApiEvent, LaylaApiRequest } from '../interface';
+import type { LaylaApiEvent } from '../interface';
 import type {
+  LaylaApiCancel,
   LaylaApiGenerateImage,
   LaylaApiEvent_onGetImageGenerationModelsResponse,
   LaylaApiEvent_onImageGenTagGetDictionariesResponse,
@@ -117,16 +118,22 @@ class ImagesBridgeSink implements BridgeSink {
     return this.closed;
   }
 
-  cancelMessage?(): LaylaApiRequest | null {
-    return null;  // TODO: implement image cancelling request
+  /**
+   * The host's `cancel` stops image generation as well as chat generation.
+   * It is not scoped to this request, so it also stops a chat stream running
+   * at the same time.
+   */
+  cancelMessage(): LaylaApiCancel {
+    return { cmd: 'cancel' };
   }
 
   /** Abort from the consumer side. */
   abort(reason?: unknown): void {
     if (this.closed) return;
     const err = reason instanceof Error ? reason : new LaylaAbortError();
-    // Close locally before cancelling. The host's eventual image response
-    // frees the lane while this closed sink swallows any late events.
+    // Close locally before cancelling. The host's terminating event (its
+    // `on_error` for the stopped generation, or a late image response) frees
+    // the lane while this closed sink swallows any late events.
     this.fail(err);
     LaylaBridge.shared().cancel(this);
   }

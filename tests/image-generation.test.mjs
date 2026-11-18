@@ -125,3 +125,46 @@ test('the browser mock accepts reference requests without simulating model capab
   });
   assert.equal(typeof result, 'string');
 });
+
+test('aborting an in-flight image posts cancel and frees the lane on the host error', { timeout: 1000 }, async () => {
+  const sent = [];
+  window.ReactNativeWebView = { postMessage: (raw) => sent.push(JSON.parse(raw)) };
+  const images = new LaylaSDK().images;
+  const controller = new AbortController();
+  const rejected = assert.rejects(
+    images.generateImage('Draw', () => {}, undefined, undefined, { signal: controller.signal }),
+    (error) => error instanceof LaylaAbortError,
+  );
+  const next = images.generateImage('Draw again', () => {});
+  controller.abort();
+  await rejected;
+  assert.equal(sent.length, 2);
+  assert.equal(sent[1].cmd, 'cancel');
+  assert.equal(sent[1].id, sent[0].id);
+  // The next image waits until the host ends the cancelled request.
+  reply(sent[0], 'on_error', { message: 'Generation cancelled' });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(sent.length, 3);
+  assert.equal(sent[2].data.prompt, 'Draw again');
+  reply(sent[2], 'on_generate_image_response', { image_data_base64: 'next' });
+  assert.equal(await next, 'next');
+});
+
+test('the mock stops an image on cancel and runs the next one', { timeout: 3000 }, async () => {
+  mock = installLaylaMock({ latencyMs: 20 });
+  const images = new LaylaSDK().images;
+  const controller = new AbortController();
+  const progress = [];
+  const first = images.generateImage('Draw', (...args) => progress.push(args), undefined, undefined, {
+    signal: controller.signal,
+  });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  controller.abort();
+  await assert.rejects(first, (error) => error instanceof LaylaAbortError);
+  const seen = progress.length;
+  assert.equal(
+    await images.generateImage('Draw again', () => {}),
+    'https://picsum.photos/200/300',
+  );
+  assert.equal(progress.length, seen);
+});

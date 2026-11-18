@@ -272,6 +272,11 @@ export interface LaylaApiGetCharacterImage {
  * before starting the next queued request, so it must always be sent — even
  * when generation was cut short. Tokens already posted before the host
  * processes the cancel are harmless; the SDK swallows them.
+ *
+ * The SDK also sends this to stop a `generate_image` request. The host stops
+ * image generation and ends that request with an `on_error` (or a late
+ * `on_generate_image_response`). The host does not scope `cancel` to one
+ * request: it stops chat generation and image generation together.
  */
 export interface LaylaApiCancel {
   cmd: 'cancel';
@@ -279,6 +284,7 @@ export interface LaylaApiCancel {
 
 /**
  * Ask the host to generate an image based on the provided prompt. The host should respond with an `on_generate_image_response` event containing the generated image encoded in base64 (including the data URI prefix).
+ * A `cancel` stops the generation; the host then ends this request with an `on_error`.
  */
 export interface LaylaApiGenerateImage {
   cmd: 'generate_image';
