@@ -30,6 +30,21 @@
         "--strictPort"
       ],
       "port": 5200
+    },
+    {
+      "name": "swipe",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "examples/swipe",
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "5201",
+        "--strictPort"
+      ],
+      "port": 5201
     }
   ]
 }

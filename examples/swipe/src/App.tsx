@@ -6,9 +6,10 @@ import React, {
   useState,
 } from "react";
 import {
+  LaylaAbortError,
   LaylaError,
   LaylaSDK,
-  type LaylaChatMessage,
+  type ChatCompletionMessageParam,
   type LaylaCharacter,
   type TavernCardV2,
 } from "../../../src/index";
@@ -55,7 +56,7 @@ type SaveState = {
 } | null;
 
 interface GenerationState {
-  phase: "profile" | "image" | "error";
+  phase: "profile" | "image" | "error" | "cancelled";
   responseText: string;
   imageStatus: string;
   imageStep: number;
@@ -470,11 +471,14 @@ function fullImagePrompt(
   return [`${genderPrefix}`, profile.imagePrompt].join(" ");
 }
 
-async function generateImageWithTimeout(
+async function generatePortrait(
   prompt: string,
   onProgress: (status: string, step: number, totalSteps: number) => void,
+  signal: AbortSignal,
 ): Promise<string | null> {
-  return await layla.images.generateImage(prompt, onProgress, undefined, {});
+  return await layla.images.generateImage(prompt, onProgress, undefined, undefined, {
+    signal,
+  });
 }
 
 function errorMessage(error: unknown): string {
@@ -556,9 +560,10 @@ async function generateProfile(
   id: number,
   genderFilter: GenderFilter,
   onProgress: (state: GenerationState) => void,
+  signal: AbortSignal,
 ): Promise<Character> {
   // The exact messages the model will receive:
-  const messages: LaylaChatMessage[] = [
+  const messages: ChatCompletionMessageParam[] = [
     { role: "system", content: req.systemPrompt },
     { role: "user", content: profileUserPrompt(req, genderFilter) },
   ];
@@ -572,7 +577,8 @@ async function generateProfile(
     error: null,
   });
 
-  const stream = layla.chat.completions.stream({ messages });
+  // Aborting `signal` stops the text stream on the host (`cmd: 'cancel'`).
+  const stream = layla.chat.completions.stream({ messages, signal });
   stream.on("content", (_delta, snapshot) => {
     onProgress({
       phase: "profile",
@@ -597,9 +603,11 @@ async function generateProfile(
     error: null,
   });
 
-  const imageUrl = await generateImageWithTimeout(
+  // An already-aborted signal rejects here without sending the request.
+  const imageUrl = await generatePortrait(
     fullImagePrompt(profile, genderFilter),
     (status, step, totalSteps) => {
+      if (signal.aborted) return;
       onProgress({
         phase: "image",
         responseText: content,
@@ -609,6 +617,7 @@ async function generateProfile(
         error: null,
       });
     },
+    signal,
   );
 
   if (!imageUrl) {
@@ -1242,6 +1251,8 @@ export default function CharacterSwipeDeck() {
   const start = useRef<{ x: number; y: number } | null>(null);
   const nextId = useRef(1);
   const generating = useRef(false);
+  /** aborts the in-flight profile stream / portrait render */
+  const generationAbort = useRef<AbortController | null>(null);
   const swiping = useRef(false);
 
   // the taste model lives in a ref (mutated in place; not rendered directly)
@@ -1268,6 +1279,8 @@ export default function CharacterSwipeDeck() {
     if (generating.current) return;
     generating.current = true;
     setIsGenerating(true);
+    const controller = new AbortController();
+    generationAbort.current = controller;
     try {
       const req = nextRequest(model.current); // model samples + builds the prompt
       setLastReq(req); // surface the most recent prompt for the dev peek
@@ -1278,19 +1291,25 @@ export default function CharacterSwipeDeck() {
           req,
           nextId.current++,
           genderFilter,
-          setGeneration,
+          (state) => {
+            if (!controller.signal.aborted) setGeneration(state);
+          },
+          controller.signal,
         );
         setDeck((d) => [...d, char]);
         setGeneration(null);
       } catch (error) {
-        const message = errorMessage(error);
+        const cancelled =
+          controller.signal.aborted || error instanceof LaylaAbortError;
+        const message = cancelled ? null : errorMessage(error);
         setGeneration((current) => ({
           ...(current ?? initialGenerationState()),
-          phase: "error",
+          phase: cancelled ? "cancelled" : "error",
           error: message,
         }));
       }
     } finally {
+      if (generationAbort.current === controller) generationAbort.current = null;
       generating.current = false;
       setIsGenerating(false);
     }
@@ -1298,10 +1317,12 @@ export default function CharacterSwipeDeck() {
 
   // Generate only when there is no current card left to show.
   // This also fires on mount (empty deck) to load the very first card.
+  // A failed or cancelled generation waits for the user to try again.
   useEffect(() => {
     if (
       !generating.current &&
       generation?.phase !== "error" &&
+      generation?.phase !== "cancelled" &&
       index >= deck.length
     ) {
       void generateNext();
@@ -1313,6 +1334,10 @@ export default function CharacterSwipeDeck() {
   const retryGeneration = () => {
     setGeneration(null);
     void generateNext();
+  };
+
+  const cancelGeneration = () => {
+    generationAbort.current?.abort();
   };
 
   const finishSwipe = (dir: Direction, char: Character) => {
@@ -1592,6 +1617,7 @@ export default function CharacterSwipeDeck() {
                   style={isTop ? { zIndex: 10 } : behindStyle}
                   generation={isTop ? generation : null}
                   onRetry={retryGeneration}
+                  onCancel={cancelGeneration}
                 />
               );
             }
@@ -1671,20 +1697,26 @@ export default function CharacterSwipeDeck() {
           style={{
             margin: 0,
             fontSize: 11.5,
-            color: generation?.phase === "error" ? T.slate : T.coral,
+            color: isGenerating ? T.coral : T.slate,
             fontWeight: 600,
             letterSpacing: "0.02em",
-            opacity: isGenerating || generation?.phase === "error" ? 1 : 0,
+            opacity:
+              isGenerating ||
+              generation?.phase === "error" ||
+              generation?.phase === "cancelled"
+                ? 1
+                : 0,
             transition: "opacity 0.3s ease",
-            animation:
-              generation?.phase === "error"
-                ? undefined
-                : "csd-pulse 1.4s ease-in-out infinite",
+            animation: isGenerating
+              ? "csd-pulse 1.4s ease-in-out infinite"
+              : undefined,
           }}
         >
           {generation?.phase === "error"
             ? generation.error
-            : "✨ Summoning more matches…"}
+            : generation?.phase === "cancelled"
+              ? "Generation cancelled"
+              : "✨ Summoning more matches…"}
         </p>
       </div>
 
@@ -1762,12 +1794,16 @@ const LoadingCard = ({
   style,
   generation,
   onRetry,
+  onCancel,
 }: {
   top: boolean;
   style: React.CSSProperties;
   generation: GenerationState | null;
   onRetry: () => void;
+  onCancel: () => void;
 }) => {
+  const stopped =
+    generation?.phase === "error" || generation?.phase === "cancelled";
   const imageProgress =
     generation?.phase === "image"
       ? Math.max(
@@ -1786,10 +1822,9 @@ const LoadingCard = ({
         inset: 0,
         borderRadius: 26,
         overflow: "hidden",
-        background:
-          generation?.phase === "error"
-            ? "linear-gradient(150deg, #BFC5C8, #7B8992)"
-            : "linear-gradient(150deg, #D9CFBE, #B7AB97)",
+        background: stopped
+          ? "linear-gradient(150deg, #BFC5C8, #7B8992)"
+          : "linear-gradient(150deg, #D9CFBE, #B7AB97)",
         boxShadow: "0 28px 60px -28px rgba(42,36,34,0.45)",
         ...style,
       }}
@@ -1800,10 +1835,9 @@ const LoadingCard = ({
           inset: 0,
           background:
             "linear-gradient(100deg, transparent 30%, rgba(255,255,255,0.32) 50%, transparent 70%)",
-          animation:
-            generation?.phase === "error"
-              ? undefined
-              : "csd-shimmer 1.4s linear infinite",
+          animation: stopped
+            ? undefined
+            : "csd-shimmer 1.4s linear infinite",
         }}
       />
 
@@ -1888,9 +1922,11 @@ const LoadingCard = ({
               >
                 {generation.phase === "error"
                   ? "Generation error"
-                  : generation.phase === "image"
-                    ? "Rendering portrait"
-                    : "Writing profile"}
+                  : generation.phase === "cancelled"
+                    ? "Generation cancelled"
+                    : generation.phase === "image"
+                      ? "Rendering portrait"
+                      : "Writing profile"}
               </div>
               <div
                 style={{
@@ -1903,9 +1939,35 @@ const LoadingCard = ({
               >
                 {generation.phase === "error"
                   ? "Layla needs attention"
-                  : "New match incoming"}
+                  : generation.phase === "cancelled"
+                    ? "Match on hold"
+                    : "New match incoming"}
               </div>
             </div>
+            {!stopped && (
+              <button
+                onClick={onCancel}
+                aria-label={
+                  generation.phase === "image"
+                    ? "Cancel portrait generation"
+                    : "Cancel profile generation"
+                }
+                style={{
+                  flex: "0 0 auto",
+                  border: "1px solid rgba(255,255,255,0.48)",
+                  background: "rgba(35,31,29,0.35)",
+                  color: "#fff",
+                  fontFamily: "inherit",
+                  fontSize: 12.5,
+                  fontWeight: 700,
+                  padding: "8px 14px",
+                  borderRadius: 999,
+                  cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+            )}
           </div>
 
           <div
@@ -1927,8 +1989,11 @@ const LoadingCard = ({
           >
             {generation.phase === "error"
               ? generation.error
-              : generation.responseText ||
-                "Waiting for Layla to start typing..."}
+              : generation.phase === "cancelled"
+                ? generation.responseText ||
+                  "Cancelled before Layla started typing."
+                : generation.responseText ||
+                  "Waiting for Layla to start typing..."}
           </div>
 
           <div
@@ -2000,7 +2065,7 @@ const LoadingCard = ({
               </div>
             )}
 
-            {generation.phase === "error" && (
+            {stopped && (
               <button
                 onClick={onRetry}
                 style={{
